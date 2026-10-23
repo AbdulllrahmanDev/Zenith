@@ -245,18 +245,19 @@ fn main() {
             }
 
             let window = app.get_webview_window("main").unwrap();
-            // tao rebuilds the extended style from its own flags whenever one
-            // changes (show, hide, ...). With its ignore-cursor flag on, every
-            // rebuild keeps the notch window layered, which its window region
-            // needs to stay transparent; set_click_through then drives the
-            // click-through bit directly. The worst a rebuild does is make the
-            // window click-through until the next cursor update.
-            let _ = window.set_ignore_cursor_events(true);
             let dock_win = app.get_webview_window("dock").unwrap();
-            // Same for the dock window, which has a region too.
-            let _ = dock_win.set_ignore_cursor_events(true);
             if let Ok(hwnd) = dock_win.hwnd() {
                 DOCK_HWND.store(hwnd.0 as isize, Ordering::Relaxed);
+            }
+
+            for label in ["main", "main-2", "main-3", "dock", "dock-2", "dock-3"] {
+                if let Some(w) = app.get_webview_window(label) {
+                    let _ = w.set_ignore_cursor_events(true);
+                    if let Ok(hwnd) = w.hwnd() {
+                        crate::utils::re_assert_topmost(hwnd);
+                        crate::utils::set_click_through(hwnd, true);
+                    }
+                }
             }
 
             // Sync window rects initially and on event

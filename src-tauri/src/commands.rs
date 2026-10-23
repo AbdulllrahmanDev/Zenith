@@ -492,6 +492,31 @@ pub async fn change_notch_mode(app: AppHandle, mode: String) {
     }
 }
 
+fn get_monitor_model_name(adapter_device_name: &str) -> Option<String> {
+    use windows::Win32::Graphics::Gdi::{EnumDisplayDevicesW, DISPLAY_DEVICEW};
+    use windows::core::HSTRING;
+    unsafe {
+        let adapter = HSTRING::from(adapter_device_name);
+        let mut monitor_dev = DISPLAY_DEVICEW::default();
+        monitor_dev.cb = std::mem::size_of::<DISPLAY_DEVICEW>() as u32;
+        if EnumDisplayDevicesW(
+            windows::core::PCWSTR(adapter.as_ptr()),
+            0,
+            &mut monitor_dev,
+            0,
+        )
+        .as_bool()
+        {
+            let name = String::from_utf16_lossy(&monitor_dev.DeviceString);
+            let clean = name.trim_matches('\0').trim();
+            if !clean.is_empty() {
+                return Some(clean.to_string());
+            }
+        }
+    }
+    None
+}
+
 #[tauri::command]
 pub fn get_available_displays(app: AppHandle) -> Vec<crate::types::DisplayInfo> {
     let mut displays = Vec::new();
@@ -501,10 +526,22 @@ pub fn get_available_displays(app: AppHandle) -> Vec<crate::types::DisplayInfo> 
             let id = m.name().map(|s| s.to_string()).unwrap_or_else(|| format!("display-{}", idx + 1));
             let is_primary = primary_name.as_ref().map(|pn| pn == &id).unwrap_or(idx == 0);
             let display_num = idx + 1;
-            let friendly_name = if is_primary {
-                format!("Display {} (Primary) - {}x{}", display_num, m.size().width, m.size().height)
-            } else {
-                format!("Display {} - {}x{}", display_num, m.size().width, m.size().height)
+            let model_opt = get_monitor_model_name(&id);
+            let friendly_name = match model_opt {
+                Some(ref model) if model != "Generic PnP Monitor" => {
+                    if is_primary {
+                        format!("{} (Display {}) [Primary] - {}x{}", model, display_num, m.size().width, m.size().height)
+                    } else {
+                        format!("{} (Display {}) - {}x{}", model, display_num, m.size().width, m.size().height)
+                    }
+                }
+                _ => {
+                    if is_primary {
+                        format!("Display {} (Primary) - {}x{}", display_num, m.size().width, m.size().height)
+                    } else {
+                        format!("Display {} - {}x{}", display_num, m.size().width, m.size().height)
+                    }
+                }
             };
 
             displays.push(crate::types::DisplayInfo {
@@ -538,56 +575,25 @@ pub fn reposition_displays(app: AppHandle) {
 
     // --- Reposition Notch Windows ---
     if notch_mode == "all" && monitors.len() > 1 {
-        let m0 = &monitors[0];
-        if let Some(main_win) = app.get_webview_window("main") {
-            let m_pos = m0.position();
-            let m_size = m0.size();
-            let scale = m0.scale_factor();
-            let target_height = (420.0 * bloom_scale * scale) as u32;
-            let _ = main_win.set_position(tauri::PhysicalPosition::new(m_pos.x, m_pos.y));
-            let _ = main_win.set_size(tauri::PhysicalSize::new(m_size.width, target_height));
-            let _ = main_win.show();
-        }
-
-        for (idx, m) in monitors.iter().enumerate().skip(1) {
-            let win_label = format!("main-{}", idx + 1);
-            let m_pos = m.position();
-            let m_size = m.size();
-            let scale = m.scale_factor();
-            let target_height = (420.0 * bloom_scale * scale) as u32;
-
-            if let Some(sec_win) = app.get_webview_window(&win_label) {
-                let _ = sec_win.set_position(tauri::PhysicalPosition::new(m_pos.x, m_pos.y));
-                let _ = sec_win.set_size(tauri::PhysicalSize::new(m_size.width, target_height));
-                let _ = sec_win.show();
-            } else {
-                if let Ok(new_win) = tauri::WebviewWindowBuilder::new(
-                    &app,
-                    &win_label,
-                    tauri::WebviewUrl::App("index.html".into()),
-                )
-                .title(format!("Zenith Notch {}", idx + 1))
-                .inner_size(m_size.width as f64, target_height as f64)
-                .position(m_pos.x as f64, m_pos.y as f64)
-                .decorations(false)
-                .transparent(true)
-                .resizable(false)
-                .maximizable(false)
-                .minimizable(false)
-                .closable(false)
-                .always_on_top(true)
-                .visible_on_all_workspaces(true)
-                .skip_taskbar(true)
-                .shadow(false)
-                .build()
-                {
-                    let _ = new_win.set_ignore_cursor_events(true);
-                    if let Ok(hwnd) = new_win.hwnd() {
-                        crate::utils::re_assert_topmost(hwnd);
-                        crate::utils::set_click_through(hwnd, true);
-                    }
-                    let _ = new_win.show();
+        for (idx, m) in monitors.iter().enumerate() {
+            let win_label = if idx == 0 { "main".to_string() } else { format!("main-{}", idx + 1) };
+            if let Some(win) = app.get_webview_window(&win_label) {
+                let m_pos = m.position();
+                let m_size = m.size();
+                let scale = m.scale_factor();
+                let target_height = (420.0 * bloom_scale * scale) as u32;
+                let _ = win.set_position(tauri::PhysicalPosition::new(m_pos.x, m_pos.y));
+                let _ = win.set_size(tauri::PhysicalSize::new(m_size.width, target_height));
+                let _ = win.show();
+                if let Ok(hwnd) = win.hwnd() {
+                    crate::utils::re_assert_topmost(hwnd);
                 }
+            }
+        }
+        for idx in monitors.len()..5 {
+            let win_label = format!("main-{}", idx + 1);
+            if let Some(win) = app.get_webview_window(&win_label) {
+                let _ = win.hide();
             }
         }
     } else {
@@ -600,6 +606,9 @@ pub fn reposition_displays(app: AppHandle) {
                 let _ = main_win.set_position(tauri::PhysicalPosition::new(m_pos.x, m_pos.y));
                 let _ = main_win.set_size(tauri::PhysicalSize::new(m_size.width, target_height));
                 let _ = main_win.show();
+                if let Ok(hwnd) = main_win.hwnd() {
+                    crate::utils::re_assert_topmost(hwnd);
+                }
             }
         }
         for (label, win) in app.webview_windows() {
@@ -611,56 +620,26 @@ pub fn reposition_displays(app: AppHandle) {
 
     // --- Reposition Dock Windows ---
     if dock_mode == "all" && monitors.len() > 1 {
-        let m0 = &monitors[0];
-        if let Some(dock_win) = app.get_webview_window("dock") {
-            let m_pos = m0.position();
-            let m_size = m0.size();
-            let ph = dock_win.outer_size().map(|s| s.height as i32).unwrap_or(120);
-            let final_y = m_pos.y + m_size.height as i32 - ph;
-            let _ = dock_win.set_position(tauri::PhysicalPosition::new(m_pos.x, final_y));
-            let _ = dock_win.set_size(tauri::PhysicalSize::new(m_size.width, ph as u32));
-            let _ = dock_win.show();
-        }
-
-        for (idx, m) in monitors.iter().enumerate().skip(1) {
-            let win_label = format!("dock-{}", idx + 1);
-            let m_pos = m.position();
-            let m_size = m.size();
-            let ph = 120;
-            let final_y = m_pos.y + m_size.height as i32 - ph;
-
-            if let Some(sec_dock) = app.get_webview_window(&win_label) {
-                let _ = sec_dock.set_position(tauri::PhysicalPosition::new(m_pos.x, final_y));
-                let _ = sec_dock.set_size(tauri::PhysicalSize::new(m_size.width, ph as u32));
-                let _ = sec_dock.show();
-            } else {
-                if let Ok(new_dock) = tauri::WebviewWindowBuilder::new(
-                    &app,
-                    &win_label,
-                    tauri::WebviewUrl::App("dock.html".into()),
-                )
-                .title(format!("Zenith Dock {}", idx + 1))
-                .inner_size(m_size.width as f64, ph as f64)
-                .position(m_pos.x as f64, final_y as f64)
-                .decorations(false)
-                .transparent(true)
-                .resizable(false)
-                .maximizable(false)
-                .minimizable(false)
-                .closable(false)
-                .always_on_top(true)
-                .visible_on_all_workspaces(true)
-                .skip_taskbar(true)
-                .shadow(false)
-                .build()
-                {
-                    let _ = new_dock.set_ignore_cursor_events(true);
-                    if let Ok(hwnd) = new_dock.hwnd() {
-                        crate::utils::re_assert_topmost(hwnd);
-                        crate::utils::set_click_through(hwnd, true);
-                    }
-                    let _ = new_dock.show();
+        for (idx, m) in monitors.iter().enumerate() {
+            let win_label = if idx == 0 { "dock".to_string() } else { format!("dock-{}", idx + 1) };
+            if let Some(win) = app.get_webview_window(&win_label) {
+                let m_pos = m.position();
+                let m_size = m.size();
+                let scale = m.scale_factor();
+                let ph = (600.0 * scale) as u32;
+                let final_y = m_pos.y + m_size.height as i32 - ph as i32;
+                let _ = win.set_position(tauri::PhysicalPosition::new(m_pos.x, final_y));
+                let _ = win.set_size(tauri::PhysicalSize::new(m_size.width, ph));
+                let _ = win.show();
+                if let Ok(hwnd) = win.hwnd() {
+                    crate::utils::re_assert_topmost(hwnd);
                 }
+            }
+        }
+        for idx in monitors.len()..5 {
+            let win_label = format!("dock-{}", idx + 1);
+            if let Some(win) = app.get_webview_window(&win_label) {
+                let _ = win.hide();
             }
         }
     } else {
@@ -668,11 +647,15 @@ pub fn reposition_displays(app: AppHandle) {
             if let Some(dock_win) = app.get_webview_window("dock") {
                 let m_pos = monitor.position();
                 let m_size = monitor.size();
-                let ph = dock_win.outer_size().map(|s| s.height as i32).unwrap_or(120);
-                let final_y = m_pos.y + m_size.height as i32 - ph;
+                let scale = monitor.scale_factor();
+                let ph = (600.0 * scale) as u32;
+                let final_y = m_pos.y + m_size.height as i32 - ph as i32;
                 let _ = dock_win.set_position(tauri::PhysicalPosition::new(m_pos.x, final_y));
-                let _ = dock_win.set_size(tauri::PhysicalSize::new(m_size.width, ph as u32));
+                let _ = dock_win.set_size(tauri::PhysicalSize::new(m_size.width, ph));
                 let _ = dock_win.show();
+                if let Ok(hwnd) = dock_win.hwnd() {
+                    crate::utils::re_assert_topmost(hwnd);
+                }
             }
         }
         for (label, win) in app.webview_windows() {
