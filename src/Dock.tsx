@@ -127,9 +127,12 @@ function TaskViewIcon() {
 }
 
 function resolveStartIcon(startIcon: string): string {
-	if (startIcon === "bloom-colorful") return "/bloom-colorful.png";
-	if (startIcon === "bloom-golden") return "/bloom-golden.png";
-	if (startIcon === "bloom-biscuit") return "/bloom-biscuit.png";
+	if (startIcon === "zenith-holographic" || startIcon === "bloom-colorful") return "/zenith-color-1-holographic.svg";
+	if (startIcon === "zenith-emerald") return "/zenith-color-2-emerald.svg";
+	if (startIcon === "zenith-gold" || startIcon === "bloom-golden") return "/zenith-color-3-gold.svg";
+	if (startIcon === "zenith-iznik-blue") return "/zenith-color-4-iznik-blue.svg";
+	if (startIcon === "zenith-midnight-gold") return "/zenith-color-5-midnight-gold.svg";
+	if (startIcon === "zenith-ivory-emerald" || startIcon === "bloom-biscuit") return "/zenith-color-6-ivory-emerald.svg";
 	if (startIcon === "windows") return "/windows-11.png";
 	if (startIcon.startsWith("custom:")) return startIcon.slice("custom:".length);
 	return "/bloom.png";

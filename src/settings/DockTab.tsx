@@ -81,9 +81,12 @@ function DrivePicker({
 
 const START_ICON_PRESETS = [
 	{ key: "default", src: "/bloom.png", label: "Zenith" },
-	{ key: "bloom-colorful", src: "/bloom-colorful.png", label: "Colorful" },
-	{ key: "bloom-golden", src: "/bloom-golden.png", label: "Golden" },
-	{ key: "bloom-biscuit", src: "/bloom-biscuit.png", label: "Orange" },
+	{ key: "zenith-holographic", src: "/zenith-color-1-holographic.svg", label: "Holographic" },
+	{ key: "zenith-emerald", src: "/zenith-color-2-emerald.svg", label: "Emerald" },
+	{ key: "zenith-gold", src: "/zenith-color-3-gold.svg", label: "Gold" },
+	{ key: "zenith-iznik-blue", src: "/zenith-color-4-iznik-blue.svg", label: "Iznik Blue" },
+	{ key: "zenith-midnight-gold", src: "/zenith-color-5-midnight-gold.svg", label: "Midnight Gold" },
+	{ key: "zenith-ivory-emerald", src: "/zenith-color-6-ivory-emerald.svg", label: "Ivory Emerald" },
 	{ key: "windows", src: "/windows-11.png", label: "Windows" }
 ];
 
