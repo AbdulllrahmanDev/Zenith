@@ -1083,14 +1083,25 @@ function App() {
 			setIsOverlapped(event.payload);
 		});
 
-		const unlistenNotchEdgeHover = listen<boolean>("notch-edge-hover", (event) => {
-			setIsEdgeHovered(event.payload);
+		const unlistenNotchEdgeHover = listen<boolean | { target?: string; hovered: boolean }>("notch-edge-hover", (event) => {
+			const payload = event.payload;
+			if (typeof payload === "object" && payload !== null) {
+				if (payload.target && payload.target !== windowLabel) {
+					return;
+				}
+				setIsEdgeHovered(payload.hovered);
+			} else {
+				setIsEdgeHovered(payload);
+			}
 		});
 
 		// The backend emits this when the window flips to click-through while
 		// the webview still thinks the pointer is inside the notch (it cannot
 		// receive the mouseleave once the window is click-through).
-		const unlistenNotchPointerLeft = listen("notch-pointer-left", () => {
+		const unlistenNotchPointerLeft = listen<any>("notch-pointer-left", (event) => {
+			if (event?.payload && typeof event.payload === "object" && event.payload.target) {
+				if (event.payload.target !== windowLabel) return;
+			}
 			releaseNotchHover();
 		});
 

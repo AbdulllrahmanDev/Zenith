@@ -2,7 +2,10 @@ import { useState, useEffect, useLayoutEffect, useMemo, useRef, memo } from "rea
 import { motion, AnimatePresence, Reorder } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import "./Dock.css";
+
+const currentWindow = getCurrentWebviewWindow();
 import { EdgeSurface } from "./components/EdgeSurface";
 import { initTheme } from "./theme";
 import { useSettingsSync } from "./hooks/useSettingsSync";
@@ -456,8 +459,16 @@ const Dock = memo(function Dock() {
 			setIsOverlapped(event.payload);
 		});
 
-		const unlistenEdgeHover = listen<boolean>("dock-edge-hover", (event) => {
-			setIsEdgeHovered(event.payload);
+		const unlistenEdgeHover = listen<boolean | { target?: string; hovered: boolean }>("dock-edge-hover", (event) => {
+			const payload = event.payload;
+			if (typeof payload === "object" && payload !== null) {
+				if (payload.target && payload.target !== currentWindow.label) {
+					return;
+				}
+				setIsEdgeHovered(payload.hovered);
+			} else {
+				setIsEdgeHovered(payload);
+			}
 		});
 
 		const unlistenVisibility = listen<boolean>("visibility-change", (event) => {

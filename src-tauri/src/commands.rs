@@ -524,25 +524,161 @@ pub fn get_available_displays(app: AppHandle) -> Vec<crate::types::DisplayInfo> 
 
 #[tauri::command]
 pub fn reposition_displays(app: AppHandle) {
-    if let Some(main_win) = app.get_webview_window("main") {
-        if let Some(monitor) = crate::utils::get_target_monitor(&app, "bloom-notch-display") {
-            let m_pos = monitor.position();
-            let m_size = monitor.size();
-            let scale = monitor.scale_factor();
-            let bloom_scale = crate::utils::get_bloom_scale(&app);
+    let monitors = match app.available_monitors() {
+        Ok(m) => m,
+        Err(_) => return,
+    };
+    if monitors.is_empty() {
+        return;
+    }
+
+    let notch_mode = crate::utils::get_setting_str(&app, "bloom-notch-display").unwrap_or_else(|| "all".to_string());
+    let dock_mode = crate::utils::get_setting_str(&app, "bloom-dock-display").unwrap_or_else(|| "all".to_string());
+    let bloom_scale = crate::utils::get_bloom_scale(&app);
+
+    // --- Reposition Notch Windows ---
+    if notch_mode == "all" && monitors.len() > 1 {
+        let m0 = &monitors[0];
+        if let Some(main_win) = app.get_webview_window("main") {
+            let m_pos = m0.position();
+            let m_size = m0.size();
+            let scale = m0.scale_factor();
             let target_height = (420.0 * bloom_scale * scale) as u32;
             let _ = main_win.set_position(tauri::PhysicalPosition::new(m_pos.x, m_pos.y));
             let _ = main_win.set_size(tauri::PhysicalSize::new(m_size.width, target_height));
+            let _ = main_win.show();
+        }
+
+        for (idx, m) in monitors.iter().enumerate().skip(1) {
+            let win_label = format!("main-{}", idx + 1);
+            let m_pos = m.position();
+            let m_size = m.size();
+            let scale = m.scale_factor();
+            let target_height = (420.0 * bloom_scale * scale) as u32;
+
+            if let Some(sec_win) = app.get_webview_window(&win_label) {
+                let _ = sec_win.set_position(tauri::PhysicalPosition::new(m_pos.x, m_pos.y));
+                let _ = sec_win.set_size(tauri::PhysicalSize::new(m_size.width, target_height));
+                let _ = sec_win.show();
+            } else {
+                if let Ok(new_win) = tauri::WebviewWindowBuilder::new(
+                    &app,
+                    &win_label,
+                    tauri::WebviewUrl::App("index.html".into()),
+                )
+                .title(format!("Zenith Notch {}", idx + 1))
+                .inner_size(m_size.width as f64, target_height as f64)
+                .position(m_pos.x as f64, m_pos.y as f64)
+                .decorations(false)
+                .transparent(true)
+                .resizable(false)
+                .maximizable(false)
+                .minimizable(false)
+                .closable(false)
+                .always_on_top(true)
+                .visible_on_all_workspaces(true)
+                .skip_taskbar(true)
+                .shadow(false)
+                .build()
+                {
+                    let _ = new_win.set_ignore_cursor_events(true);
+                    if let Ok(hwnd) = new_win.hwnd() {
+                        crate::utils::re_assert_topmost(hwnd);
+                        crate::utils::set_click_through(hwnd, true);
+                    }
+                    let _ = new_win.show();
+                }
+            }
+        }
+    } else {
+        if let Some(monitor) = crate::utils::get_target_monitor(&app, "bloom-notch-display") {
+            if let Some(main_win) = app.get_webview_window("main") {
+                let m_pos = monitor.position();
+                let m_size = monitor.size();
+                let scale = monitor.scale_factor();
+                let target_height = (420.0 * bloom_scale * scale) as u32;
+                let _ = main_win.set_position(tauri::PhysicalPosition::new(m_pos.x, m_pos.y));
+                let _ = main_win.set_size(tauri::PhysicalSize::new(m_size.width, target_height));
+                let _ = main_win.show();
+            }
+        }
+        for (label, win) in app.webview_windows() {
+            if label.starts_with("main-") {
+                let _ = win.hide();
+            }
         }
     }
-    if let Some(dock_win) = app.get_webview_window("dock") {
-        if let Some(monitor) = crate::utils::get_target_monitor(&app, "bloom-dock-display") {
-            let m_pos = monitor.position();
-            let m_size = monitor.size();
+
+    // --- Reposition Dock Windows ---
+    if dock_mode == "all" && monitors.len() > 1 {
+        let m0 = &monitors[0];
+        if let Some(dock_win) = app.get_webview_window("dock") {
+            let m_pos = m0.position();
+            let m_size = m0.size();
             let ph = dock_win.outer_size().map(|s| s.height as i32).unwrap_or(120);
             let final_y = m_pos.y + m_size.height as i32 - ph;
             let _ = dock_win.set_position(tauri::PhysicalPosition::new(m_pos.x, final_y));
             let _ = dock_win.set_size(tauri::PhysicalSize::new(m_size.width, ph as u32));
+            let _ = dock_win.show();
+        }
+
+        for (idx, m) in monitors.iter().enumerate().skip(1) {
+            let win_label = format!("dock-{}", idx + 1);
+            let m_pos = m.position();
+            let m_size = m.size();
+            let ph = 120;
+            let final_y = m_pos.y + m_size.height as i32 - ph;
+
+            if let Some(sec_dock) = app.get_webview_window(&win_label) {
+                let _ = sec_dock.set_position(tauri::PhysicalPosition::new(m_pos.x, final_y));
+                let _ = sec_dock.set_size(tauri::PhysicalSize::new(m_size.width, ph as u32));
+                let _ = sec_dock.show();
+            } else {
+                if let Ok(new_dock) = tauri::WebviewWindowBuilder::new(
+                    &app,
+                    &win_label,
+                    tauri::WebviewUrl::App("dock.html".into()),
+                )
+                .title(format!("Zenith Dock {}", idx + 1))
+                .inner_size(m_size.width as f64, ph as f64)
+                .position(m_pos.x as f64, final_y as f64)
+                .decorations(false)
+                .transparent(true)
+                .resizable(false)
+                .maximizable(false)
+                .minimizable(false)
+                .closable(false)
+                .always_on_top(true)
+                .visible_on_all_workspaces(true)
+                .skip_taskbar(true)
+                .shadow(false)
+                .build()
+                {
+                    let _ = new_dock.set_ignore_cursor_events(true);
+                    if let Ok(hwnd) = new_dock.hwnd() {
+                        crate::utils::re_assert_topmost(hwnd);
+                        crate::utils::set_click_through(hwnd, true);
+                    }
+                    let _ = new_dock.show();
+                }
+            }
+        }
+    } else {
+        if let Some(monitor) = crate::utils::get_target_monitor(&app, "bloom-dock-display") {
+            if let Some(dock_win) = app.get_webview_window("dock") {
+                let m_pos = monitor.position();
+                let m_size = monitor.size();
+                let ph = dock_win.outer_size().map(|s| s.height as i32).unwrap_or(120);
+                let final_y = m_pos.y + m_size.height as i32 - ph;
+                let _ = dock_win.set_position(tauri::PhysicalPosition::new(m_pos.x, final_y));
+                let _ = dock_win.set_size(tauri::PhysicalSize::new(m_size.width, ph as u32));
+                let _ = dock_win.show();
+            }
+        }
+        for (label, win) in app.webview_windows() {
+            if label.starts_with("dock-") {
+                let _ = win.hide();
+            }
         }
     }
 }
@@ -695,7 +831,7 @@ pub fn is_start_menu_open() -> bool {
 /// The mouse hook records whether Start was open at this click's press: if it
 /// was, the press closed it and the click leaves it closed, however long the
 /// button was held.
-fn toggle_start_menu() {
+fn toggle_start_menu(app: &AppHandle) {
     let now = get_now_ms();
     if now - LAST_START_TOGGLE_MS.load(Ordering::Relaxed) < START_TOGGLE_DEBOUNCE_MS {
         return;
@@ -704,8 +840,32 @@ fn toggle_start_menu() {
     // Taken here, so a press is only ever used by the click it started.
     let open_at_press = START_OPEN_AT_PRESS.swap(false, Ordering::Relaxed);
 
+    let app_handle = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
         use windows::Win32::UI::Input::KeyboardAndMouse::{VK_ESCAPE, VK_LWIN};
+        use windows::Win32::Graphics::Gdi::{MonitorFromPoint, MonitorFromWindow, MONITOR_DEFAULTTONEAREST};
+        use windows::Win32::UI::WindowsAndMessaging::{GetCursorPos, SetForegroundWindow};
+
+        // Focus the dock window on the monitor where the cursor currently is,
+        // so Windows 11 opens the Start menu directly on that display!
+        let mut pt = windows::Win32::Foundation::POINT::default();
+        if unsafe { GetCursorPos(&mut pt) }.is_ok() {
+            let cursor_mon = unsafe { MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST) };
+            for (_, win) in app_handle.webview_windows() {
+                if win.label() == "dock" || win.label().starts_with("dock-") {
+                    if let Ok(hwnd) = win.hwnd() {
+                        let win_mon = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
+                        if win_mon == cursor_mon {
+                            unsafe {
+                                let _ = SetForegroundWindow(hwnd);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
         if is_start_menu_open() {
             send_key_tap(VK_ESCAPE, 0);
         } else if !open_at_press {
@@ -717,7 +877,7 @@ fn toggle_start_menu() {
 #[tauri::command]
 pub async fn open_app(app: AppHandle, app_name: String) {
     if app_name == "start" {
-        toggle_start_menu();
+        toggle_start_menu(&app);
         return;
     }
 
@@ -726,7 +886,8 @@ pub async fn open_app(app: AppHandle, app_name: String) {
         return;
     }
 
-    tauri::async_runtime::spawn_blocking(move || launch_path(&app_name));
+    let app_handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || launch_path(Some(&app_handle), &app_name));
 }
 
 fn is_bloom_launch_target(target: &str, identifier: &str) -> bool {
@@ -741,13 +902,13 @@ fn is_bloom_launch_target(target: &str, identifier: &str) -> bool {
 /// Running browser PWAs are relaunched through their Start Menu shortcut so the
 /// new window belongs to the web app rather than the bare browser.
 #[tauri::command]
-pub async fn launch_new_instance(app_path: String, app_name: Option<String>) {
+pub async fn launch_new_instance(app: AppHandle, app_path: String, app_name: Option<String>) {
     tauri::async_runtime::spawn_blocking(move || {
         if app_path == "start" {
             return;
         }
         let target = pwa_launch_target(&app_path, app_name.as_deref()).unwrap_or(app_path);
-        launch_path(&target);
+        launch_path(Some(&app), &target);
     });
 }
 
@@ -777,10 +938,34 @@ fn is_pwa_shortcut_for(app: &AppInfo, name: &str, host_exe: &str) -> bool {
 }
 
 /// Opens a file path, shortcut, or shell application id through the shell.
-fn launch_path(path: &str) {
+fn launch_path(app: Option<&AppHandle>, path: &str) {
     unsafe {
         use windows::Win32::UI::Shell::ShellExecuteW;
-        use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+        use windows::Win32::UI::WindowsAndMessaging::{GetCursorPos, SW_SHOWNORMAL};
+        use windows::Win32::Graphics::Gdi::{MonitorFromPoint, MonitorFromWindow, MONITOR_DEFAULTTONEAREST};
+
+        let mut parent_hwnd = None;
+        if let Some(app_handle) = app {
+            let mut pt = windows::Win32::Foundation::POINT::default();
+            if GetCursorPos(&mut pt).is_ok() {
+                let cursor_mon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+                for (_, win) in app_handle.webview_windows() {
+                    if win.label() == "dock" || win.label().starts_with("dock-") {
+                        if let Ok(hwnd) = win.hwnd() {
+                            let win_mon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+                            if win_mon == cursor_mon {
+                                parent_hwnd = Some(hwnd);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            if parent_hwnd.is_none() {
+                parent_hwnd = app_handle.get_webview_window("dock").and_then(|w| w.hwnd().ok());
+            }
+        }
+
         let wide_open: Vec<u16> = "open".encode_utf16().chain(std::iter::once(0)).collect();
 
         // Shortcuts and shell app ids must be launched through the shell itself so
@@ -797,7 +982,7 @@ fn launch_path(path: &str) {
         if let Some(target) = shell_target {
             let wide_target: Vec<u16> = target.encode_utf16().chain(std::iter::once(0)).collect();
             let res = ShellExecuteW(
-                None,
+                parent_hwnd,
                 windows::core::PCWSTR(wide_open.as_ptr()),
                 windows::core::PCWSTR(wide_target.as_ptr()),
                 None,
@@ -814,7 +999,7 @@ fn launch_path(path: &str) {
             let wide_cmd: Vec<u16> = uwp_cmd.encode_utf16().chain(std::iter::once(0)).collect();
 
             let res = ShellExecuteW(
-                None,
+                parent_hwnd,
                 windows::core::PCWSTR(wide_open.as_ptr()),
                 windows::core::PCWSTR(wide_cmd.as_ptr()),
                 None,
@@ -856,7 +1041,7 @@ fn launch_path(path: &str) {
         let wide_open: Vec<u16> = "open".encode_utf16().chain(std::iter::once(0)).collect();
 
         let res = ShellExecuteW(
-            None,
+            parent_hwnd,
             windows::core::PCWSTR(wide_open.as_ptr()),
             windows::core::PCWSTR(wide_path.as_ptr()),
             None,
@@ -2270,6 +2455,29 @@ pub fn hide_native_osd() {
 #[tauri::command]
 pub fn open_settings_window(app: AppHandle) {
     if let Some(win) = app.get_webview_window("settings") {
+        unsafe {
+            use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+            let mut pt = windows::Win32::Foundation::POINT::default();
+            if GetCursorPos(&mut pt).is_ok() {
+                if let Ok(monitors) = app.available_monitors() {
+                    let clicked_mon = monitors.into_iter().find(|m| {
+                        let pos = m.position();
+                        let size = m.size();
+                        pt.x >= pos.x && pt.x <= pos.x + size.width as i32
+                            && pt.y >= pos.y && pt.y <= pos.y + size.height as i32
+                    });
+                    if let Some(m) = clicked_mon {
+                        let m_pos = m.position();
+                        let m_size = m.size();
+                        if let Ok(w_size) = win.outer_size() {
+                            let cx = m_pos.x + (m_size.width as i32 - w_size.width as i32) / 2;
+                            let cy = m_pos.y + (m_size.height as i32 - w_size.height as i32) / 2;
+                            let _ = win.set_position(tauri::PhysicalPosition::new(cx, cy));
+                        }
+                    }
+                }
+            }
+        }
         let _ = win.show();
         let _ = win.unminimize();
         let _ = win.set_focus();

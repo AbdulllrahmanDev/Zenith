@@ -2075,7 +2075,9 @@ static MH_LAST_EDGE_HOVER: AtomicI32 = AtomicI32::new(-1);
 static MH_LAST_TOP_EDGE_HOVER: AtomicI32 = AtomicI32::new(-1);
 static MH_LAST_LEFT_EDGE_HOVER: AtomicI32 = AtomicI32::new(-1);
 static MH_LAST_RIGHT_EDGE_HOVER: AtomicI32 = AtomicI32::new(-1);
+#[allow(dead_code)]
 static MH_DOCK_EXPIRY_MS: AtomicI64 = AtomicI64::new(0);
+#[allow(dead_code)]
 static MH_TOPBAR_EXPIRY_MS: AtomicI64 = AtomicI64::new(0);
 static MH_LEFT_EXPIRY_MS: AtomicI64 = AtomicI64::new(0);
 static MH_RIGHT_EXPIRY_MS: AtomicI64 = AtomicI64::new(0);
@@ -2466,6 +2468,54 @@ fn run_mouse_hook_thread() {
     }
 }
 
+pub fn get_active_dock_monitors(app: &AppHandle) -> Vec<(i32, i32, i32, i32)> {
+    let mode = crate::utils::get_setting_str(app, "bloom-dock-display").unwrap_or_else(|| "all".to_string());
+    let mut bounds = Vec::new();
+    if let Ok(monitors) = app.available_monitors() {
+        if mode == "all" {
+            for m in monitors {
+                let p = m.position();
+                let s = m.size();
+                bounds.push((p.x, p.y, s.width as i32, s.height as i32));
+            }
+        } else {
+            if let Some(target) = crate::utils::get_target_monitor(app, "bloom-dock-display") {
+                let p = target.position();
+                let s = target.size();
+                bounds.push((p.x, p.y, s.width as i32, s.height as i32));
+            }
+        }
+    }
+    if bounds.is_empty() {
+        bounds.push((0, 0, 1920, 1080));
+    }
+    bounds
+}
+
+pub fn get_active_notch_monitors(app: &AppHandle) -> Vec<(i32, i32, i32, i32)> {
+    let mode = crate::utils::get_setting_str(app, "bloom-notch-display").unwrap_or_else(|| "all".to_string());
+    let mut bounds = Vec::new();
+    if let Ok(monitors) = app.available_monitors() {
+        if mode == "all" {
+            for m in monitors {
+                let p = m.position();
+                let s = m.size();
+                bounds.push((p.x, p.y, s.width as i32, s.height as i32));
+            }
+        } else {
+            if let Some(target) = crate::utils::get_target_monitor(app, "bloom-notch-display") {
+                let p = target.position();
+                let s = target.size();
+                bounds.push((p.x, p.y, s.width as i32, s.height as i32));
+            }
+        }
+    }
+    if bounds.is_empty() {
+        bounds.push((0, 0, 1920, 1080));
+    }
+    bounds
+}
+
 /// Top-edge hover-intent delay in milliseconds. `0` disables the gate so the
 /// notch reveals the moment the band is touched (the pre-fix behavior).
 fn top_edge_dwell_ms(app_handle: &AppHandle) -> i64 {
@@ -2475,24 +2525,15 @@ fn top_edge_dwell_ms(app_handle: &AppHandle) -> i64 {
         .clamp(0, 2000)
 }
 
-/// True when the cursor sits inside the top-edge hot band on the primary
+/// True when the cursor sits inside the top-edge hot band on an active
 /// monitor. Shared by the dwell gate and top-edge hit-testing continuity.
-fn in_top_edge_band(cursor: windows::Win32::Foundation::POINT, scale: f64) -> bool {
-    let (mon_x, mon_y) = MH_CACHED_MON_POS
-        .lock()
-        .ok()
-        .and_then(|g| *g)
-        .unwrap_or((0, 0));
-    let mon_w = MH_CACHED_MON_SIZE
-        .lock()
-        .ok()
-        .and_then(|g| *g)
-        .map(|s| s.0 as i32)
-        .unwrap_or(1920);
-
-    cursor.y <= (mon_y + (TOP_EDGE_BAND_PX * scale) as i32)
-        && cursor.x >= mon_x
-        && cursor.x <= (mon_x + mon_w)
+fn in_top_edge_band(app_handle: &AppHandle, cursor: windows::Win32::Foundation::POINT, scale: f64) -> bool {
+    let monitors = get_active_notch_monitors(app_handle);
+    monitors.into_iter().any(|(mon_x, mon_y, mon_w, _)| {
+        cursor.y <= (mon_y + (TOP_EDGE_BAND_PX * scale) as i32)
+            && cursor.x >= mon_x
+            && cursor.x <= (mon_x + mon_w)
+    })
 }
 
 /// True once the cursor has stayed inside the top band long enough to count as
@@ -2509,7 +2550,7 @@ fn top_edge_armed_for(
     now: i64,
     scale: f64,
 ) -> bool {
-    if !in_top_edge_band(cursor, scale) {
+    if !in_top_edge_band(app_handle, cursor, scale) {
         MH_TOP_EDGE_ENTER_MS.store(0, Ordering::Relaxed);
         MH_TOP_EDGE_ARMED.store(false, Ordering::Relaxed);
         return false;
@@ -2534,8 +2575,25 @@ fn top_edge_armed_for(
     false
 }
 
-/// Hover + click-through state for the notch window. Shared by the mouse hook
-/// (on movement) and the top-edge watchdog (to finish a stationary dwell).
+static DOCK_HOVER_CACHE: Mutex<Option<std::collections::HashMap<String, bool>>> = Mutex::new(None);
+static NOTCH_HOVER_CACHE: Mutex<Option<std::collections::HashMap<String, bool>>> = Mutex::new(None);
+
+fn update_cached_dock_hover(label: &str, hovered: bool) -> bool {
+    let mut lock = DOCK_HOVER_CACHE.lock().unwrap();
+    let map = lock.get_or_insert_with(std::collections::HashMap::new);
+    let prev = map.insert(label.to_string(), hovered);
+    prev != Some(hovered)
+}
+
+fn update_cached_notch_hover(label: &str, hovered: bool) -> bool {
+    let mut lock = NOTCH_HOVER_CACHE.lock().unwrap();
+    let map = lock.get_or_insert_with(std::collections::HashMap::new);
+    let prev = map.insert(label.to_string(), hovered);
+    prev != Some(hovered)
+}
+
+/// Hover + click-through state for the notch windows. Evaluated independently
+/// for each notch window ("main", "main-2", ...) on its respective monitor.
 fn update_main_interaction(
     app_handle: &AppHandle,
     cursor: windows::Win32::Foundation::POINT,
@@ -2543,159 +2601,108 @@ fn update_main_interaction(
     fg_fs: bool,
 ) {
     if fg_fs {
-        // Fullscreen foreground app or capture overlay: Bloom steps aside and
-        // any pending top-edge dwell is dropped.
         MH_TOP_EDGE_ENTER_MS.store(0, Ordering::Relaxed);
         MH_TOP_EDGE_ARMED.store(false, Ordering::Relaxed);
-        if let Some(main_win) = app_handle.get_webview_window("main") {
-            if let Ok(hwnd) = main_win.hwnd() {
-                if MH_LAST_MAIN_IGNORE.load(Ordering::Relaxed) != 1 {
-                    re_assert_topmost(hwnd);
+        for (label, win) in app_handle.webview_windows() {
+            if label == "main" || label.starts_with("main-") {
+                if let Ok(hwnd) = win.hwnd() {
+                    set_click_through(hwnd, true);
                 }
-                set_click_through(hwnd, true);
+                let changed = update_cached_notch_hover(&label, false);
+                if changed {
+                    let _ = win.emit("notch-edge-hover", serde_json::json!({
+                        "target": label,
+                        "hovered": false
+                    }));
+                }
             }
-            MH_LAST_MAIN_IGNORE.store(1, Ordering::Relaxed);
         }
-        if MH_LAST_TOP_EDGE_HOVER.swap(0, Ordering::Relaxed) != 0 {
-            let _ = app_handle.emit("notch-edge-hover", false);
-        }
-        // Bloom is fully click-through here, so the webview cannot clear its
-        // own hover state; do it for it.
         if NOTCH_IS_HOVERED.swap(false, Ordering::Relaxed) {
             let _ = app_handle.emit("notch-pointer-left", ());
         }
         return;
     }
 
-    let Some(main_win) = app_handle.get_webview_window("main") else {
-        return;
-    };
-    if !main_win.is_visible().unwrap_or(false) {
-        return;
-    }
-
-    let in_notch_hover = NOTCH_IS_HOVERED.load(Ordering::Relaxed);
-    let scale = main_win.scale_factor().unwrap_or(1.0);
-    // The top-edge reveal exists only to bring a hidden notch on screen: it is
-    // dwell-gated, and fixed mode (always visible) skips it entirely. This is
-    // about showing the notch — the hit-testing continuity below is separate
-    // and must stay immediate.
-    let edge_armed = if notch_mode_reserves_work_area(
-        get_setting_str(app_handle, "bloom-notch-mode").as_deref(),
-    ) {
-        MH_TOP_EDGE_ENTER_MS.store(0, Ordering::Relaxed);
-        MH_TOP_EDGE_ARMED.store(false, Ordering::Relaxed);
-        false
-    } else {
-        top_edge_armed_for(app_handle, cursor, now, scale)
-    };
-
-    let mut is_notch_hovered = false;
-    if edge_armed || in_notch_hover {
-        is_notch_hovered = true;
-        MH_TOPBAR_EXPIRY_MS.store(now + 500, Ordering::Relaxed);
-    }
-
-    // An OS file drag can only reach the webview's drop target when the
-    // window is not click-through: WS_EX_TRANSPARENT hides the entire window
-    // (and its webview children) from OLE hit-testing, which shows the
-    // no-drop cursor and never emits drag events. Detect a held left button
-    // so a drag over the notch can force interactivity.
     let drag_held = unsafe {
         use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON};
         (GetAsyncKeyState(VK_LBUTTON.0 as i32) as u16 & 0x8000) != 0
     };
 
-    let mut is_click_interactive = false;
-    let main_rect_val = MAIN_WINDOW_RECT.lock().ok().and_then(|g| *g);
+    let notch_rect = NOTCH_RECT.lock().ok().and_then(|g| *g);
+    let notch_mode = get_setting_str(app_handle, "bloom-notch-mode");
+    let is_fixed = notch_mode_reserves_work_area(notch_mode.as_deref());
+    let notch_visible = NOTCH_IS_VISIBLE.load(Ordering::Relaxed);
 
-    if let Some((win_pos, _)) = main_rect_val {
-        if let Ok(region) = NOTCH_RECT.try_lock() {
-            if let Some(r) = *region {
-                let pad_x = (20.0 * scale) as i32;
-                let pad_y_bottom = (5.0 * scale) as i32;
-                // Hysteresis keeps the notch interactive a little past its
-                // bounds once grabbed, so removing the edge-forced
-                // interactivity doesn't reintroduce boundary flicker.
-                let hyst = if MH_LAST_MAIN_IGNORE.load(Ordering::Relaxed) == 0 {
-                    (10.0 * scale) as i32
-                } else {
-                    0
-                };
-                let rx = win_pos.x + (r.x as f64 * scale) as i32 - pad_x - hyst;
-                let rw = (r.width as f64 * scale) as i32 + (pad_x * 2) + (hyst * 2);
-                let ry_top = win_pos.y;
-                let ry_bottom = win_pos.y + (r.height as f64 * scale) as i32 + pad_y_bottom + hyst;
+    for (label, win) in app_handle.webview_windows() {
+        if label != "main" && !label.starts_with("main-") {
+            continue;
+        }
+        if !win.is_visible().unwrap_or(false) {
+            continue;
+        }
+        let Ok(hwnd) = win.hwnd() else { continue; };
+        let scale = win.scale_factor().unwrap_or(1.0);
 
-                let in_notch_rect = cursor.x >= rx
-                    && cursor.x <= (rx + rw)
-                    && cursor.y >= ry_top
-                    && cursor.y <= ry_bottom;
+        let mut win_rect = windows::Win32::Foundation::RECT::default();
+        let _ = unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowRect(hwnd, &mut win_rect) };
 
-                // Approaching along the top edge keeps the window interactive
-                // while near the notch's horizontal span. This must stay
-                // immediate (never dwell-gated): NOTCH_RECT lags the expand/
-                // contract animation, and letting click-through flip mid-hover
-                // makes the notch expand/contract repeatedly. It is gated on
-                // the notch being on screen (or a live hover) so a hidden
-                // notch still can't swallow pass-by clicks.
-                let edge_pad = (60.0 * scale) as i32;
-                let in_top_span = in_top_edge_band(cursor, scale)
-                    && cursor.x >= rx - edge_pad
-                    && cursor.x <= rx + rw + edge_pad;
+        let hmon = unsafe { windows::Win32::Graphics::Gdi::MonitorFromWindow(hwnd, windows::Win32::Graphics::Gdi::MONITOR_DEFAULTTONEAREST) };
+        let mut mon_info = windows::Win32::Graphics::Gdi::MONITORINFO::default();
+        mon_info.cbSize = std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32;
+        let mon_ok = unsafe { windows::Win32::Graphics::Gdi::GetMonitorInfoW(hmon, &mut mon_info) }.as_bool();
+        let mon_rc = if mon_ok { mon_info.rcMonitor } else { win_rect };
 
-                let notch_visible = NOTCH_IS_VISIBLE.load(Ordering::Relaxed);
-                let hover_active =
-                    is_notch_hovered || now < MH_TOPBAR_EXPIRY_MS.load(Ordering::Relaxed);
-                if (notch_visible || hover_active) && (in_notch_rect || in_top_span) {
-                    is_click_interactive = true;
-                }
+        let in_mon_x = cursor.x >= mon_rc.left && cursor.x <= mon_rc.right;
+        let at_top_edge = in_mon_x && cursor.y <= (mon_rc.top + (TOP_EDGE_BAND_PX * scale) as i32);
 
-                // A held left button means a possible OS drag: OLE cannot
-                // hit-test a click-through window, so force interactivity over
-                // the notch or the drop target is unreachable.
-                if drag_held && (in_notch_rect || in_top_span) {
-                    is_click_interactive = true;
-                }
+        let edge_armed = if is_fixed {
+            false
+        } else {
+            at_top_edge && top_edge_armed_for(app_handle, cursor, now, scale)
+        };
+
+        let mut is_click_interactive = false;
+        let mut in_notch_rect = false;
+
+        if let Some(r) = notch_rect {
+            let pad_x = (20.0 * scale) as i32;
+            let pad_y_bottom = (5.0 * scale) as i32;
+            let hyst = (10.0 * scale) as i32;
+            let rx = win_rect.left + (r.x as f64 * scale) as i32 - pad_x - hyst;
+            let rw = (r.width as f64 * scale) as i32 + (pad_x * 2) + (hyst * 2);
+            let ry_top = win_rect.top;
+            let ry_bottom = win_rect.top + (r.height as f64 * scale) as i32 + pad_y_bottom + hyst;
+
+            in_notch_rect = cursor.x >= rx && cursor.x <= (rx + rw) && cursor.y >= ry_top && cursor.y <= ry_bottom;
+
+            let edge_pad = (60.0 * scale) as i32;
+            let in_top_span = at_top_edge && cursor.x >= rx - edge_pad && cursor.x <= rx + rw + edge_pad;
+
+            let hover_active = in_notch_rect || edge_armed;
+            if (notch_visible || hover_active) && (in_notch_rect || in_top_span) {
+                is_click_interactive = true;
+            }
+            if drag_held && (in_notch_rect || in_top_span) {
+                is_click_interactive = true;
             }
         }
-    }
 
-    let final_notch_hover = is_notch_hovered || now < MH_TOPBAR_EXPIRY_MS.load(Ordering::Relaxed);
-    let prev = MH_LAST_TOP_EDGE_HOVER.load(Ordering::Relaxed);
-    let new_val = if final_notch_hover { 1 } else { 0 };
-    if prev != new_val {
-        let _ = app_handle.emit("notch-edge-hover", final_notch_hover);
-        MH_LAST_TOP_EDGE_HOVER.store(new_val, Ordering::Relaxed);
-    }
+        let should_ignore = !is_click_interactive;
+        set_click_through(hwnd, should_ignore);
 
-    // An open dock menu no longer makes the notch take clicks: a press outside
-    // the menu is caught by the mouse hook instead (see mouse_hook_proc).
-    let final_ignore = !is_click_interactive;
-    let prev_ignore = MH_LAST_MAIN_IGNORE.load(Ordering::Relaxed);
-    let new_ignore = if final_ignore { 1 } else { 0 };
-    if prev_ignore != new_ignore {
-        // Z-order re-assertion is a synchronous window operation; skip it
-        // while a drag may be active, where it can visibly hitch the drag.
-        if !drag_held {
-            if let Ok(hwnd) = main_win.hwnd() {
-                re_assert_topmost(hwnd);
+        let is_hovered = in_notch_rect || edge_armed;
+        let changed = update_cached_notch_hover(&label, is_hovered);
+        if changed {
+            let _ = win.emit("notch-edge-hover", serde_json::json!({
+                "target": label,
+                "hovered": is_hovered
+            }));
+            if !is_hovered {
+                let _ = win.emit("notch-pointer-left", serde_json::json!({
+                    "target": label
+                }));
             }
         }
-        MH_LAST_MAIN_IGNORE.store(new_ignore, Ordering::Relaxed);
-        // Once the window is click-through the webview can never receive the
-        // mouseleave that would clear its hover state (it may already have
-        // missed it if the pointer left in the same frame). Tell it explicitly
-        // or the notch stays expanded in peek/smart mode.
-        if new_ignore == 1 && NOTCH_IS_HOVERED.swap(false, Ordering::Relaxed) {
-            let _ = app_handle.emit("notch-pointer-left", ());
-        }
-    }
-    // Applied on every update, not only on a change: it writes only when the
-    // window's actual style differs, so it also repairs a style that tao
-    // rewrote behind the cache's back.
-    if let Ok(hwnd) = main_win.hwnd() {
-        set_click_through(hwnd, final_ignore);
     }
 }
 
@@ -2741,21 +2748,12 @@ fn dock_edge_armed_for(
     now: i64,
     scale: f64,
 ) -> bool {
-    let (mon_x, mon_y) = MH_CACHED_MON_POS
-        .lock()
-        .ok()
-        .and_then(|g| *g)
-        .unwrap_or((0, 0));
-    let (mon_w, mon_h) = MH_CACHED_MON_SIZE
-        .lock()
-        .ok()
-        .and_then(|g| *g)
-        .map(|s| (s.0 as i32, s.1 as i32))
-        .unwrap_or((1920, 1080));
-
-    let in_band = cursor.y >= (mon_y + mon_h - (BOTTOM_EDGE_BAND_PX * scale) as i32)
-        && cursor.x >= mon_x
-        && cursor.x <= (mon_x + mon_w);
+    let monitors = get_active_dock_monitors(app_handle);
+    let in_band = monitors.into_iter().any(|(mon_x, mon_y, mon_w, mon_h)| {
+        cursor.y >= (mon_y + mon_h - (BOTTOM_EDGE_BAND_PX * scale) as i32)
+            && cursor.x >= mon_x
+            && cursor.x <= (mon_x + mon_w)
+    });
 
     if !in_band {
         MH_DOCK_EDGE_ENTER_MS.store(0, Ordering::Relaxed);
@@ -2782,8 +2780,8 @@ fn dock_edge_armed_for(
     false
 }
 
-/// Hover + click-through state for the dock window. Shared by the mouse hook
-/// (on movement) and the bottom-edge watchdog (to finish a stationary dwell).
+/// Hover + click-through state for the dock windows. Evaluated independently
+/// for each dock window ("dock", "dock-2", ...) on its respective monitor.
 fn update_dock_interaction(
     app_handle: &AppHandle,
     cursor: windows::Win32::Foundation::POINT,
@@ -2791,158 +2789,110 @@ fn update_dock_interaction(
     fg_fs: bool,
 ) {
     if fg_fs {
-        // Fullscreen foreground app or capture overlay: the dock must not
-        // intercept input (e.g. a Snipping Tool selection ending at the
-        // bottom edge), so keep it click-through.
         MH_DOCK_EDGE_ENTER_MS.store(0, Ordering::Relaxed);
         MH_DOCK_EDGE_ARMED.store(false, Ordering::Relaxed);
-        if let Some(hwnd) = app_handle
-            .get_webview_window("dock")
-            .and_then(|w| w.hwnd().ok())
-        {
-            set_click_through(hwnd, true);
-        }
-        MH_LAST_DOCK_IGNORE.store(1, Ordering::Relaxed);
-        if MH_LAST_EDGE_HOVER.swap(0, Ordering::Relaxed) != 0 {
-            let _ = app_handle.emit("dock-edge-hover", false);
+        for (label, win) in app_handle.webview_windows() {
+            if label == "dock" || label.starts_with("dock-") {
+                if let Ok(hwnd) = win.hwnd() {
+                    set_click_through(hwnd, true);
+                }
+                let changed = update_cached_dock_hover(&label, false);
+                if changed {
+                    let _ = win.emit("dock-edge-hover", serde_json::json!({
+                        "target": label,
+                        "hovered": false
+                    }));
+                }
+            }
         }
         return;
     }
 
-    let Some(dock_win) = app_handle.get_webview_window("dock") else {
-        return;
+    let dock_rect = DOCK_RECT.lock().ok().and_then(|g| *g);
+    let menu_rect = if MENU_IS_OPEN.load(Ordering::Relaxed) {
+        MENU_RECT.lock().ok().and_then(|g| *g)
+    } else {
+        None
     };
-    if !dock_win.is_visible().unwrap_or(false) {
-        return;
-    }
 
-    let (mon_x, mon_y) = MH_CACHED_MON_POS
-        .lock()
-        .ok()
-        .and_then(|g| *g)
-        .unwrap_or((0, 0));
-    let (mon_w, mon_h) = MH_CACHED_MON_SIZE
-        .lock()
-        .ok()
-        .and_then(|g| *g)
-        .map(|s| (s.0 as i32, s.1 as i32))
-        .unwrap_or((1920, 1080));
-
-    let mut is_click_interactive = false;
-    let mut is_hovered = false;
-    let mut dock_span: Option<(i32, i32)> = None;
-
-    let dock_rect_val = DOCK_WINDOW_RECT.lock().ok().and_then(|g| *g);
-
-    if let Some((win_pos, win_size)) = dock_rect_val {
-        let in_window = cursor.x >= win_pos.x
-            && cursor.x <= (win_pos.x + win_size.width as i32)
-            && cursor.y >= win_pos.y
-            && cursor.y <= (win_pos.y + win_size.height as i32);
-
-        if in_window {
-            if let Ok(region) = DOCK_RECT.try_lock() {
-                if let Some(r) = *region {
-                    let scale = dock_win.scale_factor().unwrap_or(1.0);
-                    let pad_x = (5.0 * scale) as i32;
-                    let pad_y_top = (8.0 * scale) as i32;
-                    let pad_y_bottom = (5.0 * scale) as i32;
-                    // Hysteresis keeps the dock interactive a little past
-                    // its bounds once grabbed, so removing the edge-forced
-                    // interactivity doesn't reintroduce boundary flicker.
-                    let hyst = if MH_LAST_DOCK_IGNORE.load(Ordering::Relaxed) == 0 {
-                        (10.0 * scale) as i32
-                    } else {
-                        0
-                    };
-                    let rx = win_pos.x + (r.x as f64 * scale) as i32 - pad_x - hyst;
-                    let ry = win_pos.y + (r.y as f64 * scale) as i32 - pad_y_top - hyst;
-                    let rw = (r.width as f64 * scale) as i32 + (pad_x * 2) + (hyst * 2);
-                    let rh =
-                        (r.height as f64 * scale) as i32 + pad_y_top + pad_y_bottom + (hyst * 2);
-                    if cursor.x >= rx
-                        && cursor.x <= (rx + rw)
-                        && cursor.y >= ry
-                        && cursor.y <= (ry + rh)
-                    {
-                        is_click_interactive = true;
-                    }
-                    dock_span = Some((rx, rx + rw));
-                }
-            }
-
-            if !is_click_interactive && MENU_IS_OPEN.load(Ordering::Relaxed) {
-                if let Ok(rect) = MENU_RECT.try_lock() {
-                    if let Some(r) = *rect {
-                        let scale = dock_win.scale_factor().unwrap_or(1.0);
-                        let rx = win_pos.x + (r.x as f64 * scale) as i32 - (5.0 * scale) as i32;
-                        let ry = win_pos.y + (r.y as f64 * scale) as i32 - (5.0 * scale) as i32;
-                        let rw = (r.width as f64 * scale) as i32 + (10.0 * scale) as i32;
-                        let rh = (r.height as f64 * scale) as i32 + (10.0 * scale) as i32;
-                        if cursor.x >= rx
-                            && cursor.x <= (rx + rw)
-                            && cursor.y >= ry
-                            && cursor.y <= (ry + rh)
-                        {
-                            is_click_interactive = true;
-                        }
-                    }
-                }
-            }
+    for (label, win) in app_handle.webview_windows() {
+        if label != "dock" && !label.starts_with("dock-") {
+            continue;
         }
-    }
+        if !win.is_visible().unwrap_or(false) {
+            continue;
+        }
+        let Ok(hwnd) = win.hwnd() else { continue; };
+        let scale = win.scale_factor().unwrap_or(1.0);
 
-    // Hot-edge detection (Bottom edge). Only a dwelled (armed) edge, a dock
-    // hover, or a recent hover reveals the dock — a pass through the band does
-    // not.
-    let in_dock_hover = DOCK_IS_HOVERED.load(Ordering::Relaxed);
-    let scale = dock_win.scale_factor().unwrap_or(1.0);
-    let edge_armed = dock_edge_armed_for(app_handle, cursor, now, scale);
-    let at_bottom_edge = cursor.y >= (mon_y + mon_h - (BOTTOM_EDGE_BAND_PX * scale) as i32)
-        && cursor.x >= mon_x
-        && cursor.x <= (mon_x + mon_w);
+        let mut win_rect = windows::Win32::Foundation::RECT::default();
+        let _ = unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowRect(hwnd, &mut win_rect) };
 
-    if edge_armed || in_dock_hover {
-        is_hovered = true;
-        MH_DOCK_EXPIRY_MS.store(now + 500, Ordering::Relaxed);
-    }
+        let hmon = unsafe { windows::Win32::Graphics::Gdi::MonitorFromWindow(hwnd, windows::Win32::Graphics::Gdi::MONITOR_DEFAULTTONEAREST) };
+        let mut mon_info = windows::Win32::Graphics::Gdi::MONITORINFO::default();
+        mon_info.cbSize = std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32;
+        let mon_ok = unsafe { windows::Win32::Graphics::Gdi::GetMonitorInfoW(hmon, &mut mon_info) }.as_bool();
+        let mon_rc = if mon_ok { mon_info.rcMonitor } else { win_rect };
 
-    // Approaching along the bottom edge keeps the dock interactive while near
-    // its horizontal span, so the reveal can't be clicked through mid-animation.
-    // Only an armed edge may claim the strip; the corners and a mere pass stay
-    // click-through.
-    if at_bottom_edge && edge_armed {
-        if let Some((span_left, span_right)) = dock_span {
-            let edge_pad = (60.0 * scale) as i32;
-            if cursor.x >= span_left - edge_pad && cursor.x <= span_right + edge_pad {
+        let in_mon_x = cursor.x >= mon_rc.left && cursor.x <= mon_rc.right;
+        let at_bottom_edge = in_mon_x && cursor.y >= (mon_rc.bottom - (BOTTOM_EDGE_BAND_PX * scale) as i32);
+
+        let edge_armed = at_bottom_edge && dock_edge_armed_for(app_handle, cursor, now, scale);
+
+        let mut is_click_interactive = false;
+        let mut in_dock_bar = false;
+        let mut dock_span: Option<(i32, i32)> = None;
+
+        if let Some(r) = dock_rect {
+            let pad_x = (5.0 * scale) as i32;
+            let pad_y_top = (8.0 * scale) as i32;
+            let pad_y_bottom = (5.0 * scale) as i32;
+            let hyst = (10.0 * scale) as i32;
+
+            let rx = win_rect.left + (r.x as f64 * scale) as i32 - pad_x - hyst;
+            let ry = win_rect.top + (r.y as f64 * scale) as i32 - pad_y_top - hyst;
+            let rw = (r.width as f64 * scale) as i32 + (pad_x * 2) + (hyst * 2);
+            let rh = (r.height as f64 * scale) as i32 + pad_y_top + pad_y_bottom + (hyst * 2);
+
+            if cursor.x >= rx && cursor.x <= (rx + rw) && cursor.y >= ry && cursor.y <= (ry + rh) {
+                in_dock_bar = true;
                 is_click_interactive = true;
             }
+            dock_span = Some((rx, rx + rw));
         }
-    }
 
-    let final_dock_hover = is_hovered || now < MH_DOCK_EXPIRY_MS.load(Ordering::Relaxed);
-    let prev = MH_LAST_EDGE_HOVER.load(Ordering::Relaxed);
-    let new_val = if final_dock_hover { 1 } else { 0 };
-    if prev != new_val {
-        let _ = app_handle.emit("dock-edge-hover", final_dock_hover);
-        MH_LAST_EDGE_HOVER.store(new_val, Ordering::Relaxed);
-    }
-
-    // An open menu or popup takes clicks only over itself (MENU_RECT above);
-    // a press anywhere else closes it through the mouse hook.
-    let should_ignore = !is_click_interactive;
-    let prev_ignore = MH_LAST_DOCK_IGNORE.load(Ordering::Relaxed);
-    let new_ignore = if should_ignore { 1 } else { 0 };
-    if prev_ignore != new_ignore {
-        if let Ok(hwnd) = dock_win.hwnd() {
-            re_assert_topmost(hwnd);
+        if !is_click_interactive {
+            if let Some(r) = menu_rect {
+                let rx = win_rect.left + (r.x as f64 * scale) as i32 - (5.0 * scale) as i32;
+                let ry = win_rect.top + (r.y as f64 * scale) as i32 - (5.0 * scale) as i32;
+                let rw = (r.width as f64 * scale) as i32 + (10.0 * scale) as i32;
+                let rh = (r.height as f64 * scale) as i32 + (10.0 * scale) as i32;
+                if cursor.x >= rx && cursor.x <= (rx + rw) && cursor.y >= ry && cursor.y <= (ry + rh) {
+                    is_click_interactive = true;
+                }
+            }
         }
-        MH_LAST_DOCK_IGNORE.store(new_ignore, Ordering::Relaxed);
-    }
-    // Every update, as for the notch: writes only when the style differs, and
-    // repairs a style tao rewrote.
-    if let Ok(hwnd) = dock_win.hwnd() {
+
+        if at_bottom_edge && edge_armed {
+            if let Some((span_left, span_right)) = dock_span {
+                let edge_pad = (60.0 * scale) as i32;
+                if cursor.x >= span_left - edge_pad && cursor.x <= span_right + edge_pad {
+                    is_click_interactive = true;
+                }
+            }
+        }
+
+        let should_ignore = !is_click_interactive;
         set_click_through(hwnd, should_ignore);
+
+        let is_hovered = in_dock_bar || (at_bottom_edge && edge_armed);
+        let changed = update_cached_dock_hover(&label, is_hovered);
+        if changed {
+            let _ = win.emit("dock-edge-hover", serde_json::json!({
+                "target": label,
+                "hovered": is_hovered
+            }));
+        }
     }
 }
 
