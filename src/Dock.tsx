@@ -127,7 +127,8 @@ function TaskViewIcon() {
 }
 
 function resolveStartIcon(startIcon: string): string {
-	if (startIcon === "zenith-holographic" || startIcon === "bloom-colorful") return "/zenith-color-1-holographic.svg";
+	if (startIcon === "zenith-white") return "/zenith-white-no-bg-nosmile-512.png";
+	if (startIcon === "zenith-holographic" || startIcon === "bloom-colorful" || startIcon === "default" || !startIcon) return "/zenith-color-1-holographic.svg";
 	if (startIcon === "zenith-emerald") return "/zenith-color-2-emerald.svg";
 	if (startIcon === "zenith-gold" || startIcon === "bloom-golden") return "/zenith-color-3-gold.svg";
 	if (startIcon === "zenith-iznik-blue") return "/zenith-color-4-iznik-blue.svg";
@@ -135,7 +136,7 @@ function resolveStartIcon(startIcon: string): string {
 	if (startIcon === "zenith-ivory-emerald" || startIcon === "bloom-biscuit") return "/zenith-color-6-ivory-emerald.svg";
 	if (startIcon === "windows") return "/windows-11.png";
 	if (startIcon.startsWith("custom:")) return startIcon.slice("custom:".length);
-	return "/bloom.png";
+	return "/zenith-color-1-holographic.svg";
 }
 
 // Stable module-level constants so object references never change between renders,
@@ -1572,19 +1573,20 @@ const Dock = memo(function Dock() {
 														// browser and its PWAs share one path, so it would leak one item's
 														// icon onto the others.
 														const allowPathFallback = !isHost || !app.is_running;
-														const icon =
-															customIcons[cacheKey] ||
-															(allowPathFallback && customIcons[app.path]) ||
-															iconsRef.current[cacheKey] ||
-															(allowPathFallback && iconsRef.current[app.path]) ||
-															app.icon;
-
 														const isBloomOrSettings =
 															app.name.toLowerCase() === "settings" ||
 															app.name.toLowerCase() === "bloom" ||
 															app.name.toLowerCase() === "zenith" ||
 															app.path.toLowerCase().includes("bloom.exe") ||
 															app.path.toLowerCase().includes("zenith.exe");
+
+														const icon = isBloomOrSettings
+															? (customIcons[cacheKey] || resolveStartIcon(startIcon))
+															: (customIcons[cacheKey] ||
+																(allowPathFallback && customIcons[app.path]) ||
+																iconsRef.current[cacheKey] ||
+																(allowPathFallback && iconsRef.current[app.path]) ||
+																app.icon);
 
 														return icon ? (
 															<img
@@ -1733,18 +1735,21 @@ const Dock = memo(function Dock() {
 												// browser and its PWAs share one path, so it would leak one item's
 												// icon onto the others.
 												const allowPathFallback = !isHost || !app.is_running;
-												const icon =
-													customIcons[cacheKey] ||
-													(allowPathFallback && customIcons[app.path]) ||
-													iconsRef.current[cacheKey] ||
-													(allowPathFallback && iconsRef.current[app.path]) ||
-													app.icon;
 												const isBloomOrSettings =
 													app.name.toLowerCase() === "settings" ||
 													app.name.toLowerCase() === "bloom" ||
 													app.name.toLowerCase() === "zenith" ||
 													app.path.toLowerCase().includes("bloom.exe") ||
 													app.path.toLowerCase().includes("zenith.exe");
+
+												const icon = isBloomOrSettings
+													? (customIcons[cacheKey] || resolveStartIcon(startIcon))
+													: (customIcons[cacheKey] ||
+														(allowPathFallback && customIcons[app.path]) ||
+														iconsRef.current[cacheKey] ||
+														(allowPathFallback && iconsRef.current[app.path]) ||
+														app.icon);
+
 												return icon ? (
 													<img
 														src={icon}

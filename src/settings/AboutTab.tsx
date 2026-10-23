@@ -71,7 +71,7 @@ export function AboutTab({
 	return (
 		<div className="about-tab-container">
 			<div className="about-header">
-				<img src="/bloom.png" className="about-logo" alt="Zenith Logo" draggable={false} />
+				<img src="/zenith-color-1-holographic.svg" className="about-logo" alt="Zenith Logo" draggable={false} />
 				<h1 className="about-title">Zenith</h1>
 				<p className="about-version">Version {appVersion}</p>
 				<p className="about-credit">

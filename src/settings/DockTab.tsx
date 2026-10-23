@@ -80,8 +80,8 @@ function DrivePicker({
 }
 
 const START_ICON_PRESETS = [
-	{ key: "default", src: "/bloom.png", label: "Zenith" },
-	{ key: "zenith-holographic", src: "/zenith-color-1-holographic.svg", label: "Holographic" },
+	{ key: "default", src: "/zenith-color-1-holographic.svg", label: "Zenith (Holographic)" },
+	{ key: "zenith-white", src: "/zenith-white-no-bg-nosmile-512.png", label: "Zenith (White)" },
 	{ key: "zenith-emerald", src: "/zenith-color-2-emerald.svg", label: "Emerald" },
 	{ key: "zenith-gold", src: "/zenith-color-3-gold.svg", label: "Gold" },
 	{ key: "zenith-iznik-blue", src: "/zenith-color-4-iznik-blue.svg", label: "Iznik Blue" },
@@ -525,7 +525,10 @@ export function DockTab({
 									<div
 										key={icon.key}
 										onClick={() => handleStartIconChange(icon.key)}
-										style={startIconTileStyle(startIcon === icon.key)}
+										style={startIconTileStyle(
+											startIcon === icon.key ||
+											(icon.key === "default" && (!startIcon || startIcon === "zenith-holographic"))
+										)}
 										title={icon.label}
 									>
 										<img

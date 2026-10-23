@@ -310,7 +310,7 @@ export function usePrayerTimes() {
 					if ("Notification" in window && Notification.permission === "granted") {
 						new Notification(`اقتربت صلاة ${PRAYER_NAMES_AR[nextKey]}`, {
 							body: `متبقي 15 دقيقة على موعد أذان ${PRAYER_NAMES_AR[nextKey]} (${timings[nextKey]})`,
-							icon: "/bloom.png"
+							icon: "/zenith-color-1-holographic.svg"
 						});
 					}
 				}
@@ -325,7 +325,7 @@ export function usePrayerTimes() {
 						if ("Notification" in window && Notification.permission === "granted") {
 							new Notification(`حان الآن موعد صلاة ${PRAYER_NAMES_AR[nextKey]}`, {
 								body: `الله أكبر - حان الآن وقت أذان صلاة ${PRAYER_NAMES_AR[nextKey]}`,
-								icon: "/bloom.png"
+								icon: "/zenith-color-1-holographic.svg"
 							});
 						}
 
