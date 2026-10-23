@@ -39,6 +39,9 @@ export function useSettings() {
 	const [prayerCountry, setPrayerCountry] = useState(
 		() => localStorage.getItem("bloom-prayer-country") || ""
 	);
+	const [prayerLocationMode, setPrayerLocationMode] = useState<"auto" | "manual">(
+		() => (localStorage.getItem("bloom-prayer-location-mode") === "manual" ? "manual" : "auto")
+	);
 	const [prayerMethod, setPrayerMethod] = useState(
 		() => localStorage.getItem("bloom-prayer-method") || "5"
 	);
@@ -277,6 +280,7 @@ export function useSettings() {
 			apply(getVal("bloom-prayer-enabled"), setPrayerEnabled, readBool);
 			apply(getVal("bloom-prayer-city"), setPrayerCity, (v) => v);
 			apply(getVal("bloom-prayer-country"), setPrayerCountry, (v) => v);
+			apply(getVal("bloom-prayer-location-mode"), setPrayerLocationMode, (v) => (v === "manual" ? "manual" : "auto"));
 			apply(getVal("bloom-prayer-method"), setPrayerMethod, (v) => v);
 			apply(getVal("bloom-prayer-time-offset"), setPrayerTimeOffset, (v) => v);
 			apply(getVal("bloom-prayer-alert-type"), setPrayerAlertType, (v) => v);
@@ -411,6 +415,7 @@ export function useSettings() {
 		"bloom-prayer-enabled": setPrayerEnabled,
 		"bloom-prayer-city": setPrayerCity,
 		"bloom-prayer-country": setPrayerCountry,
+		"bloom-prayer-location-mode": (v: unknown) => setPrayerLocationMode(v === "manual" ? "manual" : "auto"),
 		"bloom-prayer-method": setPrayerMethod,
 		"bloom-prayer-time-offset": setPrayerTimeOffset,
 		"bloom-prayer-alert-type": setPrayerAlertType,
@@ -591,6 +596,11 @@ export function useSettings() {
 	const setPrayerCountryValue = (val: string) => {
 		setPrayerCountry(val);
 		saveSetting("bloom-prayer-country", val);
+	};
+
+	const setPrayerLocationModeValue = (val: "auto" | "manual") => {
+		setPrayerLocationMode(val);
+		saveSetting("bloom-prayer-location-mode", val);
 	};
 
 	const setPrayerMethodValue = (val: string) => {
@@ -1067,6 +1077,8 @@ export function useSettings() {
 		setPrayerCityValue,
 		prayerCountry,
 		setPrayerCountryValue,
+		prayerLocationMode,
+		setPrayerLocationModeValue,
 		prayerMethod,
 		setPrayerMethodValue,
 		prayerTimeOffset,

@@ -174,6 +174,8 @@ function SettingsApp() {
 							toggleCalendar={settings.toggleCalendar}
 							prayerEnabled={settings.prayerEnabled}
 							togglePrayer={settings.togglePrayer}
+							prayerLocationMode={settings.prayerLocationMode}
+							setPrayerLocationModeValue={settings.setPrayerLocationModeValue}
 							prayerCity={settings.prayerCity}
 							setPrayerCityValue={settings.setPrayerCityValue}
 							prayerCountry={settings.prayerCountry}

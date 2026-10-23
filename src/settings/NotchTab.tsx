@@ -5,7 +5,6 @@ import {
 	Music,
 	Minimize2,
 	LayoutList,
-	Sparkles,
 	Circle,
 	CloudSun,
 	Timer,
@@ -15,13 +14,20 @@ import {
 	Moon,
 	Volume2,
 	Square,
-	Clock
+	Sparkles,
+	MapPin,
+	Globe,
+	Building2,
+	Navigation,
+	Compass,
+	RotateCcw
 } from "lucide-react";
 import { useState, useRef } from "react";
 import { SettingRow } from "./SettingRow";
 import { StatusWidgetConfig } from "../components/StatusWidgetConfig";
 import type { WidgetConfig } from "./types";
 import type { DisplayInfo } from "../dockApps";
+import { POPULAR_PRAYER_COUNTRIES, findCountry } from "../utils/prayerLocations";
 
 interface NotchTabProps {
 	notchMode: string;
@@ -39,6 +45,8 @@ interface NotchTabProps {
 	changeNotchDefaultPanel: (panel: "calendar" | "command-center" | "prayer") => void;
 	prayerEnabled: boolean;
 	togglePrayer: () => void;
+	prayerLocationMode: "auto" | "manual";
+	setPrayerLocationModeValue: (val: "auto" | "manual") => void;
 	prayerCity: string;
 	setPrayerCityValue: (val: string) => void;
 	prayerCountry: string;
@@ -101,6 +109,8 @@ export function NotchTab({
 	changeNotchDefaultPanel,
 	prayerEnabled,
 	togglePrayer,
+	prayerLocationMode,
+	setPrayerLocationModeValue,
 	prayerCity,
 	setPrayerCityValue,
 	prayerCountry,
@@ -143,6 +153,96 @@ export function NotchTab({
 }: NotchTabProps) {
 	const [testingAthan, setTestingAthan] = useState(false);
 	const testAudioRef = useRef<HTMLAudioElement | null>(null);
+
+	const [detectingGps, setDetectingGps] = useState(false);
+	const [gpsStatusMsg, setGpsStatusMsg] = useState<string | null>(null);
+	const [customCountryMode, setCustomCountryMode] = useState(() => {
+		return Boolean(prayerCountry && !findCountry(prayerCountry));
+	});
+	const [customCityMode, setCustomCityMode] = useState(() => {
+		const matched = findCountry(prayerCountry);
+		return Boolean(
+			prayerCity &&
+				(!matched || !matched.cities.some((c) => c.name.toLowerCase() === prayerCity.toLowerCase()))
+		);
+	});
+
+	const matchedCountry = findCountry(prayerCountry);
+
+	const handleCountryChange = (countryName: string) => {
+		if (countryName === "custom") {
+			setCustomCountryMode(true);
+			setCustomCityMode(true);
+			return;
+		}
+		setCustomCountryMode(false);
+		setPrayerCountryValue(countryName);
+		const cObj = POPULAR_PRAYER_COUNTRIES.find((c) => c.country === countryName);
+		if (cObj && cObj.cities.length > 0) {
+			const currentCityValid = cObj.cities.some(
+				(c) => c.name.toLowerCase() === prayerCity.toLowerCase()
+			);
+			if (!currentCityValid) {
+				setPrayerCityValue(cObj.cities[0].name);
+				setCustomCityMode(false);
+			}
+		} else {
+			setPrayerCityValue("");
+		}
+	};
+
+	const handleCityChange = (cityName: string) => {
+		if (cityName === "custom") {
+			setCustomCityMode(true);
+			return;
+		}
+		setCustomCityMode(false);
+		setPrayerCityValue(cityName);
+	};
+
+	const handleDetectDeviceLocation = () => {
+		if (!navigator.geolocation) {
+			setGpsStatusMsg("Geolocation is not supported by your browser or system.");
+			return;
+		}
+		setDetectingGps(true);
+		setGpsStatusMsg(null);
+
+		navigator.geolocation.getCurrentPosition(
+			async (pos) => {
+				const { latitude, longitude } = pos.coords;
+				try {
+					const res = await fetch(
+						`https://geocoding-api.open-meteo.com/v1/search?name=&latitude=${latitude}&longitude=${longitude}&count=1&format=json`
+					);
+					let label = `${latitude.toFixed(2)}°, ${longitude.toFixed(2)}°`;
+					if (res.ok) {
+						const data = await res.json();
+						if (data?.results?.[0]?.name) {
+							label = `${data.results[0].name}${data.results[0].country ? `, ${data.results[0].country}` : ""}`;
+						}
+					}
+					localStorage.setItem("bloom-prayer-lat", String(latitude));
+					localStorage.setItem("bloom-prayer-lon", String(longitude));
+					window.dispatchEvent(new Event("storage"));
+					setGpsStatusMsg(`📍 Location acquired: ${label}`);
+				} catch {
+					setGpsStatusMsg(`📍 Coordinates acquired: ${latitude.toFixed(2)}°, ${longitude.toFixed(2)}°`);
+				} finally {
+					setDetectingGps(false);
+				}
+			},
+			(err) => {
+				setDetectingGps(false);
+				if (err.code === 1) {
+					setGpsStatusMsg("⚠️ Windows location permission is disabled. Falling back to IP-based detection.");
+				} else {
+					setGpsStatusMsg("⚠️ Could not retrieve GPS location. Falling back to IP-based detection.");
+				}
+			},
+			{ enableHighAccuracy: true, timeout: 8000 }
+		);
+	};
 
 	const handleToggleTestAthan = () => {
 		if (testingAthan) {
@@ -362,38 +462,171 @@ export function NotchTab({
 
 				{prayerEnabled && (
 					<>
+						{/* Location Mode: Auto vs Manual */}
 						<SettingRow
-							icon={Clock}
-							label="City"
-							desc={prayerCity ? `City: ${prayerCity}` : "Auto-detect via IP when empty"}
+							icon={MapPin}
+							label="Location Mode"
+							desc={
+								prayerLocationMode === "auto"
+									? "Auto-detect location from device (GPS / IP)"
+									: "Select country and city manually"
+							}
 						>
-							<input
-								type="text"
-								className="settings-text-input"
-								placeholder="e.g. Cairo, Dubai, London"
-								value={prayerCity}
-								onChange={(e) => setPrayerCityValue(e.target.value)}
-								style={{ maxWidth: "160px" }}
-							/>
+							<select
+								className="settings-select"
+								value={prayerLocationMode}
+								onChange={(e) =>
+									setPrayerLocationModeValue(e.target.value as "auto" | "manual")
+								}
+							>
+								<option value="auto">Auto-detect (GPS / IP)</option>
+								<option value="manual">Manual Selection</option>
+							</select>
 						</SettingRow>
 
-						<SettingRow
-							icon={Clock}
-							label="Country"
-							desc={prayerCountry ? `Country: ${prayerCountry}` : "Auto-detect via IP when empty"}
-						>
-							<input
-								type="text"
-								className="settings-text-input"
-								placeholder="e.g. Egypt, UAE, UK"
-								value={prayerCountry}
-								onChange={(e) => setPrayerCountryValue(e.target.value)}
-								style={{ maxWidth: "160px" }}
-							/>
-						</SettingRow>
+						{/* AUTO MODE: GPS detect button and status (City/Country completely hidden) */}
+						{prayerLocationMode === "auto" && (
+							<SettingRow
+								icon={Navigation}
+								label="Device Location"
+								desc={
+									gpsStatusMsg
+										? gpsStatusMsg
+										: "Detects device GPS location (or falls back to IP network)"
+								}
+							>
+								<button
+									type="button"
+									className="settings-btn-detect"
+									onClick={handleDetectDeviceLocation}
+									disabled={detectingGps}
+									title="Request device location"
+								>
+									<RotateCcw size={11} className={detectingGps ? "animate-spin" : ""} />
+									<span>{detectingGps ? "Detecting..." : "Detect Device GPS"}</span>
+								</button>
+							</SettingRow>
+						)}
 
+						{/* MANUAL MODE: Country first, then dependent City dropdown */}
+						{prayerLocationMode === "manual" && (
+							<>
+								<SettingRow
+									icon={Globe}
+									label="Country"
+									desc={
+										customCountryMode
+											? "Type custom country name"
+											: "Select your country from the list"
+									}
+								>
+									{customCountryMode ? (
+										<div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+											<input
+												type="text"
+												className="settings-text-input"
+												placeholder="Enter country..."
+												value={prayerCountry}
+												onChange={(e) => setPrayerCountryValue(e.target.value)}
+												style={{ width: "135px" }}
+											/>
+											<button
+												type="button"
+												className="settings-btn-detect"
+												onClick={() => {
+													setCustomCountryMode(false);
+													if (POPULAR_PRAYER_COUNTRIES.length > 0) {
+														handleCountryChange(POPULAR_PRAYER_COUNTRIES[0].country);
+													}
+												}}
+												style={{ padding: "4px 8px" }}
+											>
+												List
+											</button>
+										</div>
+									) : (
+										<select
+											className="settings-select"
+											value={matchedCountry ? matchedCountry.country : ""}
+											onChange={(e) => handleCountryChange(e.target.value)}
+											style={{ maxWidth: "190px" }}
+										>
+											<option value="" disabled>
+												Select Country...
+											</option>
+											{POPULAR_PRAYER_COUNTRIES.map((c) => (
+												<option key={c.country} value={c.country}>
+													{c.country} ({c.countryAr})
+												</option>
+											))}
+											<option value="custom">Other / Custom...</option>
+										</select>
+									)}
+								</SettingRow>
+
+								<SettingRow
+									icon={Building2}
+									label="City"
+									desc={
+										!prayerCountry && !customCountryMode
+											? "Choose a country first to view cities"
+											: customCityMode
+												? "Type custom city name"
+												: `Select city in ${prayerCountry}`
+									}
+								>
+									{customCityMode || customCountryMode ? (
+										<div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+											<input
+												type="text"
+												className="settings-text-input"
+												placeholder="Enter city..."
+												value={prayerCity}
+												onChange={(e) => setPrayerCityValue(e.target.value)}
+												style={{ width: "135px" }}
+											/>
+											{!customCountryMode && matchedCountry && (
+												<button
+													type="button"
+													className="settings-btn-detect"
+													onClick={() => {
+														setCustomCityMode(false);
+														if (matchedCountry.cities.length > 0) {
+															setPrayerCityValue(matchedCountry.cities[0].name);
+														}
+													}}
+													style={{ padding: "4px 8px" }}
+												>
+													List
+												</button>
+											)}
+										</div>
+									) : (
+										<select
+											className="settings-select"
+											value={prayerCity}
+											onChange={(e) => handleCityChange(e.target.value)}
+											disabled={!matchedCountry || matchedCountry.cities.length === 0}
+											style={{ maxWidth: "190px" }}
+										>
+											<option value="" disabled>
+												{matchedCountry ? "Select City..." : "Select Country First"}
+											</option>
+											{matchedCountry?.cities.map((city) => (
+												<option key={city.name} value={city.name}>
+													{city.name} ({city.nameAr})
+												</option>
+											))}
+											<option value="custom">Other City...</option>
+										</select>
+									)}
+								</SettingRow>
+							</>
+						)}
+
+						{/* Calculation Method */}
 						<SettingRow
-							icon={Clock}
+							icon={Compass}
 							label="Calculation Method"
 							desc="Method used to calculate prayer angles"
 						>
@@ -401,16 +634,21 @@ export function NotchTab({
 								className="settings-select"
 								value={prayerMethod}
 								onChange={(e) => setPrayerMethodValue(e.target.value)}
+								style={{ maxWidth: "190px" }}
 							>
-								<option value="5">Egyptian General Authority of Survey</option>
-								<option value="4">Umm Al-Qura University, Makkah</option>
+								<option value="4">Umm Al-Qura (Makkah)</option>
+								<option value="5">Egyptian General Authority</option>
 								<option value="3">Muslim World League (MWL)</option>
-								<option value="2">Islamic Society of North America (ISNA)</option>
-								<option value="1">University of Islamic Sciences, Karachi</option>
-								<option value="13">Diyanet İşleri Başkanlığı, Turkey</option>
+								<option value="2">ISNA (North America)</option>
+								<option value="1">Univ. of Islamic Sciences (Karachi)</option>
+								<option value="13">Diyanet (Turkey)</option>
+								<option value="8">Gulf Region</option>
+								<option value="9">Kuwait</option>
+								<option value="10">Qatar</option>
 							</select>
 						</SettingRow>
 
+						{/* Time Offset */}
 						<SettingRow
 							icon={Timer}
 							label="Time Offset"
@@ -429,6 +667,7 @@ export function NotchTab({
 							</select>
 						</SettingRow>
 
+						{/* Athan Alert */}
 						<SettingRow
 							icon={Volume2}
 							label="Athan Alert"
@@ -445,6 +684,7 @@ export function NotchTab({
 							</select>
 						</SettingRow>
 
+						{/* 15-Minute Pre-Alert */}
 						<SettingRow
 							icon={BellRing}
 							label="15-Minute Pre-Alert"
@@ -460,6 +700,7 @@ export function NotchTab({
 							</label>
 						</SettingRow>
 
+						{/* Test Athan Audio */}
 						<SettingRow
 							icon={Volume2}
 							label="Test Athan Audio"
@@ -470,29 +711,23 @@ export function NotchTab({
 						>
 							<button
 								type="button"
-								className="settings-action-btn"
+								className="settings-btn-detect"
 								onClick={handleToggleTestAthan}
 								style={{
-									padding: "6px 14px",
-									borderRadius: "8px",
-									background: testingAthan ? "#ef4444" : "rgba(255,255,255,0.08)",
-									color: "#fff",
-									border: "none",
-									cursor: "pointer",
-									fontSize: "12px",
-									fontWeight: 600,
-									display: "flex",
-									alignItems: "center",
-									gap: "6px"
+									padding: "5px 12px",
+									background: testingAthan ? "#ef4444" : undefined,
+									color: "#fff"
 								}}
 							>
 								{testingAthan ? (
 									<>
-										<Square size={12} fill="currentColor" /> Stop Audio
+										<Square size={10} fill="currentColor" />
+										<span>Stop Preview</span>
 									</>
 								) : (
 									<>
-										<Volume2 size={12} /> Play Preview
+										<Volume2 size={12} />
+										<span>Play Audio</span>
 									</>
 								)}
 							</button>

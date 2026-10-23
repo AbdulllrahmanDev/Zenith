@@ -50,6 +50,10 @@ export function usePrayerTimes() {
 		const s = localStorage.getItem("bloom-prayer-enabled");
 		return s === null ? true : s !== "false";
 	});
+	const [locationMode, setLocationMode] = useState<"auto" | "manual">(() => {
+		const s = localStorage.getItem("bloom-prayer-location-mode");
+		return s === "manual" ? "manual" : "auto";
+	});
 	const [city, setCity] = useState<string>(() => localStorage.getItem("bloom-prayer-city") || "");
 	const [country, setCountry] = useState<string>(() => localStorage.getItem("bloom-prayer-country") || "");
 	const [method, setMethod] = useState<string>(() => localStorage.getItem("bloom-prayer-method") || "5");
@@ -136,10 +140,10 @@ export function usePrayerTimes() {
 		setLoading(true);
 
 		try {
-			let targetCity = city.trim();
-			let targetCountry = country.trim();
+			let targetCity = locationMode === "manual" ? city.trim() : "";
+			let targetCountry = locationMode === "manual" ? country.trim() : "";
 
-			// If city is not configured, resolve from IP geolocation
+			// If auto mode or city is not set, resolve from IP geolocation
 			if (!targetCity) {
 				try {
 					const ipRes = await fetch("https://ipapi.co/json/");
@@ -186,7 +190,7 @@ export function usePrayerTimes() {
 		} finally {
 			setLoading(false);
 		}
-	}, [enabled, city, country, method]);
+	}, [enabled, locationMode, city, country, method]);
 
 	// Auto-fetch on mount and check cache freshness
 	useEffect(() => {
@@ -202,6 +206,8 @@ export function usePrayerTimes() {
 		const handler = () => {
 			const sEnabled = localStorage.getItem("bloom-prayer-enabled");
 			setEnabled(sEnabled === null ? true : sEnabled !== "false");
+			const sLocMode = localStorage.getItem("bloom-prayer-location-mode");
+			setLocationMode(sLocMode === "manual" ? "manual" : "auto");
 			setCity(localStorage.getItem("bloom-prayer-city") || "");
 			setCountry(localStorage.getItem("bloom-prayer-country") || "");
 			setMethod(localStorage.getItem("bloom-prayer-method") || "5");
@@ -338,6 +344,7 @@ export function usePrayerTimes() {
 
 	return {
 		enabled,
+		locationMode,
 		city,
 		country,
 		method,
