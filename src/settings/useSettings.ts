@@ -30,6 +30,27 @@ export function useSettings() {
 	const [autostart, setAutostart] = useState(false);
 	const [weatherEnabled, setWeatherEnabled] = useState(true);
 	const [calendarEnabled, setCalendarEnabled] = useState(true);
+	const [prayerEnabled, setPrayerEnabled] = useState(
+		() => localStorage.getItem("bloom-prayer-enabled") !== "false"
+	);
+	const [prayerCity, setPrayerCity] = useState(
+		() => localStorage.getItem("bloom-prayer-city") || ""
+	);
+	const [prayerCountry, setPrayerCountry] = useState(
+		() => localStorage.getItem("bloom-prayer-country") || ""
+	);
+	const [prayerMethod, setPrayerMethod] = useState(
+		() => localStorage.getItem("bloom-prayer-method") || "5"
+	);
+	const [prayerTimeOffset, setPrayerTimeOffset] = useState(
+		() => localStorage.getItem("bloom-prayer-time-offset") || "0"
+	);
+	const [prayerAlertType, setPrayerAlertType] = useState(
+		() => localStorage.getItem("bloom-prayer-alert-type") || "sound_notification"
+	);
+	const [prayerPreAlert, setPrayerPreAlert] = useState(
+		() => localStorage.getItem("bloom-prayer-pre-alert") !== "false"
+	);
 	const [timerSoundEnabled, setTimerSoundEnabled] = useState(
 		() => localStorage.getItem("bloom-timer-sound-enabled") !== "false"
 	);
@@ -38,9 +59,12 @@ export function useSettings() {
 		() => (localStorage.getItem("bloom-notch-remember-panel") ??
 			localStorage.getItem("bloom-notch-click-to-open")) !== "false"
 	);
-	const [notchDefaultPanel, setNotchDefaultPanel] = useState<"calendar" | "command-center">(
-		() => localStorage.getItem("bloom-notch-default-panel") === "command-center"
-			? "command-center" : "calendar"
+	const [notchDefaultPanel, setNotchDefaultPanel] = useState<"calendar" | "command-center" | "prayer">(
+		() => {
+			const s = localStorage.getItem("bloom-notch-default-panel");
+			if (s === "command-center" || s === "prayer") return s;
+			return "calendar";
+		}
 	);
 	const [musicCompactNotch, setMusicCompactNotch] = useState(true);
 	const [shelfPersist, setShelfPersist] = useState(
@@ -250,6 +274,14 @@ export function useSettings() {
 			const savedCity = getVal("bloom-weather-city");
 			if (savedCity) setCityName(savedCity);
 
+			apply(getVal("bloom-prayer-enabled"), setPrayerEnabled, readBool);
+			apply(getVal("bloom-prayer-city"), setPrayerCity, (v) => v);
+			apply(getVal("bloom-prayer-country"), setPrayerCountry, (v) => v);
+			apply(getVal("bloom-prayer-method"), setPrayerMethod, (v) => v);
+			apply(getVal("bloom-prayer-time-offset"), setPrayerTimeOffset, (v) => v);
+			apply(getVal("bloom-prayer-alert-type"), setPrayerAlertType, (v) => v);
+			apply(getVal("bloom-prayer-pre-alert"), setPrayerPreAlert, readBool);
+
 			apply(getVal("bloom-theme-mode"), setThemeMode, (v) => v);
 			apply(getVal("bloom-theme-color"), setThemeColor, (v) => v);
 			apply(getVal("bloom-theme-opacity"), setThemeOpacity, parseFloat);
@@ -376,11 +408,18 @@ export function useSettings() {
 		"bloom-dock-extras-custom-folders": setDockExtrasCustomFolders,
 		"bloom-weather-enabled": setWeatherEnabled,
 		"bloom-calendar-enabled": setCalendarEnabled,
+		"bloom-prayer-enabled": setPrayerEnabled,
+		"bloom-prayer-city": setPrayerCity,
+		"bloom-prayer-country": setPrayerCountry,
+		"bloom-prayer-method": setPrayerMethod,
+		"bloom-prayer-time-offset": setPrayerTimeOffset,
+		"bloom-prayer-alert-type": setPrayerAlertType,
+		"bloom-prayer-pre-alert": setPrayerPreAlert,
 		"bloom-timer-sound-enabled": setTimerSoundEnabled,
 		"bloom-music-mode-enabled": setMusicModeEnabled,
 		"bloom-notch-remember-panel": setNotchRememberPanel,
 		"bloom-notch-default-panel": (v: unknown) =>
-			setNotchDefaultPanel(v === "command-center" ? "command-center" : "calendar"),
+			setNotchDefaultPanel(v === "command-center" || v === "prayer" ? (v as "command-center" | "prayer") : "calendar"),
 		"bloom-music-compact-notch": setMusicCompactNotch,
 		"bloom-media-ambience-enabled": setMediaAmbienceEnabled,
 		"bloom-media-compact-glow-enabled": setMediaCompactGlowEnabled,
@@ -538,6 +577,43 @@ export function useSettings() {
 		saveSetting("bloom-calendar-enabled", String(next));
 	};
 
+	const togglePrayer = () => {
+		const next = !prayerEnabled;
+		setPrayerEnabled(next);
+		saveSetting("bloom-prayer-enabled", String(next));
+	};
+
+	const setPrayerCityValue = (val: string) => {
+		setPrayerCity(val);
+		saveSetting("bloom-prayer-city", val);
+	};
+
+	const setPrayerCountryValue = (val: string) => {
+		setPrayerCountry(val);
+		saveSetting("bloom-prayer-country", val);
+	};
+
+	const setPrayerMethodValue = (val: string) => {
+		setPrayerMethod(val);
+		saveSetting("bloom-prayer-method", val);
+	};
+
+	const setPrayerTimeOffsetValue = (val: string) => {
+		setPrayerTimeOffset(val);
+		saveSetting("bloom-prayer-time-offset", val);
+	};
+
+	const setPrayerAlertTypeValue = (val: string) => {
+		setPrayerAlertType(val);
+		saveSetting("bloom-prayer-alert-type", val);
+	};
+
+	const togglePrayerPreAlert = () => {
+		const next = !prayerPreAlert;
+		setPrayerPreAlert(next);
+		saveSetting("bloom-prayer-pre-alert", String(next));
+	};
+
 	const toggleTimerSound = () => {
 		const next = !timerSoundEnabled;
 		setTimerSoundEnabled(next);
@@ -556,7 +632,7 @@ export function useSettings() {
 		saveSetting("bloom-notch-remember-panel", String(next));
 	};
 
-	const changeNotchDefaultPanel = (panel: "calendar" | "command-center") => {
+	const changeNotchDefaultPanel = (panel: "calendar" | "command-center" | "prayer") => {
 		setNotchDefaultPanel(panel);
 		saveSetting("bloom-notch-default-panel", panel);
 	};
@@ -985,6 +1061,20 @@ export function useSettings() {
 		displays,
 		calendarEnabled,
 		toggleCalendar,
+		prayerEnabled,
+		togglePrayer,
+		prayerCity,
+		setPrayerCityValue,
+		prayerCountry,
+		setPrayerCountryValue,
+		prayerMethod,
+		setPrayerMethodValue,
+		prayerTimeOffset,
+		setPrayerTimeOffsetValue,
+		prayerAlertType,
+		setPrayerAlertTypeValue,
+		prayerPreAlert,
+		togglePrayerPreAlert,
 		timerSoundEnabled,
 		toggleTimerSound,
 		musicModeEnabled,

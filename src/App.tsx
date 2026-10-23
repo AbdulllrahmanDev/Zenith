@@ -38,6 +38,7 @@ import { EdgeSurface } from "./components/EdgeSurface";
 import { ShelfTypeIcon } from "./components/ShelfTypeIcon";
 import { WifiPanel } from "./components/WifiPanel";
 import { BluetoothPanel } from "./components/BluetoothPanel";
+import { PrayerTimesPanel } from "./components/PrayerTimesPanel";
 import {
 	Cpu,
 	MemoryStick,
@@ -66,8 +67,8 @@ import {
  *   Dragging files onto the notch also opens the shelf. Wheel/swipe switches
  *   between tool panels, including when a live activity occupies the pill.
  */
-type NotchPanel = "calendar" | "command-center";
-const NOTCH_PANELS: readonly NotchPanel[] = ["calendar", "command-center"];
+type NotchPanel = "calendar" | "command-center" | "prayer";
+const NOTCH_PANELS: readonly NotchPanel[] = ["calendar", "command-center", "prayer"];
 const asNotchPanel = (value: unknown): NotchPanel | null =>
 	NOTCH_PANELS.includes(value as NotchPanel) ? (value as NotchPanel) : null;
 
@@ -433,6 +434,7 @@ type BloomMode =
 	| "music"
 	| "calendar"
 	| "command-center"
+	| "prayer"
 	| "announcement"
 	| "status"
 	| "shelf"
@@ -918,6 +920,9 @@ function App() {
 	const [settingsCalendarEnabled, setSettingsCalendarEnabled] = useState(
 		() => localStorage.getItem("bloom-calendar-enabled") !== "false"
 	);
+	const [settingsPrayerEnabled, setSettingsPrayerEnabled] = useState(
+		() => localStorage.getItem("bloom-prayer-enabled") !== "false"
+	);
 	const [settingsTimerSoundEnabled, setSettingsTimerSoundEnabled] = useState(
 		() => localStorage.getItem("bloom-timer-sound-enabled") !== "false"
 	);
@@ -991,6 +996,7 @@ function App() {
 
 				setSettingsWeatherEnabled(getVal("bloom-weather-enabled", "true") !== "false");
 				setSettingsCalendarEnabled(getVal("bloom-calendar-enabled", "true") !== "false");
+				setSettingsPrayerEnabled(getVal("bloom-prayer-enabled", "true") !== "false");
 				setSettingsTimerSoundEnabled(getVal("bloom-timer-sound-enabled", "true") !== "false");
 				setSettingsMusicModeEnabled(getVal("bloom-music-mode-enabled", "true") !== "false");
 				setRememberPanelEnabled(
@@ -1119,6 +1125,7 @@ function App() {
 		{
 			"bloom-weather-enabled": setSettingsWeatherEnabled,
 			"bloom-calendar-enabled": setSettingsCalendarEnabled,
+			"bloom-prayer-enabled": setSettingsPrayerEnabled,
 			"bloom-timer-sound-enabled": setSettingsTimerSoundEnabled,
 			"bloom-music-mode-enabled": setSettingsMusicModeEnabled,
 			"bloom-notch-remember-panel": setRememberPanelEnabled,
@@ -1749,7 +1756,8 @@ function App() {
 			target.closest(".calendar-grid") ||
 			target.closest(".timer-column") ||
 			target.closest(".shelf-content") ||
-			target.closest(".qp-list")
+			target.closest(".qp-list") ||
+			target.closest(".prayer-split-view")
 		) {
 			return;
 		}
@@ -1766,6 +1774,7 @@ function App() {
 
 	function panelAvailable(panel: NotchPanel) {
 		if (panel === "calendar") return settingsCalendarEnabled;
+		if (panel === "prayer") return settingsPrayerEnabled;
 		return true;
 	}
 
@@ -2036,6 +2045,13 @@ function App() {
 			setBloomMode(isOpen ? openingPanel() : collapsedMode);
 		}
 	}, [settingsCalendarEnabled, bloomMode, isOpen]);
+
+	// Reset bloom mode when prayer setting is disabled
+	useEffect(() => {
+		if (!settingsPrayerEnabled && bloomMode === "prayer") {
+			setBloomMode(isOpen ? openingPanel() : collapsedMode);
+		}
+	}, [settingsPrayerEnabled, bloomMode, isOpen]);
 
 	// Leave the music view when music is turned off or the player ends its media
 	// session: an open notch falls back to the remembered panel.
@@ -2726,6 +2742,7 @@ function App() {
 	const getDynamicWidth = () => {
 		if (bloomMode === "announcement" && announcement && !announcementDismissed) return 380;
 		if (isCalendarMode) return 480;
+		if (bloomMode === "prayer" && isOpen) return 480;
 		if (bloomMode === "shelf") return 380;
 		if (bloomMode === "command-center" && isOpen) return 350;
 		if (bloomMode === "wifi" || bloomMode === "bluetooth") return 350;
@@ -2758,6 +2775,7 @@ function App() {
 		}
 		// Sized to the calendar's week-row count plus the timer's fixed content.
 		if (bloomMode === "calendar") return calendarMonthRows >= 6 ? 305 : 273;
+		if (bloomMode === "prayer") return isOpen ? 273 : 36;
 		// Shelf expands on mode alone (no hover needed: there is no cursor
 		// hover during an OS drag) and is sized to exactly one row of tiles,
 		// plus room for the scrollbar once the tiles overflow it.
@@ -2879,8 +2897,8 @@ function App() {
 						scaleY: 1,
 						borderTopLeftRadius: isImpacted ? 0 : 18,
 						borderTopRightRadius: isImpacted ? 0 : 18,
-						borderBottomLeftRadius: isCalendarMode ? 28 : 18,
-						borderBottomRightRadius: isCalendarMode ? 28 : 18,
+						borderBottomLeftRadius: (isCalendarMode || bloomMode === "prayer") ? 28 : 18,
+						borderBottomRightRadius: (isCalendarMode || bloomMode === "prayer") ? 28 : 18,
 						filter: isVisible ? "blur(0px)" : "blur(8px)",
 						pointerEvents: isVisible ? "auto" : "none"
 					}}
@@ -3920,6 +3938,23 @@ function App() {
 													</div>
 												</div>
 											</div>
+										</motion.div>
+									)}
+								</AnimatePresence>
+
+								{/* Prayer Times Split View */}
+								<AnimatePresence>
+									{settingsPrayerEnabled && bloomMode === "prayer" && (
+										<motion.div
+											key="prayer-view"
+											className="prayer-content-wrapper"
+											onClick={(e) => e.stopPropagation()}
+											initial={{ opacity: 0 }}
+											animate={{ opacity: 1 }}
+											exit={{ opacity: 0, filter: "blur(4px)", transition: { duration: 0.1 } }}
+											transition={{ type: "spring", stiffness: 400, damping: 30 }}
+										>
+											<PrayerTimesPanel />
 										</motion.div>
 									)}
 								</AnimatePresence>

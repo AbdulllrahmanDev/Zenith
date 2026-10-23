@@ -65,9 +65,21 @@ Edit `settings.json` with any text editor while Zenith is running. Changes are a
 | `bloom-music-mode-enabled`  | `"true"` / `"false"`              | `"true"` | Enable interactive music media widget.                                                                   |
 | `bloom-music-compact-notch` | `"true"` / `"false"`              | `"true"` | Show compact music display (visualizer + artwork) in collapsed notch.                                    |
 | `bloom-notch-remember-panel` | `"true"` / `"false"` | `"true"` | Click opens the last-used panel when on; when off, click opens `bloom-notch-default-panel`. |
-| `bloom-notch-default-panel` | `"calendar"` / `"command-center"` | `"calendar"` | Fixed panel opened on click when panel memory is off. If calendar is disabled, Command Center opens instead. |
-| `bloom-notch-last-panel`    | `"calendar"` / `"command-center"` | (unset)  | Last panel the notch was left on, saved by Bloom while panel memory is on. |
+| `bloom-notch-default-panel` | `"calendar"` / `"command-center"` / `"prayer"` | `"calendar"` | Fixed panel opened on click when panel memory is off. If calendar is disabled, Command Center opens instead. |
+| `bloom-notch-last-panel`    | `"calendar"` / `"command-center"` / `"prayer"` | (unset)  | Last panel the notch was left on, saved by Bloom while panel memory is on. |
 | `bloom-notch-click-to-open` | `"true"` / `"false"` | (legacy) | Old setting read only when `bloom-notch-remember-panel` is absent; `"false"` now selects fixed-panel behavior. |
+
+### Prayer Times
+
+| Key                       | Type                                                  | Default                | Description                                                                                                       |
+| ------------------------- | ----------------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `bloom-prayer-enabled`    | `"true"` / `"false"`                                  | `"true"`               | Enable Islamic Prayer Times panel in the notch.                                                                   |
+| `bloom-prayer-city`       | string                                                | `""`                   | Manually set city for prayer times. Empty string = auto-detect via IP geolocation.                                 |
+| `bloom-prayer-country`    | string                                                | `""`                   | Manually set country for prayer times. Empty string = auto-detect via IP geolocation.                              |
+| `bloom-prayer-method`     | integer string (`"1"`–`"15"`)                         | `"4"`                  | Calculation method (e.g. 4 = Umm Al-Qura, 5 = Egyptian General Authority, 3 = MWL).                               |
+| `bloom-prayer-time-offset`| integer string (`"-120"`–`"120"`)                     | `"0"`                  | Manual time offset adjustment in minutes.                                                                         |
+| `bloom-prayer-alert-type` | `"sound_notification"` / `"notification_only"` / `"off"` | `"sound_notification"` | Notification mode when prayer time arrives (play Athan sound and/or show desktop notification).                   |
+| `bloom-prayer-pre-alert`  | `"true"` / `"false"`                                  | `"true"`               | Show an advance desktop reminder 15 minutes before the next prayer.                                              |
 
 ### Shelf
 

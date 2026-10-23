@@ -11,8 +11,13 @@ import {
 	Timer,
 	Archive,
 	X,
-	Monitor
+	Monitor,
+	Moon,
+	Volume2,
+	Square,
+	Clock
 } from "lucide-react";
+import { useState, useRef } from "react";
 import { SettingRow } from "./SettingRow";
 import { StatusWidgetConfig } from "../components/StatusWidgetConfig";
 import type { WidgetConfig } from "./types";
@@ -30,8 +35,22 @@ interface NotchTabProps {
 	toggleCalendar: () => void;
 	notchRememberPanel: boolean;
 	toggleNotchRememberPanel: () => void;
-	notchDefaultPanel: "calendar" | "command-center";
-	changeNotchDefaultPanel: (panel: "calendar" | "command-center") => void;
+	notchDefaultPanel: "calendar" | "command-center" | "prayer";
+	changeNotchDefaultPanel: (panel: "calendar" | "command-center" | "prayer") => void;
+	prayerEnabled: boolean;
+	togglePrayer: () => void;
+	prayerCity: string;
+	setPrayerCityValue: (val: string) => void;
+	prayerCountry: string;
+	setPrayerCountryValue: (val: string) => void;
+	prayerMethod: string;
+	setPrayerMethodValue: (val: string) => void;
+	prayerTimeOffset: string;
+	setPrayerTimeOffsetValue: (val: string) => void;
+	prayerAlertType: string;
+	setPrayerAlertTypeValue: (val: string) => void;
+	prayerPreAlert: boolean;
+	togglePrayerPreAlert: () => void;
 	timerSoundEnabled: boolean;
 	toggleTimerSound: () => void;
 	musicModeEnabled: boolean;
@@ -80,6 +99,20 @@ export function NotchTab({
 	toggleNotchRememberPanel,
 	notchDefaultPanel,
 	changeNotchDefaultPanel,
+	prayerEnabled,
+	togglePrayer,
+	prayerCity,
+	setPrayerCityValue,
+	prayerCountry,
+	setPrayerCountryValue,
+	prayerMethod,
+	setPrayerMethodValue,
+	prayerTimeOffset,
+	setPrayerTimeOffsetValue,
+	prayerAlertType,
+	setPrayerAlertTypeValue,
+	prayerPreAlert,
+	togglePrayerPreAlert,
 	timerSoundEnabled,
 	toggleTimerSound,
 	musicModeEnabled,
@@ -108,6 +141,24 @@ export function NotchTab({
 	statusWidgets,
 	handleWidgetsChange
 }: NotchTabProps) {
+	const [testingAthan, setTestingAthan] = useState(false);
+	const testAudioRef = useRef<HTMLAudioElement | null>(null);
+
+	const handleToggleTestAthan = () => {
+		if (testingAthan) {
+			if (testAudioRef.current) {
+				testAudioRef.current.pause();
+				testAudioRef.current.currentTime = 0;
+			}
+			setTestingAthan(false);
+		} else {
+			const audio = new Audio("/sounds/athan.mp3");
+			testAudioRef.current = audio;
+			audio.onended = () => setTestingAthan(false);
+			audio.play().catch(() => setTestingAthan(false));
+			setTestingAthan(true);
+		}
+	};
 	return (
 		<>
 			<div className="setting-group-label">Notch</div>
@@ -178,13 +229,14 @@ export function NotchTab({
 					<SettingRow icon={PanelTop} label="Default Panel" desc="Open this panel when you click the notch">
 						<select
 							className="settings-select"
-							value={calendarEnabled ? notchDefaultPanel : "command-center"}
+							value={notchDefaultPanel}
 							onChange={(e) =>
-								changeNotchDefaultPanel(e.target.value as "calendar" | "command-center")
+								changeNotchDefaultPanel(e.target.value as "calendar" | "command-center" | "prayer")
 							}
 						>
 							<option value="calendar" disabled={!calendarEnabled}>Calendar</option>
 							<option value="command-center">Command Center</option>
+							<option value="prayer" disabled={!prayerEnabled}>Prayer Times</option>
 						</select>
 					</SettingRow>
 				)}
@@ -293,6 +345,160 @@ export function NotchTab({
 						<span className="slider"></span>
 					</label>
 				</SettingRow>
+			</div>
+
+			<div className="setting-group-label">Prayer Times</div>
+			<div className="setting-group">
+				<SettingRow
+					icon={Moon}
+					label="Prayer Times & Athan"
+					desc="Show Islamic prayer times & live countdown split-view in the notch"
+				>
+					<label className="toggle-switch">
+						<input type="checkbox" checked={prayerEnabled} onChange={togglePrayer} />
+						<span className="slider"></span>
+					</label>
+				</SettingRow>
+
+				{prayerEnabled && (
+					<>
+						<SettingRow
+							icon={Clock}
+							label="City"
+							desc={prayerCity ? `City: ${prayerCity}` : "Auto-detect via IP when empty"}
+						>
+							<input
+								type="text"
+								className="settings-text-input"
+								placeholder="e.g. Cairo, Dubai, London"
+								value={prayerCity}
+								onChange={(e) => setPrayerCityValue(e.target.value)}
+								style={{ maxWidth: "160px" }}
+							/>
+						</SettingRow>
+
+						<SettingRow
+							icon={Clock}
+							label="Country"
+							desc={prayerCountry ? `Country: ${prayerCountry}` : "Auto-detect via IP when empty"}
+						>
+							<input
+								type="text"
+								className="settings-text-input"
+								placeholder="e.g. Egypt, UAE, UK"
+								value={prayerCountry}
+								onChange={(e) => setPrayerCountryValue(e.target.value)}
+								style={{ maxWidth: "160px" }}
+							/>
+						</SettingRow>
+
+						<SettingRow
+							icon={Clock}
+							label="Calculation Method"
+							desc="Method used to calculate prayer angles"
+						>
+							<select
+								className="settings-select"
+								value={prayerMethod}
+								onChange={(e) => setPrayerMethodValue(e.target.value)}
+							>
+								<option value="5">Egyptian General Authority of Survey</option>
+								<option value="4">Umm Al-Qura University, Makkah</option>
+								<option value="3">Muslim World League (MWL)</option>
+								<option value="2">Islamic Society of North America (ISNA)</option>
+								<option value="1">University of Islamic Sciences, Karachi</option>
+								<option value="13">Diyanet İşleri Başkanlığı, Turkey</option>
+							</select>
+						</SettingRow>
+
+						<SettingRow
+							icon={Timer}
+							label="Time Offset"
+							desc="Adjust for daylight savings or timezone difference"
+						>
+							<select
+								className="settings-select"
+								value={prayerTimeOffset}
+								onChange={(e) => setPrayerTimeOffsetValue(e.target.value)}
+							>
+								<option value="-120">-2 hours (-120m)</option>
+								<option value="-60">-1 hour (-60m)</option>
+								<option value="0">Default (0m)</option>
+								<option value="60">+1 hour (+60m)</option>
+								<option value="120">+2 hours (+120m)</option>
+							</select>
+						</SettingRow>
+
+						<SettingRow
+							icon={Volume2}
+							label="Athan Alert"
+							desc="Choose how to be notified when prayer time arrives"
+						>
+							<select
+								className="settings-select"
+								value={prayerAlertType}
+								onChange={(e) => setPrayerAlertTypeValue(e.target.value)}
+							>
+								<option value="sound_notification">Athan Sound & Notification</option>
+								<option value="notification_only">Notification Only</option>
+								<option value="off">Off (Silent)</option>
+							</select>
+						</SettingRow>
+
+						<SettingRow
+							icon={BellRing}
+							label="15-Minute Pre-Alert"
+							desc="Send a notification 15 minutes before prayer time"
+						>
+							<label className="toggle-switch">
+								<input
+									type="checkbox"
+									checked={prayerPreAlert}
+									onChange={togglePrayerPreAlert}
+								/>
+								<span className="slider"></span>
+							</label>
+						</SettingRow>
+
+						<SettingRow
+							icon={Volume2}
+							label="Test Athan Audio"
+							desc="Preview the Athan call to prayer sound"
+							action
+							divider={false}
+							onClick={handleToggleTestAthan}
+						>
+							<button
+								type="button"
+								className="settings-action-btn"
+								onClick={handleToggleTestAthan}
+								style={{
+									padding: "6px 14px",
+									borderRadius: "8px",
+									background: testingAthan ? "#ef4444" : "rgba(255,255,255,0.08)",
+									color: "#fff",
+									border: "none",
+									cursor: "pointer",
+									fontSize: "12px",
+									fontWeight: 600,
+									display: "flex",
+									alignItems: "center",
+									gap: "6px"
+								}}
+							>
+								{testingAthan ? (
+									<>
+										<Square size={12} fill="currentColor" /> Stop Audio
+									</>
+								) : (
+									<>
+										<Volume2 size={12} /> Play Preview
+									</>
+								)}
+							</button>
+						</SettingRow>
+					</>
+				)}
 			</div>
 
 			<div className="setting-group-label">Weather</div>
