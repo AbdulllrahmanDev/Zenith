@@ -163,10 +163,10 @@ export function useSettings() {
 	});
 	const [displays, setDisplays] = useState<DisplayInfo[]>([]);
 	const [notchDisplay, setNotchDisplay] = useState(
-		() => localStorage.getItem("bloom-notch-display") || "all"
+		() => localStorage.getItem("bloom-notch-display") || "primary"
 	);
 	const [dockDisplay, setDockDisplay] = useState(
-		() => localStorage.getItem("bloom-dock-display") || "all"
+		() => localStorage.getItem("bloom-dock-display") || "primary"
 	);
 	const [dockIsolation, setDockIsolation] = useState(
 		() => localStorage.getItem("bloom-dock-isolation") === "true"
@@ -376,7 +376,19 @@ export function useSettings() {
 		loadAllSettings();
 
 		invoke<DisplayInfo[]>("get_available_displays")
-			.then(setDisplays)
+			.then((disps) => {
+				setDisplays(disps);
+				if (disps.length <= 1) {
+					if (localStorage.getItem("bloom-notch-display") !== "primary") {
+						setNotchDisplay("primary");
+						saveSetting("bloom-notch-display", "primary");
+					}
+					if (localStorage.getItem("bloom-dock-display") !== "primary") {
+						setDockDisplay("primary");
+						saveSetting("bloom-dock-display", "primary");
+					}
+				}
+			})
 			.catch(() => {});
 
 		isEnabled()
@@ -842,13 +854,15 @@ export function useSettings() {
 	};
 
 	const setNotchDisplayValue = (val: string) => {
-		setNotchDisplay(val);
-		saveSetting("bloom-notch-display", val);
+		const target = displays.length <= 1 ? "primary" : val;
+		setNotchDisplay(target);
+		saveSetting("bloom-notch-display", target);
 	};
 
 	const setDockDisplayValue = (val: string) => {
-		setDockDisplay(val);
-		saveSetting("bloom-dock-display", val);
+		const target = displays.length <= 1 ? "primary" : val;
+		setDockDisplay(target);
+		saveSetting("bloom-dock-display", target);
 	};
 
 	const toggleDockIsolation = () => {

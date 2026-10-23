@@ -3408,6 +3408,7 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
         re_register_appbars(&app, &settings);
     } else if key == "bloom-notch-display" || key == "bloom-dock-display" {
         reposition_displays(app.clone());
+        re_register_appbars(&app, &settings);
     }
     Ok(())
 }

@@ -80,8 +80,8 @@ function DrivePicker({
 }
 
 const START_ICON_PRESETS = [
-	{ key: "default", src: "/zenith-color-1-holographic.svg", label: "Zenith (Holographic)" },
-	{ key: "zenith-white", src: "/zenith-white-no-bg-nosmile-512.png", label: "Zenith (White)" },
+	{ key: "default", src: "/zenith-white-no-bg-nosmile.svg", label: "Zenith" },
+	{ key: "zenith-holographic", src: "/zenith-color-1-holographic.svg", label: "Holographic" },
 	{ key: "zenith-emerald", src: "/zenith-color-2-emerald.svg", label: "Emerald" },
 	{ key: "zenith-gold", src: "/zenith-color-3-gold.svg", label: "Gold" },
 	{ key: "zenith-iznik-blue", src: "/zenith-color-4-iznik-blue.svg", label: "Iznik Blue" },
@@ -210,22 +210,29 @@ export function DockTab({
 
 				{dockEnabled && (
 					<>
-						{displays.length > 1 && (
-							<SettingRow icon={Monitor} label="Display" desc="Select display to show the dock">
-								<select
-									className="settings-select"
-									value={dockDisplay}
-									onChange={(e) => setDockDisplayValue(e.target.value)}
-								>
-									<option value="all">All Displays</option>
-									{displays.map((disp) => (
+						<SettingRow
+							icon={Monitor}
+							label="Display"
+							desc={displays.length > 1 ? "Select display to show the dock" : "Only one display connected (Primary)"}
+						>
+							<select
+								className="settings-select"
+								value={displays.length <= 1 ? "primary" : dockDisplay}
+								disabled={displays.length <= 1}
+								onChange={(e) => setDockDisplayValue(e.target.value)}
+							>
+								<option value="primary">Primary Display</option>
+								<option value="all">All Displays</option>
+								{displays.length > 1 &&
+									displays.map((disp) => (
 										<option key={disp.id} value={disp.id}>
-											{disp.name}
+											{disp.name.includes(`${disp.width}x${disp.height}`)
+												? disp.name
+												: `${disp.name} (${disp.width}x${disp.height})`}
 										</option>
 									))}
-								</select>
-							</SettingRow>
-						)}
+							</select>
+						</SettingRow>
 
 						{displays.length > 1 && (
 							<SettingRow
@@ -527,7 +534,7 @@ export function DockTab({
 										onClick={() => handleStartIconChange(icon.key)}
 										style={startIconTileStyle(
 											startIcon === icon.key ||
-											(icon.key === "default" && (!startIcon || startIcon === "zenith-holographic"))
+											(icon.key === "default" && (!startIcon || startIcon === "default" || startIcon === "zenith-white"))
 										)}
 										title={icon.label}
 									>

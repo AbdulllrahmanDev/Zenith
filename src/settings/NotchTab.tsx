@@ -263,22 +263,29 @@ export function NotchTab({
 		<>
 			<div className="setting-group-label">Notch</div>
 			<div className="setting-group">
-				{displays.length > 1 && (
-					<SettingRow icon={Monitor} label="Display" desc="Select display to show the notch">
-						<select
-							className="settings-select"
-							value={notchDisplay}
-							onChange={(e) => setNotchDisplayValue(e.target.value)}
-						>
-							<option value="all">All Displays</option>
-							{displays.map((disp) => (
+				<SettingRow
+					icon={Monitor}
+					label="Display"
+					desc={displays.length > 1 ? "Select display to show the notch" : "Only one display connected (Primary)"}
+				>
+					<select
+						className="settings-select"
+						value={displays.length <= 1 ? "primary" : notchDisplay}
+						disabled={displays.length <= 1}
+						onChange={(e) => setNotchDisplayValue(e.target.value)}
+					>
+						<option value="primary">Primary Display</option>
+						<option value="all">All Displays</option>
+						{displays.length > 1 &&
+							displays.map((disp) => (
 								<option key={disp.id} value={disp.id}>
-									{disp.name}
+									{disp.name.includes(`${disp.width}x${disp.height}`)
+										? disp.name
+										: `${disp.name} (${disp.width}x${disp.height})`}
 								</option>
 							))}
-						</select>
-					</SettingRow>
-				)}
+					</select>
+				</SettingRow>
 
 				<SettingRow icon={PanelTop} label="Notch Behavior" desc="Choose how the notch appears">
 					<select

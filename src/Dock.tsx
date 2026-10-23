@@ -127,8 +127,7 @@ function TaskViewIcon() {
 }
 
 function resolveStartIcon(startIcon: string): string {
-	if (startIcon === "zenith-white") return "/zenith-white-no-bg-nosmile-512.png";
-	if (startIcon === "zenith-holographic" || startIcon === "bloom-colorful" || startIcon === "default" || !startIcon) return "/zenith-color-1-holographic.svg";
+	if (startIcon === "zenith-holographic" || startIcon === "bloom-colorful") return "/zenith-color-1-holographic.svg";
 	if (startIcon === "zenith-emerald") return "/zenith-color-2-emerald.svg";
 	if (startIcon === "zenith-gold" || startIcon === "bloom-golden") return "/zenith-color-3-gold.svg";
 	if (startIcon === "zenith-iznik-blue") return "/zenith-color-4-iznik-blue.svg";
@@ -136,7 +135,7 @@ function resolveStartIcon(startIcon: string): string {
 	if (startIcon === "zenith-ivory-emerald" || startIcon === "bloom-biscuit") return "/zenith-color-6-ivory-emerald.svg";
 	if (startIcon === "windows") return "/windows-11.png";
 	if (startIcon.startsWith("custom:")) return startIcon.slice("custom:".length);
-	return "/zenith-color-1-holographic.svg";
+	return "/zenith-white-no-bg-nosmile.svg";
 }
 
 // Stable module-level constants so object references never change between renders,
