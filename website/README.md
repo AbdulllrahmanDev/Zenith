@@ -84,7 +84,7 @@ Publish one by replacing the contents:
 	"severity": "warning",
 	"title": "Update checks may fail on some networks",
 	"body": "Bloom 3.8.7 and 3.9.0 can time out reaching GitHub. If no update is found, install the latest release manually.",
-	"url": "https://github.com/SehajveerSingh2005/bloom/releases/latest"
+	"url": "https://github.com/AbdulllrahmanDev/Zenith/releases/latest"
 }
 ```
 

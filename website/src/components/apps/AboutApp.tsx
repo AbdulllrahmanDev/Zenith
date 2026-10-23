@@ -16,7 +16,7 @@ export default function AboutApp({ githubUrl, downloadUrl, accentColor }: AboutA
 	});
 
 	useEffect(() => {
-		fetch("https://api.github.com/repos/SehajveerSingh2005/bloom/releases/latest")
+		fetch("https://api.github.com/repos/AbdulllrahmanDev/Zenith/releases/latest")
 			.then((res) => res.json())
 			.then((data) => {
 				if (data?.tag_name) {

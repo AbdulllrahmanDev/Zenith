@@ -14,7 +14,7 @@ import {
 	Clock
 } from "lucide-react";
 
-const GITHUB_REPO = "SehajveerSingh2005/bloom";
+const GITHUB_REPO = "AbdulllrahmanDev/Zenith";
 
 interface GitHubRelease {
 	tag_name: string;

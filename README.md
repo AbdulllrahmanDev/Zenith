@@ -143,12 +143,12 @@ MpCmdRun.exe -SignatureUpdate
 
 ## Get It Running
 
-**Download** the latest build from [Releases](https://github.com/SehajveerSingh2005/bloom/releases/latest).
+**Download** the latest build from [Releases](https://github.com/AbdulllrahmanDev/Zenith/releases/latest).
 
 Or build from source:
 
 ```bash
-git clone https://github.com/SehajveerSingh2005/bloom.git
+git clone https://github.com/AbdulllrahmanDev/Zenith.git
 cd zenith
 bun install
 bun run tauri dev

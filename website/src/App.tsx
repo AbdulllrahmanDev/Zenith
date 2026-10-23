@@ -215,8 +215,8 @@ export default function App() {
 								viewport={viewport}
 							>
 								<AboutApp
-									githubUrl="https://github.com/SehajveerSingh2005/bloom"
-									downloadUrl="https://github.com/SehajveerSingh2005/bloom/releases/latest"
+									githubUrl="https://github.com/AbdulllrahmanDev/Zenith"
+									downloadUrl="https://github.com/AbdulllrahmanDev/Zenith/releases/latest"
 									accentColor={settings.accentColor}
 									onOpenApp={handleOpenApp}
 								/>

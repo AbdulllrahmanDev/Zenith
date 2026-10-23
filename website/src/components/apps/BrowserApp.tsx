@@ -40,7 +40,7 @@ const SIDEBAR_BOOKMARKS = [
 	{ name: "Wikipedia", url: "https://en.wikipedia.org" },
 	{ name: "YouTube", url: "https://www.youtube.com/embed/dQw4w9WgXcQ" },
 	{ name: "RFC 2616", url: "https://www.rfc-editor.org/rfc/rfc2616" },
-	{ name: "Bloom GH", url: "https://github.com/SehajveerSingh2005/bloom" }
+	{ name: "Zenith GH", url: "https://github.com/AbdulllrahmanDev/Zenith" }
 ];
 
 export default function BrowserApp() {
