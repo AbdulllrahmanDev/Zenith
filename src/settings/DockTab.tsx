@@ -29,6 +29,7 @@ import {
 	parseHiddenDrives,
 	type DockExtra
 } from "../dockExtras";
+import type { DisplayInfo } from "../dockApps";
 
 /** Where a setting row's label starts: the row icon's 28px plus its 12px margin.
  * Content under a label (chips, lists) is indented by this to line up with it. */
@@ -135,6 +136,11 @@ interface DockTabProps {
 	handleRemoveDockExtraFolder: (path: string) => void;
 	startIcon: string;
 	handleStartIconChange: (icon: string) => void;
+	dockDisplay: string;
+	setDockDisplayValue: (val: string) => void;
+	dockIsolation: boolean;
+	toggleDockIsolation: () => void;
+	displays: DisplayInfo[];
 }
 
 export function DockTab({
@@ -144,6 +150,11 @@ export function DockTab({
 	setDockModeValue,
 	dockEdgeDelay,
 	handleDockEdgeDelayChange,
+	dockDisplay,
+	setDockDisplayValue,
+	dockIsolation,
+	toggleDockIsolation,
+	displays,
 	dockPreviewEnabled,
 	toggleDockPreview,
 	dockIconOnly,
@@ -196,6 +207,40 @@ export function DockTab({
 
 				{dockEnabled && (
 					<>
+						{displays.length > 1 && (
+							<SettingRow icon={Monitor} label="Display" desc="Select display to show the dock">
+								<select
+									className="settings-select"
+									value={dockDisplay}
+									onChange={(e) => setDockDisplayValue(e.target.value)}
+								>
+									<option value="all">All Displays</option>
+									{displays.map((disp) => (
+										<option key={disp.id} value={disp.id}>
+											{disp.name}
+										</option>
+									))}
+								</select>
+							</SettingRow>
+						)}
+
+						{displays.length > 1 && (
+							<SettingRow
+								icon={Columns2}
+								label="Isolate Apps by Display"
+								desc="Only show apps and windows running on this display"
+							>
+								<label className="toggle-switch">
+									<input
+										type="checkbox"
+										checked={dockIsolation}
+										onChange={toggleDockIsolation}
+									/>
+									<span className="slider"></span>
+								</label>
+							</SettingRow>
+						)}
+
 						<SettingRow
 							icon={dockMode === "fixed" ? EyeOff : Eye}
 							label="Behavior"

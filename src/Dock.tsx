@@ -183,6 +183,10 @@ const Dock = memo(function Dock() {
 	const [dockAdaptive, setDockAdaptive] = useState(
 		() => localStorage.getItem("bloom-dock-adaptive") === "true"
 	);
+	const [dockIsolation, setDockIsolation] = useState(
+		() => localStorage.getItem("bloom-dock-isolation") === "true"
+	);
+	const [currentMonitorId, setCurrentMonitorId] = useState<string | null>(null);
 	const [dockTaskView, setDockTaskView] = useState(
 		() => localStorage.getItem("bloom-dock-task-view") === "true"
 	);
@@ -239,6 +243,25 @@ const Dock = memo(function Dock() {
 		const onResize = () => setViewportWidth(window.innerWidth);
 		window.addEventListener("resize", onResize);
 		return () => window.removeEventListener("resize", onResize);
+	}, []);
+
+	useEffect(() => {
+		const updateCurrentMonitor = async () => {
+			try {
+				const { currentMonitor } = await import("@tauri-apps/api/window");
+				const mon = await currentMonitor();
+				if (mon?.name) {
+					setCurrentMonitorId(mon.name);
+				}
+			} catch (_) {}
+		};
+		updateCurrentMonitor();
+		window.addEventListener("resize", updateCurrentMonitor);
+		const interval = setInterval(updateCurrentMonitor, 3000);
+		return () => {
+			window.removeEventListener("resize", updateCurrentMonitor);
+			clearInterval(interval);
+		};
 	}, []);
 
 	// Measure the dock pill when the popup opens; the card tucks ~14px
@@ -382,6 +405,8 @@ const Dock = memo(function Dock() {
 
 			const adaptive = getVal("bloom-dock-adaptive", "false");
 			setDockAdaptive(adaptive === "true");
+			const isolation = getVal("bloom-dock-isolation", "false");
+			setDockIsolation(isolation === "true");
 			setDockTaskView(getVal("bloom-dock-task-view", "false") === "true");
 
 			const startIconVal = getVal("bloom-start-icon", "default") || "default";
@@ -458,6 +483,7 @@ const Dock = memo(function Dock() {
 		"bloom-dock-icon-only": setDockIconOnly,
 		"bloom-dock-separator-enabled": setDockSeparatorEnabled,
 		"bloom-dock-adaptive": setDockAdaptive,
+		"bloom-dock-isolation": setDockIsolation,
 		"bloom-dock-task-view": setDockTaskView,
 		"bloom-start-icon": setStartIcon,
 		"bloom-scale": setScale,
@@ -1011,6 +1037,14 @@ const Dock = memo(function Dock() {
 			return undefined;
 		};
 
+		const isAppOnCurrentMonitor = (app?: AppInfo | null) => {
+			if (!dockIsolation || !currentMonitorId || !app) return true;
+			if (!app.monitor_id && (!app.all_monitors || app.all_monitors.length === 0)) return true;
+			if (app.monitor_id === currentMonitorId) return true;
+			if (app.all_monitors && app.all_monitors.includes(currentMonitorId)) return true;
+			return false;
+		};
+
 		const pinned: AppInfo[] = [
 			{
 				name: "Start",
@@ -1024,13 +1058,14 @@ const Dock = memo(function Dock() {
 			},
 			...pinnedApps.map((p) => {
 				const running = findRunningApp(p);
+				const isRunningOnThisMonitor = !!running && isAppOnCurrentMonitor(running);
 				return {
 					...p,
-					is_running: !!running,
-					hwnd: running?.hwnd,
-					all_hwnds: running?.all_hwnds,
-					tray_ids: running?.tray_ids,
-					is_background: running?.is_background
+					is_running: isRunningOnThisMonitor,
+					hwnd: isRunningOnThisMonitor ? running?.hwnd : undefined,
+					all_hwnds: isRunningOnThisMonitor ? running?.all_hwnds : undefined,
+					tray_ids: isRunningOnThisMonitor ? running?.tray_ids : undefined,
+					is_background: isRunningOnThisMonitor ? running?.is_background : undefined
 				};
 			})
 		];
@@ -1039,11 +1074,13 @@ const Dock = memo(function Dock() {
 			.map((id) => activeApps.find((a) => appIdentity(a.path, a.executable, a.name) === id))
 			.filter(
 				(a): a is AppInfo =>
-					!!a && !matchedRunningKeys.has(appIdentity(a.path, a.executable, a.name))
+					!!a &&
+					!matchedRunningKeys.has(appIdentity(a.path, a.executable, a.name)) &&
+					isAppOnCurrentMonitor(a)
 			);
 
 		return [...pinned, ...unpinned];
-	}, [pinnedApps, activeApps, activeOrder]);
+	}, [pinnedApps, activeApps, activeOrder, dockIsolation, currentMonitorId]);
 
 	const startItem = useMemo(
 		() => dockItems.find((i) => i.path === "start") as AppInfo,

@@ -474,8 +474,8 @@ pub async fn change_notch_mode(app: AppHandle, mode: String) {
                 }
             });
         }
-        // Reposition window to span the full primary monitor so CSS justify-content:center works
-        if let Ok(Some(monitor)) = main_win.primary_monitor() {
+        // Reposition window to span the target monitor so CSS justify-content:center works
+        if let Some(monitor) = crate::utils::get_target_monitor(&app, "bloom-notch-display") {
             let m_pos = monitor.position();
             let m_size = monitor.size();
             let scale = monitor.scale_factor();
@@ -488,6 +488,61 @@ pub async fn change_notch_mode(app: AppHandle, mode: String) {
         let current = CURRENT_NOTCH_OVERLAP.load(Ordering::Relaxed);
         if current != -1 {
             let _ = app.emit("notch-overlap", current == 1);
+        }
+    }
+}
+
+#[tauri::command]
+pub fn get_available_displays(app: AppHandle) -> Vec<crate::types::DisplayInfo> {
+    let mut displays = Vec::new();
+    if let Ok(monitors) = app.available_monitors() {
+        let primary_name = app.primary_monitor().ok().flatten().and_then(|m| m.name().map(|s| s.to_string()));
+        for (idx, m) in monitors.into_iter().enumerate() {
+            let id = m.name().map(|s| s.to_string()).unwrap_or_else(|| format!("display-{}", idx + 1));
+            let is_primary = primary_name.as_ref().map(|pn| pn == &id).unwrap_or(idx == 0);
+            let display_num = idx + 1;
+            let friendly_name = if is_primary {
+                format!("Display {} (Primary) - {}x{}", display_num, m.size().width, m.size().height)
+            } else {
+                format!("Display {} - {}x{}", display_num, m.size().width, m.size().height)
+            };
+
+            displays.push(crate::types::DisplayInfo {
+                id,
+                name: friendly_name,
+                is_primary,
+                width: m.size().width,
+                height: m.size().height,
+                x: m.position().x,
+                y: m.position().y,
+                scale_factor: m.scale_factor(),
+            });
+        }
+    }
+    displays
+}
+
+#[tauri::command]
+pub fn reposition_displays(app: AppHandle) {
+    if let Some(main_win) = app.get_webview_window("main") {
+        if let Some(monitor) = crate::utils::get_target_monitor(&app, "bloom-notch-display") {
+            let m_pos = monitor.position();
+            let m_size = monitor.size();
+            let scale = monitor.scale_factor();
+            let bloom_scale = crate::utils::get_bloom_scale(&app);
+            let target_height = (420.0 * bloom_scale * scale) as u32;
+            let _ = main_win.set_position(tauri::PhysicalPosition::new(m_pos.x, m_pos.y));
+            let _ = main_win.set_size(tauri::PhysicalSize::new(m_size.width, target_height));
+        }
+    }
+    if let Some(dock_win) = app.get_webview_window("dock") {
+        if let Some(monitor) = crate::utils::get_target_monitor(&app, "bloom-dock-display") {
+            let m_pos = monitor.position();
+            let m_size = monitor.size();
+            let ph = dock_win.outer_size().map(|s| s.height as i32).unwrap_or(120);
+            let final_y = m_pos.y + m_size.height as i32 - ph;
+            let _ = dock_win.set_position(tauri::PhysicalPosition::new(m_pos.x, final_y));
+            let _ = dock_win.set_size(tauri::PhysicalSize::new(m_size.width, ph as u32));
         }
     }
 }
@@ -862,6 +917,15 @@ pub async fn get_active_windows() -> Vec<AppInfo> {
                         (existing.hwnd.unwrap_or(0), existing.name.clone()),
                         (app.hwnd.unwrap_or(0), app.name.clone()),
                     ]);
+                }
+                if let Some(m) = app.monitor_id {
+                    if let Some(ref mut mons) = existing.all_monitors {
+                        if !mons.contains(&m) {
+                            mons.push(m);
+                        }
+                    } else {
+                        existing.all_monitors = Some(vec![m]);
+                    }
                 }
             } else {
                 let mut new_app = app.clone();
@@ -1967,6 +2031,8 @@ pub async fn load_pinned_apps(app: AppHandle) -> Vec<AppInfo> {
             hwnd: None,
             executable: Some("explorer.exe".into()),
             all_hwnds: None,
+            monitor_id: None,
+            all_monitors: None,
         },
         AppInfo {
             name: "Microsoft Edge".into(),
@@ -1976,6 +2042,8 @@ pub async fn load_pinned_apps(app: AppHandle) -> Vec<AppInfo> {
             hwnd: None,
             executable: Some("msedge.exe".into()),
             all_hwnds: None,
+            monitor_id: None,
+            all_monitors: None,
         },
         AppInfo {
             name: "Notepad".into(),
@@ -1985,6 +2053,8 @@ pub async fn load_pinned_apps(app: AppHandle) -> Vec<AppInfo> {
             hwnd: None,
             executable: Some("notepad.exe".into()),
             all_hwnds: None,
+            monitor_id: None,
+            all_monitors: None,
         },
         AppInfo {
             name: "Settings".into(),
@@ -1994,6 +2064,8 @@ pub async fn load_pinned_apps(app: AppHandle) -> Vec<AppInfo> {
             hwnd: None,
             executable: None,
             all_hwnds: None,
+            monitor_id: None,
+            all_monitors: None,
         },
     ]
 }
@@ -3143,6 +3215,8 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
 
     if key == "bloom-scale" {
         re_register_appbars(&app, &settings);
+    } else if key == "bloom-notch-display" || key == "bloom-dock-display" {
+        reposition_displays(app.clone());
     }
     Ok(())
 }
@@ -4260,6 +4334,8 @@ mod pwa_icon_tests {
             hwnd: None,
             executable: Some("brave.exe".into()),
             all_hwnds: None,
+            monitor_id: None,
+            all_monitors: None,
         };
         assert!(is_pwa_shortcut_for(&app, "youtube", "brave.exe"));
         assert!(is_pwa_shortcut_for(&app, "YouTube", "BRAVE.EXE"));
@@ -4300,6 +4376,8 @@ mod pwa_icon_tests {
                 hwnd: None,
                 executable: Some("brave.exe".into()),
                 all_hwnds: None,
+                monitor_id: None,
+                all_monitors: None,
             },
             AppInfo {
                 name: "Netflix".into(),
@@ -4309,6 +4387,8 @@ mod pwa_icon_tests {
                 hwnd: None,
                 executable: Some("msedge.exe".into()),
                 all_hwnds: None,
+                monitor_id: None,
+                all_monitors: None,
             },
         ]));
         assert_eq!(

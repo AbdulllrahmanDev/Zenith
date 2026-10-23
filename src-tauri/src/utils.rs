@@ -780,6 +780,42 @@ pub fn is_window_fullscreen(hwnd: HWND) -> bool {
     }
 }
 
+pub fn get_hwnd_monitor_id(hwnd: HWND) -> Option<String> {
+    unsafe {
+        use windows::Win32::Graphics::Gdi::{
+            GetMonitorInfoA, MonitorFromWindow, MONITORINFOEXA, MONITOR_DEFAULTTONEAREST,
+        };
+        let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        if monitor.is_invalid() {
+            return None;
+        }
+        let mut info = MONITORINFOEXA::default();
+        info.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXA>() as u32;
+        if GetMonitorInfoA(monitor, &mut info as *mut _ as *mut _).as_bool() {
+            std::ffi::CStr::from_ptr(info.szDevice.as_ptr())
+                .to_str()
+                .ok()
+                .map(|s| s.to_string())
+        } else {
+            Some(format!("monitor-{}", monitor.0 as usize))
+        }
+    }
+}
+
+pub fn get_target_monitor(app: &tauri::AppHandle, key: &str) -> Option<tauri::Monitor> {
+    let chosen_display = get_setting_str(app, key);
+    if let Ok(monitors) = app.available_monitors() {
+        if let Some(target_id) = chosen_display {
+            if target_id != "all" && target_id != "primary" && !target_id.is_empty() {
+                if let Some(m) = monitors.into_iter().find(|m| m.name() == Some(&target_id)) {
+                    return Some(m);
+                }
+            }
+        }
+    }
+    app.primary_monitor().ok().flatten()
+}
+
 /// Resolves a bare executable name (e.g. `notepad.exe`, `msedge`, `wt.exe`) to a
 /// full path, using the same mechanisms Windows uses: the registry `App Paths`
 /// registration, then the standard executable search path, then a few well-known

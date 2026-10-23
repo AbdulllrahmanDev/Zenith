@@ -55,6 +55,18 @@ pub struct IntRect {
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct DisplayInfo {
+    pub id: String,
+    pub name: String,
+    pub is_primary: bool,
+    pub width: u32,
+    pub height: u32,
+    pub x: i32,
+    pub y: i32,
+    pub scale_factor: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AppInfo {
     pub name: String,
     pub path: String,
@@ -63,6 +75,10 @@ pub struct AppInfo {
     pub hwnd: Option<isize>,
     pub executable: Option<String>,
     pub all_hwnds: Option<Vec<(isize, String)>>, // (hwnd, title)
+    #[serde(default)]
+    pub monitor_id: Option<String>,
+    #[serde(default)]
+    pub all_monitors: Option<Vec<String>>,
 }
 
 #[derive(Clone, Serialize)]

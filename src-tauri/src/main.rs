@@ -147,6 +147,8 @@ fn main() {
             shelf_prune,
             shelf_open,
             get_active_windows,
+            get_available_displays,
+            reposition_displays,
             get_tray_apps,
             show_tray_context_menu,
             activate_tray_icon,

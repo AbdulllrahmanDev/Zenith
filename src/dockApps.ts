@@ -1,3 +1,14 @@
+export interface DisplayInfo {
+	id: string;
+	name: string;
+	is_primary: boolean;
+	width: number;
+	height: number;
+	x: number;
+	y: number;
+	scale_factor: number;
+}
+
 export interface AppInfo {
 	name: string;
 	path: string;
@@ -9,6 +20,8 @@ export interface AppInfo {
 	all_hwnds?: [number, string][];
 	tray_ids?: string[];
 	is_background?: boolean;
+	monitor_id?: string;
+	all_monitors?: string[];
 }
 
 export interface TrayApp {

@@ -10,17 +10,22 @@ import {
 	CloudSun,
 	Timer,
 	Archive,
-	X
+	X,
+	Monitor
 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
 import { StatusWidgetConfig } from "../components/StatusWidgetConfig";
 import type { WidgetConfig } from "./types";
+import type { DisplayInfo } from "../dockApps";
 
 interface NotchTabProps {
 	notchMode: string;
 	setNotchModeValue: (mode: string) => void;
 	notchEdgeDelay: number;
 	handleNotchEdgeDelayChange: (val: number) => void;
+	notchDisplay: string;
+	setNotchDisplayValue: (val: string) => void;
+	displays: DisplayInfo[];
 	calendarEnabled: boolean;
 	toggleCalendar: () => void;
 	notchRememberPanel: boolean;
@@ -66,6 +71,9 @@ export function NotchTab({
 	setNotchModeValue,
 	notchEdgeDelay,
 	handleNotchEdgeDelayChange,
+	notchDisplay,
+	setNotchDisplayValue,
+	displays,
 	calendarEnabled,
 	toggleCalendar,
 	notchRememberPanel,
@@ -104,6 +112,23 @@ export function NotchTab({
 		<>
 			<div className="setting-group-label">Notch</div>
 			<div className="setting-group">
+				{displays.length > 1 && (
+					<SettingRow icon={Monitor} label="Display" desc="Select display to show the notch">
+						<select
+							className="settings-select"
+							value={notchDisplay}
+							onChange={(e) => setNotchDisplayValue(e.target.value)}
+						>
+							<option value="all">All Displays</option>
+							{displays.map((disp) => (
+								<option key={disp.id} value={disp.id}>
+									{disp.name}
+								</option>
+							))}
+						</select>
+					</SettingRow>
+				)}
+
 				<SettingRow icon={PanelTop} label="Notch Behavior" desc="Choose how the notch appears">
 					<select
 						className="settings-select"

@@ -15,6 +15,7 @@ import {
 	DEFAULT_ENABLED_FOLDERS
 } from "../dockExtras";
 import type { WidgetConfig } from "./types";
+import type { DisplayInfo } from "../dockApps";
 
 function readBool(val: string | null): boolean {
 	return val === "true";
@@ -133,6 +134,16 @@ export function useSettings() {
 		const val = localStorage.getItem("bloom-notch-edge-delay");
 		return val !== null ? parseInt(val) : 200;
 	});
+	const [displays, setDisplays] = useState<DisplayInfo[]>([]);
+	const [notchDisplay, setNotchDisplay] = useState(
+		() => localStorage.getItem("bloom-notch-display") || "all"
+	);
+	const [dockDisplay, setDockDisplay] = useState(
+		() => localStorage.getItem("bloom-dock-display") || "all"
+	);
+	const [dockIsolation, setDockIsolation] = useState(
+		() => localStorage.getItem("bloom-dock-isolation") === "true"
+	);
 	const [lowBatteryThreshold, setLowBatteryThreshold] = useState(20);
 	const [updateStatus, setUpdateStatus] = useState<
 		"idle" | "checking" | "available" | "uptodate" | "error" | "downloading" | "installing"
@@ -232,6 +243,9 @@ export function useSettings() {
 			apply(getVal("bloom-notch-edge-delay"), setNotchEdgeDelay, parseInt);
 			apply(getVal("bloom-dock-mode"), setDockMode, (v) => (v === "auto-hide" ? "smart" : v));
 			apply(getVal("bloom-dock-edge-delay"), setDockEdgeDelay, parseInt);
+			apply(getVal("bloom-notch-display"), setNotchDisplay, (v) => v);
+			apply(getVal("bloom-dock-display"), setDockDisplay, (v) => v);
+			apply(getVal("bloom-dock-isolation"), setDockIsolation, readBool);
 
 			const savedCity = getVal("bloom-weather-city");
 			if (savedCity) setCityName(savedCity);
@@ -324,6 +338,10 @@ export function useSettings() {
 	// ── Initialize on mount ──
 	useEffect(() => {
 		loadAllSettings();
+
+		invoke<DisplayInfo[]>("get_available_displays")
+			.then(setDisplays)
+			.catch(() => {});
 
 		isEnabled()
 			.then(setAutostart)
@@ -737,6 +755,22 @@ export function useSettings() {
 		saveSetting("bloom-notch-mode", newMode);
 	};
 
+	const setNotchDisplayValue = (val: string) => {
+		setNotchDisplay(val);
+		saveSetting("bloom-notch-display", val);
+	};
+
+	const setDockDisplayValue = (val: string) => {
+		setDockDisplay(val);
+		saveSetting("bloom-dock-display", val);
+	};
+
+	const toggleDockIsolation = () => {
+		const next = !dockIsolation;
+		setDockIsolation(next);
+		saveSetting("bloom-dock-isolation", String(next));
+	};
+
 	const handleDockEdgeDelayChange = (val: number) => {
 		setDockEdgeDelay(val);
 		saveSetting("bloom-dock-edge-delay", val.toString());
@@ -946,6 +980,9 @@ export function useSettings() {
 		setNotchModeValue,
 		notchEdgeDelay,
 		handleNotchEdgeDelayChange,
+		notchDisplay,
+		setNotchDisplayValue,
+		displays,
 		calendarEnabled,
 		toggleCalendar,
 		timerSoundEnabled,
@@ -991,6 +1028,10 @@ export function useSettings() {
 		setDockModeValue,
 		dockEdgeDelay,
 		handleDockEdgeDelayChange,
+		dockDisplay,
+		setDockDisplayValue,
+		dockIsolation,
+		toggleDockIsolation,
 		dockPreviewEnabled,
 		toggleDockPreview,
 		dockIconOnly,

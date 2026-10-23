@@ -3379,6 +3379,8 @@ pub fn trigger_app_scan() {
                                                 hwnd: None,
                                                 executable,
                                                 all_hwnds: None,
+                                                monitor_id: None,
+                                                all_monitors: None,
                                             });
                                         }
                                         ILFree(Some(absolute_pidl as *const _));
@@ -3532,6 +3534,8 @@ fn collect_shortcuts(dir: &std::path::Path, apps: &mut Vec<AppInfo>, depth: i32)
                         hwnd: None,
                         executable,
                         all_hwnds: None,
+                        monitor_id: None,
+                        all_monitors: None,
                     });
                 }
             }
@@ -4161,6 +4165,7 @@ pub unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> B
                         } else {
                             path
                         };
+                        let monitor_id = crate::utils::get_hwnd_monitor_id(hwnd);
                         apps.push(AppInfo {
                             name: final_name,
                             path,
@@ -4169,6 +4174,8 @@ pub unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> B
                             hwnd: Some(hwnd.0 as isize),
                             executable: exe_name,
                             all_hwnds: None,
+                            monitor_id: monitor_id.clone(),
+                            all_monitors: monitor_id.map(|m| vec![m]),
                         });
                     }
                 }
@@ -4184,6 +4191,7 @@ pub unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> B
                 if !apps.iter().any(|a| a.hwnd == Some(hwnd.0 as isize)) {
                     let system_root =
                         std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+                    let monitor_id = crate::utils::get_hwnd_monitor_id(hwnd);
                     apps.push(AppInfo {
                         name: title,
                         path: format!(r"{system_root}\System32\consent.exe"),
@@ -4192,6 +4200,8 @@ pub unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> B
                         hwnd: Some(hwnd.0 as isize),
                         executable: Some("consent.exe".into()),
                         all_hwnds: None,
+                        monitor_id: monitor_id.clone(),
+                        all_monitors: monitor_id.map(|m| vec![m]),
                     });
                 }
             }
