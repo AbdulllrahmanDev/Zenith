@@ -284,11 +284,14 @@ pub fn any_native_taskbar_visible() -> bool {
     use windows::Win32::UI::WindowsAndMessaging::{FindWindowA, IsWindowVisible};
     unsafe {
         let primary = windows::core::PCSTR(c"Shell_TrayWnd".as_ptr() as *const u8);
-        FindWindowA(primary, windows::core::PCSTR::null())
-            .is_ok_and(|hwnd| IsWindowVisible(hwnd).as_bool())
+        let primary_vis = FindWindowA(primary, windows::core::PCSTR::null()).is_ok_and(|hwnd| {
+            IsWindowVisible(hwnd).as_bool() || placed_taskbar_rect(hwnd).is_some()
+        });
+
+        primary_vis
             || secondary_taskbar_windows()
                 .into_iter()
-                .any(|hwnd| IsWindowVisible(hwnd).as_bool())
+                .any(|hwnd| IsWindowVisible(hwnd).as_bool() || placed_taskbar_rect(hwnd).is_some())
     }
 }
 
@@ -523,6 +526,7 @@ pub fn set_taskbar_visibility(visible: bool, always_on_top: bool) -> bool {
                         .is_ok();
                     }
                 }
+                let _ = windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow(tray_hwnd, true);
                 let _ = ShowWindow(tray_hwnd, SW_SHOW);
             } else {
                 if let Ok(mut guard) = ORIGINAL_TRAY_RECT.lock() {
@@ -530,6 +534,7 @@ pub fn set_taskbar_visibility(visible: bool, always_on_top: bool) -> bool {
                         *guard = placed_taskbar_rect(tray_hwnd);
                     }
                 }
+                let _ = windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow(tray_hwnd, false);
                 let _ = ShowWindow(tray_hwnd, SW_HIDE);
                 // Move it far off-screen to prevent any "thin line" artifacts or flashes
                 let _ = SetWindowPos(
@@ -568,8 +573,10 @@ pub fn set_taskbar_visibility(visible: bool, always_on_top: bool) -> bool {
                     )
                     .is_ok();
                 }
+                let _ = windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow(secondary_tray_hwnd, true);
                 let _ = ShowWindow(secondary_tray_hwnd, SW_SHOW);
             } else {
+                let _ = windows::Win32::UI::Input::KeyboardAndMouse::EnableWindow(secondary_tray_hwnd, false);
                 let _ = ShowWindow(secondary_tray_hwnd, SW_HIDE);
                 let _ = SetWindowPos(
                     secondary_tray_hwnd,

@@ -648,7 +648,10 @@ unsafe extern "system" fn taskbar_event_proc(
         let len = windows::Win32::UI::WindowsAndMessaging::GetClassNameA(hwnd, &mut class_name);
         let class_str = std::str::from_utf8(&class_name[..len as usize]).unwrap_or("");
 
-        if class_str == "Shell_TrayWnd" || class_str == "Shell_SecondaryTrayWnd" {
+        if class_str == "Shell_TrayWnd"
+            || class_str == "Shell_SecondaryTrayWnd"
+            || any_native_taskbar_visible()
+        {
             // Taskbar is trying to show or move: slap it back down.
             set_taskbar_visibility(false, false);
         }
