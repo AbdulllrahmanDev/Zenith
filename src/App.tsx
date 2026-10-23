@@ -1516,6 +1516,7 @@ function App() {
 			prev === "music" ||
 			prev === "command-center" ||
 			prev === "calendar" ||
+			prev === "prayer" ||
 			prev === "status" ||
 			prev === "shelf" ||
 			prev === "wifi" ||
@@ -2066,7 +2067,7 @@ function App() {
 	// the clock otherwise. An open notch is left alone.
 	useEffect(() => {
 		if (isOpen || announcementOpenRef.current) return;
-		if ((bloomMode === "status" || bloomMode === "music") && bloomMode !== collapsedMode) {
+		if (bloomMode !== collapsedMode && bloomMode !== "shelf") {
 			setBloomMode(collapsedMode);
 		}
 	}, [collapsedMode, bloomMode, isOpen]);

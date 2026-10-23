@@ -8,8 +8,7 @@ import {
 	MapPin,
 	RotateCcw,
 	Volume2,
-	Square,
-	Sparkles
+	Square
 } from "lucide-react";
 import {
 	usePrayerTimes,
@@ -52,88 +51,81 @@ export const PrayerTimesPanel: React.FC = () => {
 
 	return (
 		<div className="prayer-split-view" onClick={(e) => e.stopPropagation()}>
-			{/* Left Column: 5 Prayers List */}
-			<div className="prayer-list-column">
-				<div className="prayer-hijri-header">
-					<Sparkles size={13} className="prayer-hijri-icon" />
-					<span>
-						{hijri
-							? `${hijri.weekdayAr}، ${hijri.day} ${hijri.monthAr} ${hijri.year} هـ`
-							: "مواقيت الصلاة اليومية"}
-					</span>
-				</div>
-
-				<div className="prayer-items-stack">
-					{PRAYER_ORDER.map((key) => {
-						const IconComp = PRAYER_ICONS[key];
-						const timeVal = timings ? timings[key] : "--:--";
-						const isActive = activePrayer === key;
-						const isNext = nextPrayer?.key === key;
-
-						return (
-							<div
-								key={key}
-								className={`prayer-row ${isActive ? "is-active" : ""} ${isNext ? "is-next" : ""}`}
-							>
-								<div className="prayer-info-side">
-									<div className="prayer-icon-wrapper">
-										<IconComp size={15} strokeWidth={2} />
-									</div>
-									<span className="prayer-name-ar">{PRAYER_NAMES_AR[key]}</span>
-								</div>
-								<span className="prayer-time-val">{timeVal}</span>
-							</div>
-						);
-					})}
-				</div>
-			</div>
-
-			{/* Right Column: Next Prayer & Countdown */}
+			{/* Left Column: Next Prayer Countdown */}
 			<div className="prayer-countdown-column">
-				<div className="prayer-countdown-glow" />
-
-				<div style={{ zIndex: 1, width: "100%" }}>
-					<span className="prayer-next-label">الصلاة القادمة</span>
-					<div className="prayer-next-name">
-						{nextPrayer ? nextPrayer.nameAr : "جاري التحميل..."}
-					</div>
-
-					<div className="prayer-clock-digits">
-						{nextPrayer ? formatRemainingSeconds(nextPrayer.remainingSeconds) : "00:00:00"}
-					</div>
-
-					<div className="prayer-progress-track">
-						<div
-							className="prayer-progress-fill"
-							style={{ width: `${Math.round((nextPrayer?.progress ?? 0) * 100)}%` }}
-						/>
-					</div>
-
-					{isPlayingAthan && (
-						<div className="prayer-athan-active-box">
-							<Volume2 size={14} color="#ef4444" />
-							<span style={{ fontSize: "11px", fontWeight: 600, color: "#fff" }}>
-								أذان {athanPrayerName}
-							</span>
-							<button className="prayer-athan-stop-btn" onClick={stopAthan}>
-								<Square size={10} fill="currentColor" />
-								<span>إيقاف</span>
-							</button>
-						</div>
-					)}
+				<span className="prayer-next-label">الصلاة القادمة</span>
+				<div className="prayer-next-name">
+					{nextPrayer ? nextPrayer.nameAr : "—"}
 				</div>
 
-				<div className="prayer-footer-location" style={{ zIndex: 1 }}>
-					<MapPin size={11} strokeWidth={2} />
-					<span>{city || country ? `${city || "Auto"}, ${country}` : "الموقع التلقائي"}</span>
+				<div className="prayer-clock-digits">
+					{nextPrayer ? formatRemainingSeconds(nextPrayer.remainingSeconds) : "00:00:00"}
+				</div>
+
+				<div className="prayer-progress-track">
+					<div
+						className="prayer-progress-fill"
+						style={{ width: `${Math.round((nextPrayer?.progress ?? 0) * 100)}%` }}
+					/>
+				</div>
+
+				{isPlayingAthan && (
+					<div className="prayer-athan-active-box">
+						<Volume2 size={13} className="prayer-athan-icon" />
+						<span>أذان {athanPrayerName}</span>
+						<button className="prayer-athan-stop-btn" onClick={stopAthan} title="إيقاف الأذان">
+							<Square size={9} fill="currentColor" />
+							<span>إيقاف</span>
+						</button>
+					</div>
+				)}
+
+				<div className="prayer-footer-location">
+					<MapPin size={10} strokeWidth={2} opacity={0.6} />
+					<span className="prayer-location-text">
+						{city || country ? `${city || "Auto"}${country ? ` · ${country}` : ""}` : "تحديد تلقائي"}
+					</span>
 					<button
 						className="prayer-refresh-btn"
 						onClick={() => fetchTimings()}
 						title="تحديث المواقيت"
 						disabled={loading}
 					>
-						<RotateCcw size={11} className={loading ? "animate-spin" : ""} />
+						<RotateCcw size={10} className={loading ? "animate-spin" : ""} />
 					</button>
+				</div>
+			</div>
+
+			{/* Right Column: 5 Prayers List */}
+			<div className="prayer-list-column">
+				<div className="prayer-date-header">
+					{hijri
+						? `${hijri.weekdayAr}، ${hijri.day} ${hijri.monthAr} ${hijri.year} هـ`
+						: "مواقيت الصلاة"}
+				</div>
+
+				<div className="prayer-items-stack">
+					{PRAYER_ORDER.map((key) => {
+						const IconComp = PRAYER_ICONS[key];
+						const timeVal = timings ? timings[key] : "--:--";
+						const isNext = nextPrayer?.key === key;
+						const isActive = activePrayer === key;
+
+						return (
+							<div
+								key={key}
+								className={`prayer-row ${isNext ? "is-next" : ""} ${isActive ? "is-active" : ""}`}
+							>
+								<div className="prayer-info-side">
+									<span className="prayer-icon-wrapper">
+										<IconComp size={13} strokeWidth={2} />
+									</span>
+									<span className="prayer-name-ar">{PRAYER_NAMES_AR[key]}</span>
+								</div>
+								<span className="prayer-time-val">{timeVal}</span>
+							</div>
+						);
+					})}
 				</div>
 			</div>
 		</div>
