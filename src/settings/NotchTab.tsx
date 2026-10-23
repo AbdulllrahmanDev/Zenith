@@ -225,9 +225,9 @@ export function NotchTab({
 					localStorage.setItem("bloom-prayer-lat", String(latitude));
 					localStorage.setItem("bloom-prayer-lon", String(longitude));
 					window.dispatchEvent(new Event("storage"));
-					setGpsStatusMsg(`📍 Location acquired: ${label}`);
+					setGpsStatusMsg(`Location acquired: ${label}`);
 				} catch {
-					setGpsStatusMsg(`📍 Coordinates acquired: ${latitude.toFixed(2)}°, ${longitude.toFixed(2)}°`);
+					setGpsStatusMsg(`Coordinates acquired: ${latitude.toFixed(2)}°, ${longitude.toFixed(2)}°`);
 				} finally {
 					setDetectingGps(false);
 				}
@@ -235,9 +235,9 @@ export function NotchTab({
 			(err) => {
 				setDetectingGps(false);
 				if (err.code === 1) {
-					setGpsStatusMsg("⚠️ Windows location permission is disabled. Falling back to IP-based detection.");
+					setGpsStatusMsg("Windows location permission is disabled. Falling back to IP-based detection.");
 				} else {
-					setGpsStatusMsg("⚠️ Could not retrieve GPS location. Falling back to IP-based detection.");
+					setGpsStatusMsg("Could not retrieve GPS location. Falling back to IP-based detection.");
 				}
 			},
 			{ enableHighAccuracy: true, timeout: 8000 }
