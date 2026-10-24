@@ -928,7 +928,7 @@ function App() {
 		() => localStorage.getItem("bloom-prayer-enabled") !== "false"
 	);
 	const prayerTimes = usePrayerTimes();
-	const showAthanBanner = settingsPrayerEnabled && prayerTimes.athanBannerVisible;
+	const showAthanBanner = prayerTimes.athanBannerVisible;
 
 	const [notificationsEnabled, setNotificationsEnabled] = useState(
 		() => localStorage.getItem("bloom-notifications-enabled") !== "false"

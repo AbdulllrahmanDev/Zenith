@@ -532,14 +532,37 @@ export function NotchTab({
 					onClick={handleTestNotification}
 				>
 					<button
-						className="action-btn"
-						onClick={handleTestNotification}
+						type="button"
+						className="settings-btn-detect"
+						onClick={(e) => {
+							e.stopPropagation();
+							handleTestNotification();
+						}}
 						style={{
-							background: testNotificationSent ? "#10b981" : undefined,
-							color: testNotificationSent ? "#ffffff" : undefined
+							padding: "5px 12px",
+							background: testNotificationSent ? "rgba(16, 185, 129, 0.2)" : "rgba(255, 255, 255, 0.08)",
+							borderColor: testNotificationSent ? "rgba(16, 185, 129, 0.4)" : "rgba(255, 255, 255, 0.15)",
+							color: testNotificationSent ? "#34d399" : "#ffffff",
+							borderRadius: 6,
+							fontSize: 11,
+							fontWeight: 500,
+							display: "flex",
+							alignItems: "center",
+							gap: 6,
+							transition: "all 0.2s ease"
 						}}
 					>
-						{testNotificationSent ? "Sent!" : "Test Notification"}
+						{testNotificationSent ? (
+							<>
+								<Check size={12} strokeWidth={2.5} />
+								<span>Sent!</span>
+							</>
+						) : (
+							<>
+								<Bell size={12} strokeWidth={2} />
+								<span>Test Notification</span>
+							</>
+						)}
 					</button>
 				</SettingRow>
 			</div>

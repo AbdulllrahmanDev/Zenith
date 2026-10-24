@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { ChevronLeft, Bell, BellOff } from "lucide-react";
+import { ChevronLeft, Bell, BellOff, Check } from "lucide-react";
 import { triggerTestNotification } from "../hooks/usePrayerTimes";
 import "./QuickPanel.css";
 
@@ -124,7 +124,7 @@ export function NotificationPanel({
 						{/* Test Notification Button */}
 						<div style={{ marginTop: 2 }}>
 							<button
-								className="qp-btn primary"
+								className={`qp-btn ${testSent ? "" : "primary"}`}
 								onClick={handleTest}
 								style={{
 									width: "100%",
@@ -134,11 +134,24 @@ export function NotificationPanel({
 									gap: 6,
 									padding: "6px 10px",
 									fontSize: 11,
-									fontWeight: 600
+									fontWeight: 600,
+									background: testSent ? "rgba(16, 185, 129, 0.25)" : undefined,
+									color: testSent ? "#34d399" : undefined,
+									borderColor: testSent ? "rgba(16, 185, 129, 0.4)" : undefined,
+									transition: "all 0.2s ease"
 								}}
 							>
-								<Bell size={13} strokeWidth={2} />
-								<span>{testSent ? "Test Notification Sent!" : "Test Notification"}</span>
+								{testSent ? (
+									<>
+										<Check size={13} strokeWidth={2.5} />
+										<span>Test Notification Sent!</span>
+									</>
+								) : (
+									<>
+										<Bell size={13} strokeWidth={2} />
+										<span>Test Notification</span>
+									</>
+								)}
 							</button>
 						</div>
 					</>

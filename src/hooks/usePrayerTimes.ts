@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { emit, listen } from "@tauri-apps/api/event";
 import { useSettingsSync } from "./useSettingsSync";
 
 export type PrayerKey = "Fajr" | "Dhuhr" | "Asr" | "Maghrib" | "Isha";
@@ -207,11 +208,22 @@ export function usePrayerTimes() {
 				setAthanBannerVisible(true);
 			} else {
 				// Notch notification disabled -> Show in Native Windows Notification
-				if ("Notification" in window && Notification.permission === "granted") {
-					new Notification(`حان الآن موعد صلاة ${prayerName}`, {
-						body: `الله أكبر - حان الآن وقت أذان صلاة ${prayerName}`,
-						icon: "/zenith-white-no-bg-nosmile.svg"
-					});
+				if ("Notification" in window) {
+					if (Notification.permission === "granted") {
+						new Notification(`حان الآن موعد صلاة ${prayerName}`, {
+							body: `الله أكبر - حان الآن وقت أذان صلاة ${prayerName}`,
+							icon: "/zenith-white-no-bg-nosmile.svg"
+						});
+					} else if (Notification.permission !== "denied") {
+						Notification.requestPermission().then((perm) => {
+							if (perm === "granted") {
+								new Notification(`حان الآن موعد صلاة ${prayerName}`, {
+									body: `الله أكبر - حان الآن وقت أذان صلاة ${prayerName}`,
+									icon: "/zenith-white-no-bg-nosmile.svg"
+								});
+							}
+						}).catch(() => {});
+					}
 				}
 			}
 
@@ -453,9 +465,28 @@ export function usePrayerTimes() {
 		};
 		window.addEventListener("zenith-test-athan", handleCustom);
 		window.addEventListener("zenith-test-notification", handleCustom);
+
+		const unlistenTest = listen<{ prayerKey?: PrayerKey; title?: string }>(
+			"zenith-test-notification",
+			(event) => {
+				const key = event.payload?.prayerKey || "Asr";
+				playAthan(event.payload?.title || PRAYER_NAMES_AR[key], key);
+			}
+		);
+
+		const unlistenAthan = listen<{ prayerKey?: PrayerKey; title?: string }>(
+			"zenith-test-athan",
+			(event) => {
+				const key = event.payload?.prayerKey || "Asr";
+				playAthan(event.payload?.title || PRAYER_NAMES_AR[key], key);
+			}
+		);
+
 		return () => {
 			window.removeEventListener("zenith-test-athan", handleCustom);
 			window.removeEventListener("zenith-test-notification", handleCustom);
+			unlistenTest.then((fn) => fn()).catch(() => {});
+			unlistenAthan.then((fn) => fn()).catch(() => {});
 		};
 	}, [playAthan]);
 
@@ -487,8 +518,10 @@ export function usePrayerTimes() {
 
 export function triggerTestAthan(prayerKey: PrayerKey = "Asr") {
 	window.dispatchEvent(new CustomEvent("zenith-test-athan", { detail: { prayerKey } }));
+	emit("zenith-test-athan", { prayerKey }).catch(() => {});
 }
 
 export function triggerTestNotification(prayerKey: PrayerKey = "Asr") {
 	window.dispatchEvent(new CustomEvent("zenith-test-notification", { detail: { prayerKey } }));
+	emit("zenith-test-notification", { prayerKey }).catch(() => {});
 }
