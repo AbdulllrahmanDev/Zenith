@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useSettingsSync } from "./useSettingsSync";
 
 export type PrayerKey = "Fajr" | "Dhuhr" | "Asr" | "Maghrib" | "Isha";
 
@@ -45,6 +46,31 @@ const STORAGE_KEY_HIJRI = "zenith-prayer-hijri-cache";
 // Global audio element reference so audio can be controlled across re-renders
 let activeAthanAudio: HTMLAudioElement | null = null;
 
+export function formatPrayerTime(
+	timeStr: string | undefined | null,
+	is24h: boolean,
+	offsetMinutes = 0
+): string {
+	if (!timeStr || timeStr === "--:--") return "--:--";
+	const clean = timeStr.split(" ")[0];
+	const [hStr, mStr] = clean.split(":");
+	const hours = parseInt(hStr, 10);
+	const minutes = parseInt(mStr, 10);
+	if (isNaN(hours) || isNaN(minutes)) return timeStr;
+
+	const d = new Date();
+	d.setHours(hours, minutes, 0, 0);
+	if (offsetMinutes !== 0) {
+		d.setMinutes(d.getMinutes() + offsetMinutes);
+	}
+
+	return d.toLocaleTimeString([], {
+		hour: "2-digit",
+		minute: "2-digit",
+		hour12: !is24h
+	});
+}
+
 export function usePrayerTimes() {
 	const [enabled, setEnabled] = useState<boolean>(() => {
 		const s = localStorage.getItem("bloom-prayer-enabled");
@@ -67,6 +93,9 @@ export function usePrayerTimes() {
 	const [preAlertEnabled, setPreAlertEnabled] = useState<boolean>(() => {
 		const val = localStorage.getItem("bloom-prayer-pre-alert");
 		return val === null ? true : val !== "false";
+	});
+	const [timeFormat24h, setTimeFormat24h] = useState<boolean>(() => {
+		return localStorage.getItem("bloom-time-format-24h") === "true";
 	});
 
 	const [timings, setTimings] = useState<PrayerTimesData | null>(() => {
@@ -201,7 +230,20 @@ export function usePrayerTimes() {
 		}
 	}, [fetchTimings, timings]);
 
-	// Listen for settings changes from other windows
+	// Centralized Tauri settings sync listener
+	useSettingsSync({
+		"bloom-prayer-enabled": (val) => setEnabled(val !== false && val !== "false"),
+		"bloom-prayer-location-mode": (val) => setLocationMode(val === "manual" ? "manual" : "auto"),
+		"bloom-prayer-city": (val) => setCity(typeof val === "string" ? val : ""),
+		"bloom-prayer-country": (val) => setCountry(typeof val === "string" ? val : ""),
+		"bloom-prayer-method": (val) => setMethod(typeof val === "string" ? val : "5"),
+		"bloom-prayer-time-offset": (val) => setTimeOffset(typeof val === "number" ? val : (parseInt(val, 10) || 0)),
+		"bloom-prayer-alert-type": (val) => setAlertType(typeof val === "string" ? val : "sound_notification"),
+		"bloom-prayer-pre-alert": (val) => setPreAlertEnabled(val !== false && val !== "false"),
+		"bloom-time-format-24h": (val) => setTimeFormat24h(val === true || val === "true")
+	});
+
+	// Storage event fallback
 	useEffect(() => {
 		const handler = () => {
 			const sEnabled = localStorage.getItem("bloom-prayer-enabled");
@@ -216,6 +258,8 @@ export function usePrayerTimes() {
 			setAlertType(localStorage.getItem("bloom-prayer-alert-type") || "sound_notification");
 			const pre = localStorage.getItem("bloom-prayer-pre-alert");
 			setPreAlertEnabled(pre === null ? true : pre !== "false");
+			const tf24 = localStorage.getItem("bloom-time-format-24h");
+			setTimeFormat24h(tf24 === "true");
 		};
 		window.addEventListener("storage", handler);
 		return () => window.removeEventListener("storage", handler);
@@ -308,8 +352,9 @@ export function usePrayerTimes() {
 					lastPreNotifiedPrayerRef.current = todayKey;
 					// Desktop / System Notification
 					if ("Notification" in window && Notification.permission === "granted") {
+						const formattedTime = formatPrayerTime(timings[nextKey], timeFormat24h, timeOffset);
 						new Notification(`اقتربت صلاة ${PRAYER_NAMES_AR[nextKey]}`, {
-							body: `متبقي 15 دقيقة على موعد أذان ${PRAYER_NAMES_AR[nextKey]} (${timings[nextKey]})`,
+							body: `متبقي 15 دقيقة على موعد أذان ${PRAYER_NAMES_AR[nextKey]} (${formattedTime})`,
 							icon: "/zenith-white-no-bg-nosmile.svg"
 						});
 					}
@@ -340,7 +385,7 @@ export function usePrayerTimes() {
 		updateCountdown();
 		const interval = setInterval(updateCountdown, 1000);
 		return () => clearInterval(interval);
-	}, [timings, timeOffset, alertType, preAlertEnabled, playAthan]);
+	}, [timings, timeOffset, alertType, preAlertEnabled, playAthan, timeFormat24h]);
 
 	return {
 		enabled,
@@ -360,6 +405,7 @@ export function usePrayerTimes() {
 		loading,
 		playAthan,
 		stopAthan,
-		fetchTimings
+		fetchTimings,
+		timeFormat24h
 	};
 }

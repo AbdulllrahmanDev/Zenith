@@ -3957,7 +3957,7 @@ function App() {
 											exit={{ opacity: 0, filter: "blur(4px)", transition: { duration: 0.1 } }}
 											transition={{ type: "spring", stiffness: 400, damping: 30 }}
 										>
-											<PrayerTimesPanel />
+											<PrayerTimesPanel timeFormat24h={timeFormat24h} />
 										</motion.div>
 									)}
 								</AnimatePresence>

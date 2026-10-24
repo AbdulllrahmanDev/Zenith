@@ -13,7 +13,8 @@ import {
 import {
 	usePrayerTimes,
 	type PrayerKey,
-	PRAYER_NAMES_AR
+	PRAYER_NAMES_AR,
+	formatPrayerTime
 } from "../hooks/usePrayerTimes";
 import "./PrayerTimesPanel.css";
 
@@ -34,7 +35,13 @@ function formatRemainingSeconds(secs: number): string {
 	return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
-export const PrayerTimesPanel: React.FC = () => {
+export interface PrayerTimesPanelProps {
+	timeFormat24h?: boolean;
+}
+
+export const PrayerTimesPanel: React.FC<PrayerTimesPanelProps> = ({
+	timeFormat24h: propTimeFormat24h
+}) => {
 	const {
 		timings,
 		hijri,
@@ -46,8 +53,12 @@ export const PrayerTimesPanel: React.FC = () => {
 		stopAthan,
 		fetchTimings,
 		city,
-		country
+		country,
+		timeOffset,
+		timeFormat24h: hookTimeFormat24h
 	} = usePrayerTimes();
+
+	const is24h = propTimeFormat24h ?? hookTimeFormat24h;
 
 	return (
 		<div className="prayer-split-view" onClick={(e) => e.stopPropagation()}>
@@ -107,7 +118,7 @@ export const PrayerTimesPanel: React.FC = () => {
 				<div className="prayer-items-stack">
 					{PRAYER_ORDER.map((key) => {
 						const IconComp = PRAYER_ICONS[key];
-						const timeVal = timings ? timings[key] : "--:--";
+						const timeVal = timings ? formatPrayerTime(timings[key], is24h, timeOffset) : "--:--";
 						const isNext = nextPrayer?.key === key;
 						const isActive = activePrayer === key;
 

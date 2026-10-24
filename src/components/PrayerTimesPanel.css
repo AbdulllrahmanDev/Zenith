@@ -257,11 +257,12 @@
 }
 
 .prayer-time-val {
-	font-size: 12px;
+	font-size: 11.5px;
 	font-weight: 500;
 	font-variant-numeric: tabular-nums;
 	color: rgba(255, 255, 255, 0.65);
 	direction: ltr;
+	white-space: nowrap;
 }
 
 .prayer-row.is-next .prayer-time-val {
