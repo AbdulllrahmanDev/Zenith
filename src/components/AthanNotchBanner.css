@@ -1,4 +1,4 @@
-/* Athan Notch Popup Banner - Integrated Zenith Notch Experience */
+/* Athan Notch Dynamic Island & Alert Banner */
 
 .athan-banner-wrapper {
 	position: absolute;
@@ -12,17 +12,131 @@
 	overflow: hidden;
 	z-index: 10;
 	border-radius: inherit;
-	background: var(--bloom-bg, rgba(18, 18, 20, 0.92));
+	background: var(--bloom-bg, rgba(18, 18, 20, 0.95));
 	backdrop-filter: blur(28px);
 	-webkit-backdrop-filter: blur(28px);
+	transition: background 0.2s ease;
 }
+
+/* ==========================================================================
+   1. COLLAPSED COMPACT DYNAMIC ISLAND PILL
+   ========================================================================== */
+
+.athan-compact-pill {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 10px;
+	box-sizing: border-box;
+	direction: ltr; /* LTR with left=waves, right=image */
+	cursor: pointer;
+	user-select: none;
+}
+
+/* Left side: Audio visualizer motion effects */
+.athan-compact-waves {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	height: 16px;
+	width: 24px;
+	justify-content: flex-start;
+}
+
+.compact-wave-bar {
+	width: 2.5px;
+	height: 4px;
+	border-radius: 999px;
+	background: #38bdf8;
+	opacity: 0.85;
+	transition: height 0.2s ease, opacity 0.2s ease;
+}
+
+.athan-compact-waves.is-playing .compact-wave-bar {
+	animation: athanCompactWaveBounce ease-in-out infinite alternate;
+}
+
+.athan-compact-waves.is-paused .compact-wave-bar {
+	height: 3px !important;
+	opacity: 0.35;
+}
+
+.compact-wave-bar.bar-1 { animation-duration: 0.4s; height: 6px; }
+.compact-wave-bar.bar-2 { animation-duration: 0.65s; height: 13px; }
+.compact-wave-bar.bar-3 { animation-duration: 0.35s; height: 16px; }
+.compact-wave-bar.bar-4 { animation-duration: 0.55s; height: 10px; }
+.compact-wave-bar.bar-5 { animation-duration: 0.45s; height: 7px; }
+
+@keyframes athanCompactWaveBounce {
+	0% {
+		height: 3px;
+		opacity: 0.4;
+	}
+	100% {
+		height: 16px;
+		opacity: 1;
+	}
+}
+
+/* Center: Prayer title & time */
+.athan-compact-center {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	direction: rtl;
+	text-align: center;
+	min-width: 0;
+	flex: 1;
+	justify-content: center;
+}
+
+.athan-compact-title {
+	font-size: 11.5px;
+	font-weight: 600;
+	color: #ffffff;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.athan-compact-time {
+	font-size: 10.5px;
+	font-weight: 500;
+	color: rgba(255, 255, 255, 0.65);
+	font-variant-numeric: tabular-nums;
+	direction: ltr;
+}
+
+/* Right side: Mosque image thumbnail */
+.athan-compact-image-wrap {
+	width: 24px;
+	height: 24px;
+	border-radius: 7px;
+	overflow: hidden;
+	flex-shrink: 0;
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.athan-compact-image {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+	display: block;
+}
+
+/* ==========================================================================
+   2. EXPANDED CLEAN MINIMAL ATHAN CARD
+   ========================================================================== */
 
 .athan-banner-container {
 	position: relative;
 	width: 100%;
 	height: 100%;
 	box-sizing: border-box;
-	padding: 10px 14px;
+	padding: 12px 14px;
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
@@ -81,34 +195,30 @@
 	box-sizing: border-box;
 }
 
-.athan-badge {
+.athan-header-meta {
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
 	align-self: flex-start;
-	background: rgba(245, 158, 11, 0.14);
-	border: 1px solid rgba(245, 158, 11, 0.32);
-	padding: 2.5px 8px;
-	border-radius: 999px;
-	color: #fbbf24;
-	font-size: 10px;
-	font-weight: 600;
-	letter-spacing: 0.2px;
+	color: rgba(255, 255, 255, 0.65);
+	font-size: 11px;
+	font-weight: 500;
+	letter-spacing: 0.1px;
 }
 
 .athan-pulse-dot {
 	width: 6px;
 	height: 6px;
 	border-radius: 999px;
-	background: #fbbf24;
-	box-shadow: 0 0 8px rgba(251, 191, 36, 0.8);
-	animation: athanDotPulse 1.6s infinite ease-in-out;
+	background: #38bdf8;
+	box-shadow: 0 0 8px rgba(56, 189, 248, 0.7);
+	animation: athanDotPulse 1.8s infinite ease-in-out;
 }
 
 @keyframes athanDotPulse {
 	0%, 100% {
 		transform: scale(0.9);
-		opacity: 0.7;
+		opacity: 0.6;
 	}
 	50% {
 		transform: scale(1.3);
@@ -116,15 +226,16 @@
 	}
 }
 
-.athan-badge-icon {
-	color: #fbbf24;
+.athan-header-text {
+	font-size: 10.5px;
+	color: rgba(255, 255, 255, 0.7);
 }
 
 .athan-title-row {
 	display: flex;
 	align-items: baseline;
-	gap: 10px;
-	margin: 4px 0 2px;
+	gap: 8px;
+	margin: 2px 0;
 }
 
 .athan-prayer-name {
@@ -133,47 +244,48 @@
 	color: #ffffff;
 	margin: 0;
 	line-height: 1.15;
-	text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
 }
 
-.athan-time-chip {
+/* Inline Time (no box/borders) */
+.athan-time-inline {
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;
-	padding: 2px 7px;
-	background: rgba(255, 255, 255, 0.08);
-	border-radius: 6px;
-	font-size: 11px;
-	font-weight: 600;
-	color: rgba(255, 255, 255, 0.85);
+	font-size: 12px;
+	font-weight: 500;
+	color: rgba(255, 255, 255, 0.55);
 	font-variant-numeric: tabular-nums;
 	direction: ltr;
+}
+
+.athan-time-icon {
+	opacity: 0.5;
 }
 
 .athan-reminder-box {
 	display: flex;
 	align-items: stretch;
 	gap: 8px;
-	background: rgba(255, 255, 255, 0.04);
-	border: 1px solid rgba(255, 255, 255, 0.06);
+	background: rgba(255, 255, 255, 0.03);
+	border: 1px solid rgba(255, 255, 255, 0.05);
 	border-radius: 8px;
-	padding: 6px 9px;
+	padding: 5px 8px;
 	margin-top: 2px;
 	box-sizing: border-box;
 }
 
 .athan-reminder-quote-bar {
-	width: 3px;
+	width: 2.5px;
 	border-radius: 999px;
-	background: linear-gradient(180deg, #f59e0b, #d97706);
+	background: rgba(255, 255, 255, 0.2);
 	flex-shrink: 0;
 }
 
 .athan-reminder-text {
 	margin: 0;
 	font-size: 10.5px;
-	line-height: 1.45;
-	color: rgba(255, 255, 255, 0.82);
+	line-height: 1.4;
+	color: rgba(255, 255, 255, 0.75);
 	font-weight: 400;
 	display: -webkit-box;
 	line-clamp: 3;
@@ -185,7 +297,7 @@
 /* Side 2: Mosque Image & Audio Waveform */
 .athan-side-media {
 	flex: 0.95;
-	min-width: 155px;
+	min-width: 150px;
 	display: flex;
 	flex-direction: column;
 	justify-content: space-between;
@@ -196,11 +308,11 @@
 .athan-mosque-card {
 	position: relative;
 	width: 100%;
-	height: 88px;
-	border-radius: 10px;
+	height: 82px;
+	border-radius: 9px;
 	overflow: hidden;
 	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
-	border: 1px solid rgba(255, 255, 255, 0.12);
+	border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .athan-mosque-image {
@@ -209,24 +321,22 @@
 	object-fit: cover;
 	display: block;
 	transform: scale(1.02);
-	transition: transform 0.4s ease;
 }
 
 .athan-mosque-overlay {
 	position: absolute;
 	inset: 0;
-	background: linear-gradient(180deg, rgba(0, 0, 0, 0) 35%, rgba(0, 0, 0, 0.85) 100%);
+	background: linear-gradient(180deg, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0.8) 100%);
 	display: flex;
 	align-items: flex-end;
-	padding: 5px 8px;
+	padding: 4px 7px;
 	box-sizing: border-box;
 }
 
 .athan-mosque-title {
-	font-size: 9.5px;
-	font-weight: 600;
-	color: rgba(255, 255, 255, 0.95);
-	text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+	font-size: 9px;
+	font-weight: 500;
+	color: rgba(255, 255, 255, 0.9);
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -238,7 +348,7 @@
 	align-items: center;
 	justify-content: space-between;
 	gap: 6px;
-	margin-top: 6px;
+	margin-top: 4px;
 }
 
 /* Audio Waveform Visualizer */
@@ -246,20 +356,21 @@
 	display: flex;
 	align-items: center;
 	gap: 2.5px;
-	height: 18px;
-	padding: 0 4px;
+	height: 16px;
+	padding: 0 2px;
 }
 
 .wave-bar {
 	width: 2.5px;
-	height: 5px;
+	height: 4px;
 	border-radius: 999px;
-	background: linear-gradient(180deg, #fbbf24, #f59e0b);
+	background: #38bdf8;
+	opacity: 0.85;
 	transition: height 0.2s ease, opacity 0.2s ease;
 }
 
 .athan-audio-waves.is-playing .wave-bar {
-	animation: athanWaveBounce ease-in-out infinite alternate;
+	animation: athanExpandedWaveBounce ease-in-out infinite alternate;
 }
 
 .athan-audio-waves.is-paused .wave-bar {
@@ -267,22 +378,21 @@
 	opacity: 0.35;
 }
 
-.wave-bar.bar-1 { animation-duration: 0.42s; height: 7px; }
-.wave-bar.bar-2 { animation-duration: 0.65s; height: 14px; }
-.wave-bar.bar-3 { animation-duration: 0.35s; height: 18px; }
-.wave-bar.bar-4 { animation-duration: 0.58s; height: 10px; }
-.wave-bar.bar-5 { animation-duration: 0.48s; height: 16px; }
-.wave-bar.bar-6 { animation-duration: 0.72s; height: 12px; }
-.wave-bar.bar-7 { animation-duration: 0.39s; height: 15px; }
-.wave-bar.bar-8 { animation-duration: 0.52s; height: 8px; }
+.wave-bar.bar-1 { animation-duration: 0.42s; height: 6px; }
+.wave-bar.bar-2 { animation-duration: 0.65s; height: 13px; }
+.wave-bar.bar-3 { animation-duration: 0.35s; height: 16px; }
+.wave-bar.bar-4 { animation-duration: 0.58s; height: 9px; }
+.wave-bar.bar-5 { animation-duration: 0.48s; height: 14px; }
+.wave-bar.bar-6 { animation-duration: 0.72s; height: 11px; }
+.wave-bar.bar-7 { animation-duration: 0.39s; height: 8px; }
 
-@keyframes athanWaveBounce {
+@keyframes athanExpandedWaveBounce {
 	0% {
 		height: 3px;
 		opacity: 0.4;
 	}
 	100% {
-		height: 18px;
+		height: 16px;
 		opacity: 1;
 	}
 }
@@ -292,24 +402,25 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;
-	background: rgba(239, 68, 68, 0.16);
-	border: 1px solid rgba(239, 68, 68, 0.32);
-	color: #fca5a5;
-	padding: 3px 9px;
+	background: rgba(255, 255, 255, 0.08);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	color: rgba(255, 255, 255, 0.85);
+	padding: 3px 8px;
 	border-radius: 6px;
 	font-size: 10px;
-	font-weight: 600;
+	font-weight: 500;
 	cursor: pointer;
-	transition: background 0.15s ease, transform 0.1s ease;
+	transition: background 0.15s ease, color 0.15s ease;
 }
 
 .athan-stop-audio-btn:hover {
-	background: rgba(239, 68, 68, 0.28);
+	background: rgba(239, 68, 68, 0.25);
+	border-color: rgba(239, 68, 68, 0.4);
 	color: #ffffff;
 }
 
 .athan-stop-audio-btn:active {
-	transform: scale(0.96);
+	transform: scale(0.97);
 }
 
 .athan-audio-ended-badge {

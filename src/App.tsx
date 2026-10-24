@@ -40,6 +40,7 @@ import { WifiPanel } from "./components/WifiPanel";
 import { BluetoothPanel } from "./components/BluetoothPanel";
 import { PrayerTimesPanel } from "./components/PrayerTimesPanel";
 import { AthanNotchBanner } from "./components/AthanNotchBanner";
+import { NotificationPanel } from "./components/NotificationPanel";
 import { usePrayerTimes, formatPrayerTime } from "./hooks/usePrayerTimes";
 import {
 	Cpu,
@@ -441,7 +442,8 @@ type BloomMode =
 	| "status"
 	| "shelf"
 	| "wifi"
-	| "bluetooth";
+	| "bluetooth"
+	| "notifications";
 
 // The shelf is a short-lived stash: one row, newest first, oldest evicted.
 const SHELF_MAX_ITEMS = 10;
@@ -927,6 +929,38 @@ function App() {
 	);
 	const prayerTimes = usePrayerTimes();
 	const showAthanBanner = settingsPrayerEnabled && prayerTimes.athanBannerVisible;
+
+	const [notificationsEnabled, setNotificationsEnabled] = useState(
+		() => localStorage.getItem("bloom-notifications-enabled") !== "false"
+	);
+	const [notificationsSilent, setNotificationsSilent] = useState(
+		() => localStorage.getItem("bloom-notifications-silent") === "true"
+	);
+	const [notificationsNotchEnabled, setNotificationsNotchEnabled] = useState(
+		() => localStorage.getItem("bloom-notifications-notch-enabled") !== "false"
+	);
+
+	const toggleNotificationsSetting = () => {
+		const next = !notificationsEnabled;
+		setNotificationsEnabled(next);
+		localStorage.setItem("bloom-notifications-enabled", String(next));
+		invoke("save_setting", { key: "bloom-notifications-enabled", value: String(next) }).catch(console.error);
+	};
+
+	const toggleNotificationsSilentSetting = () => {
+		const next = !notificationsSilent;
+		setNotificationsSilent(next);
+		localStorage.setItem("bloom-notifications-silent", String(next));
+		invoke("save_setting", { key: "bloom-notifications-silent", value: String(next) }).catch(console.error);
+	};
+
+	const toggleNotificationsNotchSetting = () => {
+		const next = !notificationsNotchEnabled;
+		setNotificationsNotchEnabled(next);
+		localStorage.setItem("bloom-notifications-notch-enabled", String(next));
+		invoke("save_setting", { key: "bloom-notifications-notch-enabled", value: String(next) }).catch(console.error);
+	};
+
 	const [settingsTimerSoundEnabled, setSettingsTimerSoundEnabled] = useState(
 		() => localStorage.getItem("bloom-timer-sound-enabled") !== "false"
 	);
@@ -1132,6 +1166,9 @@ function App() {
 			"bloom-weather-enabled": setSettingsWeatherEnabled,
 			"bloom-calendar-enabled": setSettingsCalendarEnabled,
 			"bloom-prayer-enabled": setSettingsPrayerEnabled,
+			"bloom-notifications-enabled": (v: unknown) => setNotificationsEnabled(v !== "false"),
+			"bloom-notifications-silent": (v: unknown) => setNotificationsSilent(v === "true"),
+			"bloom-notifications-notch-enabled": (v: unknown) => setNotificationsNotchEnabled(v !== "false"),
 			"bloom-timer-sound-enabled": setSettingsTimerSoundEnabled,
 			"bloom-music-mode-enabled": setSettingsMusicModeEnabled,
 			"bloom-notch-remember-panel": setRememberPanelEnabled,
@@ -2747,13 +2784,13 @@ function App() {
 
 	// Calculate width dynamically based on enabled features
 	const getDynamicWidth = () => {
-		if (showAthanBanner) return 480;
+		if (showAthanBanner) return isOpen ? 480 : 230;
 		if (bloomMode === "announcement" && announcement && !announcementDismissed) return 380;
 		if (isCalendarMode) return 480;
 		if (bloomMode === "prayer" && isOpen) return 480;
 		if (bloomMode === "shelf") return 380;
 		if (bloomMode === "command-center" && isOpen) return 350;
-		if (bloomMode === "wifi" || bloomMode === "bluetooth") return 350;
+		if (bloomMode === "wifi" || bloomMode === "bluetooth" || bloomMode === "notifications") return 350;
 		if (showMusicOnStatusHover) {
 			return 170 + (settingsVisualizerEnabled ? 30 : 0);
 		}
@@ -2774,7 +2811,7 @@ function App() {
 	};
 
 	const getDynamicHeight = () => {
-		if (showAthanBanner) return 164;
+		if (showAthanBanner) return isOpen ? 148 : (isImpacted ? 28.9 : 44.2);
 		if (!isExpanded || !isVisible || isHidden) {
 			return isImpacted ? 28.9 : 44.2;
 		}
@@ -2794,6 +2831,7 @@ function App() {
 		}
 		if (bloomMode === "command-center") return isOpen ? 230 : 36;
 		if (bloomMode === "wifi" || bloomMode === "bluetooth") return 300;
+		if (bloomMode === "notifications") return 240;
 		if (bloomMode === "status") return 36;
 		if (isMusicMode && isOpen) {
 			const hasProgressBar = (mediaInfo.duration_ms ?? 0) > 0;
@@ -2906,8 +2944,8 @@ function App() {
 						scaleY: 1,
 						borderTopLeftRadius: isImpacted ? 0 : 18,
 						borderTopRightRadius: isImpacted ? 0 : 18,
-						borderBottomLeftRadius: (isCalendarMode || bloomMode === "prayer" || showAthanBanner) ? 28 : 18,
-						borderBottomRightRadius: (isCalendarMode || bloomMode === "prayer" || showAthanBanner) ? 28 : 18,
+						borderBottomLeftRadius: (isCalendarMode || bloomMode === "prayer" || (showAthanBanner && isOpen)) ? 28 : 18,
+						borderBottomRightRadius: (isCalendarMode || bloomMode === "prayer" || (showAthanBanner && isOpen)) ? 28 : 18,
 						filter: isVisible ? "blur(0px)" : "blur(8px)",
 						pointerEvents: isVisible ? "auto" : "none"
 					}}
@@ -2983,13 +3021,18 @@ function App() {
 									{showAthanBanner && (
 										<motion.div
 											key="athan-notch-banner"
-											className="athan-banner-wrapper"
-											initial={{ opacity: 0, y: -8, scale: 0.98 }}
-											animate={{ opacity: 1, y: 0, scale: 1 }}
-											exit={{ opacity: 0, y: -8, scale: 0.98, transition: { duration: 0.15 } }}
+											className={`athan-banner-wrapper ${isOpen ? "is-expanded" : "is-collapsed"}`}
+											initial={{ opacity: 0, scale: 0.96 }}
+											animate={{ opacity: 1, scale: 1 }}
+											exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.15 } }}
 											transition={{ type: "spring", stiffness: 450, damping: 32 }}
 										>
 											<AthanNotchBanner
+												isExpanded={isOpen}
+												onExpand={() => {
+													setIsOpen(true);
+													openNotch("prayer");
+												}}
 												prayerKey={prayerTimes.athanPrayerKey || prayerTimes.activePrayer || "Asr"}
 												prayerNameAr={prayerTimes.athanPrayerName || "الصلاة"}
 												formattedTime={
@@ -3575,6 +3618,30 @@ function App() {
 									)}
 								</AnimatePresence>
 
+								{/* Notifications Panel, opened from Command Center's Bell button */}
+								<AnimatePresence>
+									{bloomMode === "notifications" && (
+										<motion.div
+											key="notifications-view"
+											initial={{ opacity: 0 }}
+											animate={{ opacity: 1 }}
+											exit={{ opacity: 0, filter: "blur(4px)", transition: { duration: 0.1 } }}
+											transition={{ type: "spring", stiffness: 400, damping: 30 }}
+										>
+											<NotificationPanel
+												onBack={() => setBloomMode("command-center")}
+												openSettingsWindow={openSettingsWindow}
+												notificationsEnabled={notificationsEnabled}
+												onToggleNotifications={toggleNotificationsSetting}
+												notificationsSilent={notificationsSilent}
+												onToggleSilent={toggleNotificationsSilentSetting}
+												notificationsNotchEnabled={notificationsNotchEnabled}
+												onToggleNotchDelivery={toggleNotificationsNotchSetting}
+											/>
+										</motion.div>
+									)}
+								</AnimatePresence>
+
 								{/* Command Center Panel */}
 								<AnimatePresence>
 									{bloomMode === "command-center" && (
@@ -3743,9 +3810,14 @@ function App() {
 													className="cc-circular-btn"
 													onClick={(e) => {
 														e.stopPropagation();
+														setBloomMode("notifications");
+													}}
+													onContextMenu={(e) => {
+														e.preventDefault();
+														e.stopPropagation();
 														invoke("open_notification_center");
 													}}
-													title="Notification Center"
+													title="Notifications: Left-click for Notch panel, Right-click for Windows Action Center"
 												>
 													<BellIcon />
 												</button>

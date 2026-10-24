@@ -57,6 +57,15 @@ export function useSettings() {
 	const [prayerNotchPopup, setPrayerNotchPopup] = useState(
 		() => localStorage.getItem("bloom-prayer-notch-popup") !== "false"
 	);
+	const [notificationsEnabled, setNotificationsEnabled] = useState(
+		() => localStorage.getItem("bloom-notifications-enabled") !== "false"
+	);
+	const [notificationsSilent, setNotificationsSilent] = useState(
+		() => localStorage.getItem("bloom-notifications-silent") === "true"
+	);
+	const [notificationsNotchEnabled, setNotificationsNotchEnabled] = useState(
+		() => localStorage.getItem("bloom-notifications-notch-enabled") !== "false"
+	);
 	const [timerSoundEnabled, setTimerSoundEnabled] = useState(
 		() => localStorage.getItem("bloom-timer-sound-enabled") !== "false"
 	);
@@ -289,6 +298,9 @@ export function useSettings() {
 			apply(getVal("bloom-prayer-alert-type"), setPrayerAlertType, (v) => v);
 			apply(getVal("bloom-prayer-pre-alert"), setPrayerPreAlert, readBool);
 			apply(getVal("bloom-prayer-notch-popup"), setPrayerNotchPopup, readBool);
+			apply(getVal("bloom-notifications-enabled"), setNotificationsEnabled, readBool);
+			apply(getVal("bloom-notifications-silent"), setNotificationsSilent, readBool);
+			apply(getVal("bloom-notifications-notch-enabled"), setNotificationsNotchEnabled, readBool);
 
 			apply(getVal("bloom-theme-mode"), setThemeMode, (v) => v);
 			apply(getVal("bloom-theme-color"), setThemeColor, (v) => v);
@@ -437,6 +449,9 @@ export function useSettings() {
 		"bloom-prayer-alert-type": setPrayerAlertType,
 		"bloom-prayer-pre-alert": setPrayerPreAlert,
 		"bloom-prayer-notch-popup": setPrayerNotchPopup,
+		"bloom-notifications-enabled": setNotificationsEnabled,
+		"bloom-notifications-silent": setNotificationsSilent,
+		"bloom-notifications-notch-enabled": setNotificationsNotchEnabled,
 		"bloom-timer-sound-enabled": setTimerSoundEnabled,
 		"bloom-music-mode-enabled": setMusicModeEnabled,
 		"bloom-notch-remember-panel": setNotchRememberPanel,
@@ -645,6 +660,24 @@ export function useSettings() {
 		const next = !prayerNotchPopup;
 		setPrayerNotchPopup(next);
 		saveSetting("bloom-prayer-notch-popup", String(next));
+	};
+
+	const toggleNotifications = () => {
+		const next = !notificationsEnabled;
+		setNotificationsEnabled(next);
+		saveSetting("bloom-notifications-enabled", String(next));
+	};
+
+	const toggleNotificationsSilent = () => {
+		const next = !notificationsSilent;
+		setNotificationsSilent(next);
+		saveSetting("bloom-notifications-silent", String(next));
+	};
+
+	const toggleNotificationsNotch = () => {
+		const next = !notificationsNotchEnabled;
+		setNotificationsNotchEnabled(next);
+		saveSetting("bloom-notifications-notch-enabled", String(next));
 	};
 
 	const toggleTimerSound = () => {
@@ -1198,6 +1231,14 @@ export function useSettings() {
 		toggleBrightnessOverlay,
 		brightnessEdgeEnabled,
 		toggleBrightnessEdge,
+
+		// Notifications
+		notificationsEnabled,
+		toggleNotifications,
+		notificationsSilent,
+		toggleNotificationsSilent,
+		notificationsNotchEnabled,
+		toggleNotificationsNotch,
 
 		// Updates
 		updateStatus,

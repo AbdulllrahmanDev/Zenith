@@ -4,12 +4,13 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Effect } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { X, Settings, Palette, PanelTop, Monitor, Layers, Info, Megaphone } from "lucide-react";
+import { X, Settings, Palette, PanelTop, Monitor, Layers, Info, Megaphone, Bell } from "lucide-react";
 import {
 	useSettings,
 	GeneralTab,
 	AppearanceTab,
 	NotchTab,
+	NotificationsTab,
 	DockTab,
 	OverlaysTab,
 	AboutTab
@@ -25,6 +26,7 @@ const TABS: { id: SettingsTab; label: string; icon: typeof Settings }[] = [
 	{ id: "general", label: "General", icon: Settings },
 	{ id: "appearance", label: "Appearance", icon: Palette },
 	{ id: "notch", label: "Notch", icon: PanelTop },
+	{ id: "notifications", label: "Notifications", icon: Bell },
 	{ id: "dock", label: "Dock", icon: Monitor },
 	{ id: "overlays", label: "Overlays", icon: Layers },
 	{ id: "about", label: "About", icon: Info }
@@ -219,6 +221,16 @@ function SettingsApp() {
 							handleCityClear={settings.handleCityClear}
 							statusWidgets={settings.statusWidgets}
 							handleWidgetsChange={settings.handleWidgetsChange}
+						/>
+					)}
+					{activeTab === "notifications" && (
+						<NotificationsTab
+							notificationsEnabled={settings.notificationsEnabled}
+							toggleNotifications={settings.toggleNotifications}
+							notificationsSilent={settings.notificationsSilent}
+							toggleNotificationsSilent={settings.toggleNotificationsSilent}
+							notificationsNotchEnabled={settings.notificationsNotchEnabled}
+							toggleNotificationsNotch={settings.toggleNotificationsNotch}
 						/>
 					)}
 					{activeTab === "dock" && (

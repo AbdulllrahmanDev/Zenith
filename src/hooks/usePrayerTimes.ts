@@ -168,30 +168,58 @@ export function usePrayerTimes() {
 		setIsPlayingAthan(false);
 	}, []);
 
-	// Play Athan audio
+	// Start Athan Audio
+	const startAthanAudio = useCallback(() => {
+		stopAthan();
+		try {
+			const audio = new Audio("/sounds/athan.mp3");
+			audio.volume = 0.85;
+			activeAthanAudio = audio;
+			setIsPlayingAthan(true);
+			audio.onended = () => {
+				setIsPlayingAthan(false);
+				activeAthanAudio = null;
+			};
+			audio.play().catch((err) => {
+				console.warn("Autoplay note:", err);
+				setIsPlayingAthan(false);
+			});
+		} catch (e) {
+			console.error("Audio error:", e);
+			setIsPlayingAthan(false);
+		}
+	}, [stopAthan]);
+
+	// Play Athan alert respecting notification settings
 	const playAthan = useCallback(
 		(prayerTitle?: string, key?: PrayerKey) => {
-			stopAthan();
-			try {
-				const audio = new Audio("/sounds/athan.mp3");
-				audio.volume = 0.85;
-				activeAthanAudio = audio;
-				setIsPlayingAthan(true);
-				setAthanPrayerName(prayerTitle || (key ? PRAYER_NAMES_AR[key] : "الأذان"));
+			const notifEnabled = localStorage.getItem("bloom-notifications-enabled") !== "false";
+			if (!notifEnabled) return;
+
+			const silent = localStorage.getItem("bloom-notifications-silent") === "true";
+			const notchEnabled = localStorage.getItem("bloom-notifications-notch-enabled") !== "false";
+			const prayerName = prayerTitle || (key ? PRAYER_NAMES_AR[key] : "الأذان");
+
+			if (notchEnabled) {
+				// Show in Notch Dynamic Island - suppresses native Windows notification
+				setAthanPrayerName(prayerName);
 				if (key) setAthanPrayerKey(key);
 				setAthanBannerVisible(true);
-				audio.onended = () => {
-					setIsPlayingAthan(false);
-					activeAthanAudio = null;
-				};
-				audio.play().catch((err) => {
-					console.warn("Autoplay note:", err);
-				});
-			} catch (e) {
-				console.error("Audio error:", e);
+			} else {
+				// Notch notification disabled -> Show in Native Windows Notification
+				if ("Notification" in window && Notification.permission === "granted") {
+					new Notification(`حان الآن موعد صلاة ${prayerName}`, {
+						body: `الله أكبر - حان الآن وقت أذان صلاة ${prayerName}`,
+						icon: "/zenith-white-no-bg-nosmile.svg"
+					});
+				}
+			}
+
+			if (!silent) {
+				startAthanAudio();
 			}
 		},
-		[stopAthan]
+		[startAthanAudio]
 	);
 
 	// Fetch prayer times from Aladhan API with auto IP location fallback
@@ -398,20 +426,7 @@ export function usePrayerTimes() {
 					lastNotifiedPrayerRef.current = todayKey;
 
 					if (alertType !== "off") {
-						if ("Notification" in window && Notification.permission === "granted") {
-							new Notification(`حان الآن موعد صلاة ${PRAYER_NAMES_AR[nextKey]}`, {
-								body: `الله أكبر - حان الآن وقت أذان صلاة ${PRAYER_NAMES_AR[nextKey]}`,
-								icon: "/zenith-white-no-bg-nosmile.svg"
-							});
-						}
-
-						if (alertType === "sound_notification") {
-							playAthan(PRAYER_NAMES_AR[nextKey], nextKey);
-						} else {
-							setAthanPrayerKey(nextKey);
-							setAthanPrayerName(PRAYER_NAMES_AR[nextKey]);
-							setAthanBannerVisible(true);
-						}
+						playAthan(PRAYER_NAMES_AR[nextKey], nextKey);
 					}
 				}
 			}
@@ -429,15 +444,19 @@ export function usePrayerTimes() {
 		}
 	}, []);
 
-	// Listen for test athan events
+	// Listen for test athan / test notification events
 	useEffect(() => {
 		const handleCustom = (e: Event) => {
 			const detail = (e as CustomEvent)?.detail;
 			const key: PrayerKey = detail?.prayerKey || "Asr";
-			playAthan(PRAYER_NAMES_AR[key], key);
+			playAthan(detail?.title || PRAYER_NAMES_AR[key], key);
 		};
 		window.addEventListener("zenith-test-athan", handleCustom);
-		return () => window.removeEventListener("zenith-test-athan", handleCustom);
+		window.addEventListener("zenith-test-notification", handleCustom);
+		return () => {
+			window.removeEventListener("zenith-test-athan", handleCustom);
+			window.removeEventListener("zenith-test-notification", handleCustom);
+		};
 	}, [playAthan]);
 
 	return {
@@ -468,4 +487,8 @@ export function usePrayerTimes() {
 
 export function triggerTestAthan(prayerKey: PrayerKey = "Asr") {
 	window.dispatchEvent(new CustomEvent("zenith-test-athan", { detail: { prayerKey } }));
+}
+
+export function triggerTestNotification(prayerKey: PrayerKey = "Asr") {
+	window.dispatchEvent(new CustomEvent("zenith-test-notification", { detail: { prayerKey } }));
 }

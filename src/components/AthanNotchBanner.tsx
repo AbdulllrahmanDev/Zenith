@@ -1,5 +1,5 @@
 import React from "react";
-import { Volume2, VolumeX, X, Sparkles, Clock } from "lucide-react";
+import { Volume2, VolumeX, X, Clock } from "lucide-react";
 import {
 	type PrayerKey,
 	PRAYER_REMINDERS,
@@ -8,6 +8,8 @@ import {
 import "./AthanNotchBanner.css";
 
 export interface AthanNotchBannerProps {
+	isExpanded: boolean;
+	onExpand: () => void;
 	prayerKey: PrayerKey;
 	prayerNameAr: string;
 	formattedTime: string;
@@ -17,6 +19,8 @@ export interface AthanNotchBannerProps {
 }
 
 export const AthanNotchBanner: React.FC<AthanNotchBannerProps> = ({
+	isExpanded,
+	onExpand,
 	prayerKey,
 	prayerNameAr,
 	formattedTime,
@@ -27,6 +31,43 @@ export const AthanNotchBanner: React.FC<AthanNotchBannerProps> = ({
 	const mosque = PRAYER_MOSQUES[prayerKey] || PRAYER_MOSQUES.Asr;
 	const reminder = PRAYER_REMINDERS[prayerKey] || PRAYER_REMINDERS.Asr;
 
+	// When collapsed: show compact fluid Dynamic Island pill
+	if (!isExpanded) {
+		return (
+			<div
+				className="athan-compact-pill"
+				onClick={onExpand}
+				title="اضغط للتوسيع"
+			>
+				{/* Left side: Sound motion visualizer effects */}
+				<div className={`athan-compact-waves ${isPlaying ? "is-playing" : "is-paused"}`}>
+					<span className="compact-wave-bar bar-1" />
+					<span className="compact-wave-bar bar-2" />
+					<span className="compact-wave-bar bar-3" />
+					<span className="compact-wave-bar bar-4" />
+					<span className="compact-wave-bar bar-5" />
+				</div>
+
+				{/* Center: Prayer title & time */}
+				<div className="athan-compact-center">
+					<span className="athan-compact-title">صلاة {prayerNameAr}</span>
+					<span className="athan-compact-time">{formattedTime}</span>
+				</div>
+
+				{/* Right side: Mosque image thumbnail */}
+				<div className="athan-compact-image-wrap">
+					<img
+						src={mosque.image}
+						alt={mosque.name}
+						className="athan-compact-image"
+						draggable={false}
+					/>
+				</div>
+			</div>
+		);
+	}
+
+	// When expanded: clean, professional, minimal Athan card without star icons or box around time
 	return (
 		<div className="athan-banner-container" onClick={(e) => e.stopPropagation()}>
 			{/* Close Button on top corner */}
@@ -36,22 +77,21 @@ export const AthanNotchBanner: React.FC<AthanNotchBannerProps> = ({
 				title="إغلاق الإشعار"
 				aria-label="إغلاق"
 			>
-				<X size={13} strokeWidth={2.4} />
+				<X size={13} strokeWidth={2.2} />
 			</button>
 
 			<div className="athan-banner-body">
 				{/* Side 1: Prayer Info, Time, and Reminder */}
 				<div className="athan-side-info">
-					<div className="athan-badge">
+					<div className="athan-header-meta">
 						<span className="athan-pulse-dot" />
-						<Sparkles size={11} className="athan-badge-icon" />
-						<span className="athan-badge-text">حان الآن موعد الأذان</span>
+						<span className="athan-header-text">موعد أذان {prayerNameAr}</span>
 					</div>
 
 					<div className="athan-title-row">
 						<h2 className="athan-prayer-name">صلاة {prayerNameAr}</h2>
-						<div className="athan-time-chip">
-							<Clock size={11} strokeWidth={2} />
+						<div className="athan-time-inline">
+							<Clock size={12} strokeWidth={1.8} className="athan-time-icon" />
 							<span>{formattedTime}</span>
 						</div>
 					</div>
@@ -86,7 +126,6 @@ export const AthanNotchBanner: React.FC<AthanNotchBannerProps> = ({
 							<span className="wave-bar bar-5" />
 							<span className="wave-bar bar-6" />
 							<span className="wave-bar bar-7" />
-							<span className="wave-bar bar-8" />
 						</div>
 
 						{isPlaying ? (
@@ -95,7 +134,7 @@ export const AthanNotchBanner: React.FC<AthanNotchBannerProps> = ({
 								onClick={onStopAthan}
 								title="إيقاف صوت الأذان"
 							>
-								<VolumeX size={12} strokeWidth={2.2} />
+								<VolumeX size={12} strokeWidth={2} />
 								<span>إيقاف الأذان</span>
 							</button>
 						) : (
