@@ -256,6 +256,15 @@ fn main() {
                     if let Ok(hwnd) = w.hwnd() {
                         crate::utils::re_assert_topmost(hwnd);
                         crate::utils::set_click_through(hwnd, true);
+                        if label.starts_with("dock") {
+                            if let Ok(mut lock) = DOCK_HWNDS.lock() {
+                                lock.push((label.to_string(), hwnd.0 as isize));
+                            }
+                        } else {
+                            if let Ok(mut lock) = NOTCH_HWNDS.lock() {
+                                lock.push((label.to_string(), hwnd.0 as isize));
+                            }
+                        }
                     }
                 }
             }
@@ -345,6 +354,9 @@ fn main() {
                 // Layered from the start, like the notch and dock (see
                 // set_click_through): the overlay has a window region too.
                 let _ = ov_win.set_ignore_cursor_events(true);
+                if let Ok(hwnd) = ov_win.hwnd() {
+                    OVERLAY_HWND.store(hwnd.0 as isize, Ordering::Relaxed);
+                }
                 let _ = ov_win.show();
                 let _ = ov_win.hide();
                 let overlay_handle = app.handle().clone();

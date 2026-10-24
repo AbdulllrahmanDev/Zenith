@@ -185,7 +185,7 @@
   },
   "bundle": {
     "active": true,
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
     "targets": "all",
     "publisher": "Sehajveer Singh",
     "copyright": "Copyright © 2026 Sehajveer Singh",

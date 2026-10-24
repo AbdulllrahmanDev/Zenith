@@ -2159,15 +2159,26 @@ static MH_DOCK_EDGE_ARMED: AtomicBool = AtomicBool::new(false);
 /// mixer (notch + panel), if it is open. The frontend reports the card in
 /// overlay CSS pixels; scale and monitor offset convert it to virtual-desktop
 /// coordinates.
-fn volume_mixer_physical_rect_for(app: &AppHandle) -> Option<(i32, i32, i32, i32)> {
+fn volume_mixer_physical_rect_for(_app: &AppHandle) -> Option<(i32, i32, i32, i32)> {
     let (x, y, width, height) = (*crate::state::VOLUME_MIXER_RECT.lock().ok()?)?;
-    let ov_win = app.get_webview_window("overlay")?;
-    let monitor = ov_win.primary_monitor().ok().flatten()?;
-    let scale = monitor.scale_factor();
-    let pos = monitor.position();
+    let overlay_hwnd = crate::state::OVERLAY_HWND.load(Ordering::Relaxed);
+    if overlay_hwnd == 0 {
+        return None;
+    }
+    let hwnd = HWND(overlay_hwnd as *mut _);
+    let hmon = unsafe { windows::Win32::Graphics::Gdi::MonitorFromWindow(hwnd, windows::Win32::Graphics::Gdi::MONITOR_DEFAULTTONEAREST) };
+    let mut mon_info = windows::Win32::Graphics::Gdi::MONITORINFO::default();
+    mon_info.cbSize = std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32;
+    let mon_ok = unsafe { windows::Win32::Graphics::Gdi::GetMonitorInfoW(hmon, &mut mon_info) }.as_bool();
+    let (pos_x, pos_y) = if mon_ok {
+        (mon_info.rcMonitor.left, mon_info.rcMonitor.top)
+    } else {
+        (0, 0)
+    };
+    let scale = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd) as f64 / 96.0 };
     Some((
-        pos.x + (x * scale) as i32,
-        pos.y + (y * scale) as i32,
+        pos_x + (x * scale) as i32,
+        pos_y + (y * scale) as i32,
         (width * scale) as i32,
         (height * scale) as i32,
     ))
@@ -2193,15 +2204,17 @@ fn setup_volume_mixer_watchdog(app_handle: AppHandle) {
         if inside {
             continue;
         }
-        let at_left_edge = app_handle
-            .primary_monitor()
-            .ok()
-            .flatten()
-            .is_some_and(|m| {
-                let pos = m.position();
-                let size = m.size();
-                pt.x <= pos.x + 8 && pt.y >= pos.y && pt.y <= pos.y + size.height as i32
-            });
+        let at_left_edge = {
+            let hmon = unsafe { windows::Win32::Graphics::Gdi::MonitorFromPoint(pt, windows::Win32::Graphics::Gdi::MONITOR_DEFAULTTOPRIMARY) };
+            let mut mon_info = windows::Win32::Graphics::Gdi::MONITORINFO::default();
+            mon_info.cbSize = std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32;
+            if unsafe { windows::Win32::Graphics::Gdi::GetMonitorInfoW(hmon, &mut mon_info) }.as_bool() {
+                let rc = mon_info.rcMonitor;
+                pt.x <= rc.left + 8 && pt.y >= rc.top && pt.y <= rc.bottom
+            } else {
+                false
+            }
+        };
         if !at_left_edge && MH_LAST_LEFT_EDGE_HOVER.swap(0, Ordering::Relaxed) != 0 {
             MH_LEFT_EXPIRY_MS.store(0, Ordering::Relaxed);
             let _ = app_handle.emit("volume-edge-hover", false);
@@ -2603,14 +2616,13 @@ fn update_main_interaction(
     if fg_fs {
         MH_TOP_EDGE_ENTER_MS.store(0, Ordering::Relaxed);
         MH_TOP_EDGE_ARMED.store(false, Ordering::Relaxed);
-        for (label, win) in app_handle.webview_windows() {
-            if label == "main" || label.starts_with("main-") {
-                if let Ok(hwnd) = win.hwnd() {
-                    set_click_through(hwnd, true);
-                }
-                let changed = update_cached_notch_hover(&label, false);
+        if let Ok(windows) = crate::state::NOTCH_HWNDS.lock() {
+            for (label, hwnd_val) in windows.iter() {
+                let hwnd = HWND(*hwnd_val as *mut _);
+                set_click_through(hwnd, true);
+                let changed = update_cached_notch_hover(label, false);
                 if changed {
-                    let _ = win.emit("notch-edge-hover", serde_json::json!({
+                    let _ = app_handle.emit_to(label, "notch-edge-hover", serde_json::json!({
                         "target": label,
                         "hovered": false
                     }));
@@ -2633,15 +2645,17 @@ fn update_main_interaction(
     let is_fixed = notch_mode_reserves_work_area(notch_mode.as_deref());
     let notch_visible = NOTCH_IS_VISIBLE.load(Ordering::Relaxed);
 
-    for (label, win) in app_handle.webview_windows() {
-        if label != "main" && !label.starts_with("main-") {
+    let notch_hwnds = match crate::state::NOTCH_HWNDS.lock() {
+        Ok(guard) => guard.clone(),
+        Err(_) => return,
+    };
+
+    for (label, hwnd_val) in notch_hwnds {
+        let hwnd = HWND(hwnd_val as *mut _);
+        if !unsafe { IsWindowVisible(hwnd) }.as_bool() {
             continue;
         }
-        if !win.is_visible().unwrap_or(false) {
-            continue;
-        }
-        let Ok(hwnd) = win.hwnd() else { continue; };
-        let scale = win.scale_factor().unwrap_or(1.0);
+        let scale = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd) as f64 / 96.0 };
 
         let mut win_rect = windows::Win32::Foundation::RECT::default();
         let _ = unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowRect(hwnd, &mut win_rect) };
@@ -2693,12 +2707,12 @@ fn update_main_interaction(
         let is_hovered = in_notch_rect || edge_armed;
         let changed = update_cached_notch_hover(&label, is_hovered);
         if changed {
-            let _ = win.emit("notch-edge-hover", serde_json::json!({
+            let _ = app_handle.emit_to(&label, "notch-edge-hover", serde_json::json!({
                 "target": label,
                 "hovered": is_hovered
             }));
             if !is_hovered {
-                let _ = win.emit("notch-pointer-left", serde_json::json!({
+                let _ = app_handle.emit_to(&label, "notch-pointer-left", serde_json::json!({
                     "target": label
                 }));
             }
@@ -2791,14 +2805,13 @@ fn update_dock_interaction(
     if fg_fs {
         MH_DOCK_EDGE_ENTER_MS.store(0, Ordering::Relaxed);
         MH_DOCK_EDGE_ARMED.store(false, Ordering::Relaxed);
-        for (label, win) in app_handle.webview_windows() {
-            if label == "dock" || label.starts_with("dock-") {
-                if let Ok(hwnd) = win.hwnd() {
-                    set_click_through(hwnd, true);
-                }
-                let changed = update_cached_dock_hover(&label, false);
+        if let Ok(windows) = crate::state::DOCK_HWNDS.lock() {
+            for (label, hwnd_val) in windows.iter() {
+                let hwnd = HWND(*hwnd_val as *mut _);
+                set_click_through(hwnd, true);
+                let changed = update_cached_dock_hover(label, false);
                 if changed {
-                    let _ = win.emit("dock-edge-hover", serde_json::json!({
+                    let _ = app_handle.emit_to(label, "dock-edge-hover", serde_json::json!({
                         "target": label,
                         "hovered": false
                     }));
@@ -2815,15 +2828,17 @@ fn update_dock_interaction(
         None
     };
 
-    for (label, win) in app_handle.webview_windows() {
-        if label != "dock" && !label.starts_with("dock-") {
+    let dock_hwnds = match crate::state::DOCK_HWNDS.lock() {
+        Ok(guard) => guard.clone(),
+        Err(_) => return,
+    };
+
+    for (label, hwnd_val) in dock_hwnds {
+        let hwnd = HWND(hwnd_val as *mut _);
+        if !unsafe { IsWindowVisible(hwnd) }.as_bool() {
             continue;
         }
-        if !win.is_visible().unwrap_or(false) {
-            continue;
-        }
-        let Ok(hwnd) = win.hwnd() else { continue; };
-        let scale = win.scale_factor().unwrap_or(1.0);
+        let scale = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd) as f64 / 96.0 };
 
         let mut win_rect = windows::Win32::Foundation::RECT::default();
         let _ = unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowRect(hwnd, &mut win_rect) };
@@ -2888,7 +2903,7 @@ fn update_dock_interaction(
         let is_hovered = in_dock_bar || (at_bottom_edge && edge_armed);
         let changed = update_cached_dock_hover(&label, is_hovered);
         if changed {
-            let _ = win.emit("dock-edge-hover", serde_json::json!({
+            let _ = app_handle.emit_to(&label, "dock-edge-hover", serde_json::json!({
                 "target": label,
                 "hovered": is_hovered
             }));
