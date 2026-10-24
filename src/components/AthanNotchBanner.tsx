@@ -84,7 +84,6 @@ export const AthanNotchBanner: React.FC<AthanNotchBannerProps> = ({
 				{/* Side 1: Prayer Info, Time, and Reminder */}
 				<div className="athan-side-info">
 					<div className="athan-header-meta">
-						<span className="athan-pulse-dot" />
 						<span className="athan-header-text">موعد أذان {prayerNameAr}</span>
 					</div>
 

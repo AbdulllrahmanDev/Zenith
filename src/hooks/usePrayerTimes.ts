@@ -103,6 +103,38 @@ export function formatPrayerTime(
 	});
 }
 
+export function getCurrentPrayerKey(timings?: PrayerTimesData | null): PrayerKey {
+	const now = new Date();
+	const nowMins = now.getHours() * 60 + now.getMinutes();
+
+	if (timings) {
+		const parseMinutes = (timeStr?: string) => {
+			if (!timeStr) return 0;
+			const clean = timeStr.split(" ")[0];
+			const [h, m] = clean.split(":").map(Number);
+			return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
+		};
+		const fajr = parseMinutes(timings.Fajr);
+		const dhuhr = parseMinutes(timings.Dhuhr);
+		const asr = parseMinutes(timings.Asr);
+		const maghrib = parseMinutes(timings.Maghrib);
+		const isha = parseMinutes(timings.Isha);
+
+		if (nowMins >= isha || nowMins < fajr) return "Isha";
+		if (nowMins >= maghrib) return "Maghrib";
+		if (nowMins >= asr) return "Asr";
+		if (nowMins >= dhuhr) return "Dhuhr";
+		return "Fajr";
+	}
+
+	// Default fallback:
+	if (nowMins >= 1170 || nowMins < 300) return "Isha";
+	if (nowMins >= 1080) return "Maghrib";
+	if (nowMins >= 930) return "Asr";
+	if (nowMins >= 720) return "Dhuhr";
+	return "Fajr";
+}
+
 export function usePrayerTimes() {
 	const [enabled, setEnabled] = useState<boolean>(() => {
 		const s = localStorage.getItem("bloom-prayer-enabled");
@@ -158,6 +190,9 @@ export function usePrayerTimes() {
 
 	const lastNotifiedPrayerRef = useRef<string | null>(null);
 	const lastPreNotifiedPrayerRef = useRef<string | null>(null);
+	const activePrayerRef = useRef<PrayerKey | null>(null);
+	const nextPrayerRef = useRef<NextPrayerInfo | null>(null);
+	const autoDismissTimerRef = useRef<any>(null);
 
 	// Stop any currently playing athan audio
 	const stopAthan = useCallback(() => {
@@ -167,11 +202,20 @@ export function usePrayerTimes() {
 			activeAthanAudio = null;
 		}
 		setIsPlayingAthan(false);
+		if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
+		autoDismissTimerRef.current = setTimeout(() => {
+			setAthanBannerVisible(false);
+		}, 1200);
 	}, []);
 
 	// Start Athan Audio
 	const startAthanAudio = useCallback(() => {
-		stopAthan();
+		if (activeAthanAudio) {
+			activeAthanAudio.pause();
+			activeAthanAudio.currentTime = 0;
+			activeAthanAudio = null;
+		}
+		if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
 		try {
 			const audio = new Audio("/sounds/athan.mp3");
 			audio.volume = 0.85;
@@ -180,16 +224,25 @@ export function usePrayerTimes() {
 			audio.onended = () => {
 				setIsPlayingAthan(false);
 				activeAthanAudio = null;
+				// Auto return notch to normal state 2.5s after audio ends
+				if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
+				autoDismissTimerRef.current = setTimeout(() => {
+					setAthanBannerVisible(false);
+				}, 2500);
 			};
 			audio.play().catch((err) => {
 				console.warn("Autoplay note:", err);
 				setIsPlayingAthan(false);
+				if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
+				autoDismissTimerRef.current = setTimeout(() => {
+					setAthanBannerVisible(false);
+				}, 8000);
 			});
 		} catch (e) {
 			console.error("Audio error:", e);
 			setIsPlayingAthan(false);
 		}
-	}, [stopAthan]);
+	}, []);
 
 	// Play Athan alert respecting notification settings
 	const playAthan = useCallback(
@@ -199,12 +252,21 @@ export function usePrayerTimes() {
 
 			const silent = localStorage.getItem("bloom-notifications-silent") === "true";
 			const notchEnabled = localStorage.getItem("bloom-notifications-notch-enabled") !== "false";
-			const prayerName = prayerTitle || (key ? PRAYER_NAMES_AR[key] : "الأذان");
+
+			// Determine which prayer key to use (resolve current active prayer if not specified)
+			const targetKey: PrayerKey =
+				key ||
+				activePrayerRef.current ||
+				nextPrayerRef.current?.key ||
+				getCurrentPrayerKey(timings);
+			const prayerName = prayerTitle || PRAYER_NAMES_AR[targetKey] || "الصلاة";
+
+			if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
 
 			if (notchEnabled) {
 				// Show in Notch Dynamic Island - suppresses native Windows notification
 				setAthanPrayerName(prayerName);
-				if (key) setAthanPrayerKey(key);
+				setAthanPrayerKey(targetKey);
 				setAthanBannerVisible(true);
 			} else {
 				// Notch notification disabled -> Show in Native Windows Notification
@@ -229,9 +291,14 @@ export function usePrayerTimes() {
 
 			if (!silent) {
 				startAthanAudio();
+			} else {
+				// In silent mode: auto-dismiss after 8 seconds
+				autoDismissTimerRef.current = setTimeout(() => {
+					setAthanBannerVisible(false);
+				}, 8000);
 			}
 		},
-		[startAthanAudio]
+		[startAthanAudio, timings]
 	);
 
 	// Fetch prayer times from Aladhan API with auto IP location fallback
@@ -399,6 +466,7 @@ export function usePrayerTimes() {
 			}
 
 			setActivePrayer(active);
+			activePrayerRef.current = active;
 
 			const diffMs = nextDate.getTime() - now.getTime();
 			const remainingSeconds = Math.max(0, Math.floor(diffMs / 1000));
@@ -406,13 +474,15 @@ export function usePrayerTimes() {
 			const elapsedMs = Math.max(0, now.getTime() - prevDate.getTime());
 			const progress = Math.min(1, Math.max(0, elapsedMs / totalIntervalMs));
 
-			setNextPrayer({
+			const nextInfo: NextPrayerInfo = {
 				key: nextKey,
 				nameAr: PRAYER_NAMES_AR[nextKey],
 				time: timings[nextKey],
 				remainingSeconds,
 				progress
-			});
+			};
+			setNextPrayer(nextInfo);
+			nextPrayerRef.current = nextInfo;
 
 			// --- Alerts & Notifications ---
 			const todayKey = `${now.toDateString()}-${nextKey}`;
@@ -460,7 +530,11 @@ export function usePrayerTimes() {
 	useEffect(() => {
 		const handleCustom = (e: Event) => {
 			const detail = (e as CustomEvent)?.detail;
-			const key: PrayerKey = detail?.prayerKey || "Asr";
+			const key: PrayerKey =
+				detail?.prayerKey ||
+				activePrayerRef.current ||
+				nextPrayerRef.current?.key ||
+				getCurrentPrayerKey(timings);
 			playAthan(detail?.title || PRAYER_NAMES_AR[key], key);
 		};
 		window.addEventListener("zenith-test-athan", handleCustom);
@@ -469,7 +543,11 @@ export function usePrayerTimes() {
 		const unlistenTest = listen<{ prayerKey?: PrayerKey; title?: string }>(
 			"zenith-test-notification",
 			(event) => {
-				const key = event.payload?.prayerKey || "Asr";
+				const key =
+					event.payload?.prayerKey ||
+					activePrayerRef.current ||
+					nextPrayerRef.current?.key ||
+					getCurrentPrayerKey(timings);
 				playAthan(event.payload?.title || PRAYER_NAMES_AR[key], key);
 			}
 		);
@@ -477,7 +555,11 @@ export function usePrayerTimes() {
 		const unlistenAthan = listen<{ prayerKey?: PrayerKey; title?: string }>(
 			"zenith-test-athan",
 			(event) => {
-				const key = event.payload?.prayerKey || "Asr";
+				const key =
+					event.payload?.prayerKey ||
+					activePrayerRef.current ||
+					nextPrayerRef.current?.key ||
+					getCurrentPrayerKey(timings);
 				playAthan(event.payload?.title || PRAYER_NAMES_AR[key], key);
 			}
 		);
@@ -488,7 +570,7 @@ export function usePrayerTimes() {
 			unlistenTest.then((fn) => fn()).catch(() => {});
 			unlistenAthan.then((fn) => fn()).catch(() => {});
 		};
-	}, [playAthan]);
+	}, [playAthan, timings]);
 
 	return {
 		enabled,
@@ -516,12 +598,12 @@ export function usePrayerTimes() {
 	};
 }
 
-export function triggerTestAthan(prayerKey: PrayerKey = "Asr") {
+export function triggerTestAthan(prayerKey?: PrayerKey) {
 	window.dispatchEvent(new CustomEvent("zenith-test-athan", { detail: { prayerKey } }));
 	emit("zenith-test-athan", { prayerKey }).catch(() => {});
 }
 
-export function triggerTestNotification(prayerKey: PrayerKey = "Asr") {
+export function triggerTestNotification(prayerKey?: PrayerKey) {
 	window.dispatchEvent(new CustomEvent("zenith-test-notification", { detail: { prayerKey } }));
 	emit("zenith-test-notification", { prayerKey }).catch(() => {});
 }
