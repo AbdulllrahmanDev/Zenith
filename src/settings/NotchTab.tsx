@@ -20,10 +20,14 @@ import {
 	Building2,
 	Navigation,
 	Compass,
-	RotateCcw
+	RotateCcw,
+	Bell,
+	BellOff,
+	VolumeX,
+	Check
 } from "lucide-react";
 import { useState, useRef } from "react";
-import { triggerTestAthan } from "../hooks/usePrayerTimes";
+import { triggerTestAthan, triggerTestNotification } from "../hooks/usePrayerTimes";
 import { SettingRow } from "./SettingRow";
 import { StatusWidgetConfig } from "../components/StatusWidgetConfig";
 import type { WidgetConfig } from "./types";
@@ -92,6 +96,12 @@ interface NotchTabProps {
 	handleCityClear: () => void;
 	statusWidgets: WidgetConfig;
 	handleWidgetsChange: (config: WidgetConfig) => void;
+	notificationsEnabled: boolean;
+	toggleNotifications: () => void;
+	notificationsSilent: boolean;
+	toggleNotificationsSilent: () => void;
+	notificationsNotchEnabled: boolean;
+	toggleNotificationsNotch: () => void;
 }
 
 export function NotchTab({
@@ -150,8 +160,15 @@ export function NotchTab({
 	selectCity,
 	handleCityClear,
 	statusWidgets,
-	handleWidgetsChange
+	handleWidgetsChange,
+	notificationsEnabled,
+	toggleNotifications,
+	notificationsSilent,
+	toggleNotificationsSilent,
+	notificationsNotchEnabled,
+	toggleNotificationsNotch
 }: NotchTabProps) {
+	const [testNotificationSent, setTestNotificationSent] = useState(false);
 	const [testingAthan, setTestingAthan] = useState(false);
 	const testAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -260,6 +277,12 @@ export function NotchTab({
 			audio.play().catch(() => setTestingAthan(false));
 			setTestingAthan(true);
 		}
+	};
+
+	const handleTestNotification = () => {
+		triggerTestNotification("Asr");
+		setTestNotificationSent(true);
+		setTimeout(() => setTestNotificationSent(false), 3000);
 	};
 	return (
 		<>
@@ -439,6 +462,86 @@ export function NotchTab({
 						</SettingRow>
 					</>
 				)}
+			</div>
+
+			<div className="setting-group-label">Notifications</div>
+			<div className="setting-group">
+				<SettingRow
+					icon={notificationsEnabled ? Bell : BellOff}
+					label="Enable Notifications"
+					desc="Allow Zenith to deliver notifications and alerts"
+				>
+					<label className="toggle-switch">
+						<input
+							type="checkbox"
+							checked={notificationsEnabled}
+							onChange={toggleNotifications}
+						/>
+						<span className="slider"></span>
+					</label>
+				</SettingRow>
+
+				<SettingRow
+					icon={VolumeX}
+					label="Silent Mode"
+					desc="Display visual alerts without playing audio sounds"
+				>
+					<label className="toggle-switch">
+						<input
+							type="checkbox"
+							disabled={!notificationsEnabled}
+							checked={notificationsSilent}
+							onChange={toggleNotificationsSilent}
+						/>
+						<span className="slider"></span>
+					</label>
+				</SettingRow>
+
+				<SettingRow
+					icon={PanelTop}
+					label="Show in Notch"
+					desc={
+						notificationsNotchEnabled
+							? "Alerts display in the Notch Dynamic Island (Windows popups suppressed)"
+							: "Alerts display via native Windows notifications"
+					}
+				>
+					<label className="toggle-switch">
+						<input
+							type="checkbox"
+							disabled={!notificationsEnabled}
+							checked={notificationsNotchEnabled}
+							onChange={toggleNotificationsNotch}
+						/>
+						<span className="slider"></span>
+					</label>
+				</SettingRow>
+
+				<SettingRow
+					icon={testNotificationSent ? Check : BellRing}
+					label="Test Notification"
+					desc={
+						testNotificationSent
+							? "Test notification triggered!"
+							: notificationsNotchEnabled
+							? "Preview alert in the Notch"
+							: "Preview alert in Windows Action Center"
+					}
+					action
+					divider={false}
+					onClick={handleTestNotification}
+				>
+					<button
+						className="action-btn"
+						onClick={handleTestNotification}
+						style={{
+							background: testNotificationSent ? "#10b981" : undefined,
+							color: testNotificationSent ? "#ffffff" : undefined
+						}}
+					>
+						{testNotificationSent ? "Sent!" : "Test Notification"}
+					</button>
+				</SettingRow>
 			</div>
 
 			<div className="setting-group-label">Shelf</div>
