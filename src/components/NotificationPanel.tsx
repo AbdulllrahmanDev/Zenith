@@ -27,7 +27,7 @@ export function NotificationPanel({
 	const [testSent, setTestSent] = useState(false);
 
 	const handleTest = useCallback(() => {
-		triggerTestNotification("Asr");
+		triggerTestNotification();
 		setTestSent(true);
 		setTimeout(() => setTestSent(false), 3000);
 	}, []);

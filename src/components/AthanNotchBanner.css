@@ -28,12 +28,12 @@
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
-	padding: 0 16px; /* Generous padding to clear the 18px curved corners */
+	padding: 0 20px; /* 20px padding to clear the 18px curved corners */
 	box-sizing: border-box;
 	direction: ltr; /* LTR: left=waves, right=image */
 	cursor: pointer;
 	user-select: none;
-	gap: 10px;
+	gap: 12px;
 }
 
 /* Left side: Audio visualizer motion effects */

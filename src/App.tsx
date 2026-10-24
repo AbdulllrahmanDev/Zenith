@@ -41,7 +41,13 @@ import { BluetoothPanel } from "./components/BluetoothPanel";
 import { PrayerTimesPanel } from "./components/PrayerTimesPanel";
 import { AthanNotchBanner } from "./components/AthanNotchBanner";
 import { NotificationPanel } from "./components/NotificationPanel";
-import { usePrayerTimes, formatPrayerTime } from "./hooks/usePrayerTimes";
+import {
+	usePrayerTimes,
+	formatPrayerTime,
+	getCurrentPrayerKey,
+	PRAYER_NAMES_AR,
+	type PrayerKey
+} from "./hooks/usePrayerTimes";
 import {
 	Cpu,
 	MemoryStick,
@@ -927,8 +933,10 @@ function App() {
 	const [settingsPrayerEnabled, setSettingsPrayerEnabled] = useState(
 		() => localStorage.getItem("bloom-prayer-enabled") !== "false"
 	);
-	const prayerTimes = usePrayerTimes();
+	const isMain = windowLabel === "main" || windowLabel === "";
+	const prayerTimes = usePrayerTimes({ isMainWindow: isMain });
 	const showAthanBanner = prayerTimes.athanBannerVisible;
+
 
 	const [notificationsEnabled, setNotificationsEnabled] = useState(
 		() => localStorage.getItem("bloom-notifications-enabled") !== "false"
@@ -2034,6 +2042,15 @@ function App() {
 	restingModeRef.current = collapsedMode;
 	bloomModeRef.current = bloomMode;
 
+	const wasAthanBannerVisibleRef = useRef(false);
+	useEffect(() => {
+		if (wasAthanBannerVisibleRef.current && !showAthanBanner) {
+			setIsOpen(false);
+			setBloomMode(collapsedMode);
+		}
+		wasAthanBannerVisibleRef.current = showAthanBanner;
+	}, [showAthanBanner, collapsedMode]);
+
 	// A click opens the last-used panel when memory is enabled, otherwise the
 	// selected default. The controls panel is always available as a fallback.
 	const openingPanel = (): NotchPanel => {
@@ -2784,7 +2801,7 @@ function App() {
 
 	// Calculate width dynamically based on enabled features
 	const getDynamicWidth = () => {
-		if (showAthanBanner) return isOpen ? 480 : 230;
+		if (showAthanBanner) return isOpen ? 480 : 255;
 		if (bloomMode === "announcement" && announcement && !announcementDismissed) return 380;
 		if (isCalendarMode) return 480;
 		if (bloomMode === "prayer" && isOpen) return 480;
@@ -3027,29 +3044,41 @@ function App() {
 											exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.15 } }}
 											transition={{ type: "spring", stiffness: 450, damping: 32 }}
 										>
-											<AthanNotchBanner
-												isExpanded={isOpen}
-												onExpand={() => {
-													setIsOpen(true);
-													openNotch("prayer");
-												}}
-												prayerKey={prayerTimes.athanPrayerKey || prayerTimes.activePrayer || "Asr"}
-												prayerNameAr={prayerTimes.athanPrayerName || "الصلاة"}
-												formattedTime={
-													prayerTimes.timings
-														? formatPrayerTime(
-																prayerTimes.timings[
-																	prayerTimes.athanPrayerKey || prayerTimes.activePrayer || "Asr"
-																],
-																timeFormat24h,
-																prayerTimes.timeOffset
-														  )
-														: "--:--"
-												}
-												isPlaying={prayerTimes.isPlayingAthan}
-												onStopAthan={prayerTimes.stopAthan}
-												onClose={() => prayerTimes.setAthanBannerVisible(false)}
-											/>
+											{(() => {
+												const athanDisplayKey: PrayerKey =
+													prayerTimes.athanPrayerKey ||
+													prayerTimes.activePrayer ||
+													prayerTimes.nextPrayer?.key ||
+													getCurrentPrayerKey(prayerTimes.timings);
+												const athanDisplayName =
+													prayerTimes.athanPrayerName ||
+													PRAYER_NAMES_AR[athanDisplayKey] ||
+													"العشاء";
+
+												return (
+													<AthanNotchBanner
+														isExpanded={isOpen}
+														onExpand={() => {
+															setIsOpen(true);
+															openNotch("prayer");
+														}}
+														prayerKey={athanDisplayKey}
+														prayerNameAr={athanDisplayName}
+														formattedTime={
+															prayerTimes.timings
+																? formatPrayerTime(
+																		prayerTimes.timings[athanDisplayKey],
+																		timeFormat24h,
+																		prayerTimes.timeOffset
+																  )
+																: "--:--"
+														}
+														isPlaying={prayerTimes.isPlayingAthan}
+														onStopAthan={prayerTimes.stopAthan}
+														onClose={() => prayerTimes.setAthanBannerVisible(false)}
+													/>
+												);
+											})()}
 										</motion.div>
 									)}
 								</AnimatePresence>

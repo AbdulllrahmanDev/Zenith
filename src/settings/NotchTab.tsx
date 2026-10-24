@@ -280,7 +280,7 @@ export function NotchTab({
 	};
 
 	const handleTestNotification = () => {
-		triggerTestNotification("Asr");
+		triggerTestNotification();
 		setTestNotificationSent(true);
 		setTimeout(() => setTestNotificationSent(false), 3000);
 	};

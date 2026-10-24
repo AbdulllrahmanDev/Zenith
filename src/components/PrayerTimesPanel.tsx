@@ -37,14 +37,13 @@ function formatRemainingSeconds(secs: number): string {
 
 export interface PrayerTimesPanelProps {
 	timeFormat24h?: boolean;
-	prayerData?: ReturnType<typeof usePrayerTimes>;
+	prayerData: ReturnType<typeof usePrayerTimes>;
 }
 
 export const PrayerTimesPanel: React.FC<PrayerTimesPanelProps> = ({
 	timeFormat24h: propTimeFormat24h,
 	prayerData
 }) => {
-	const fallbackData = usePrayerTimes();
 	const {
 		timings,
 		hijri,
@@ -59,7 +58,7 @@ export const PrayerTimesPanel: React.FC<PrayerTimesPanelProps> = ({
 		country,
 		timeOffset,
 		timeFormat24h: hookTimeFormat24h
-	} = prayerData || fallbackData;
+	} = prayerData;
 
 	const is24h = propTimeFormat24h ?? hookTimeFormat24h;
 
