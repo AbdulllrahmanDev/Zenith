@@ -39,6 +39,8 @@ import { ShelfTypeIcon } from "./components/ShelfTypeIcon";
 import { WifiPanel } from "./components/WifiPanel";
 import { BluetoothPanel } from "./components/BluetoothPanel";
 import { PrayerTimesPanel } from "./components/PrayerTimesPanel";
+import { AthanNotchBanner } from "./components/AthanNotchBanner";
+import { usePrayerTimes, formatPrayerTime } from "./hooks/usePrayerTimes";
 import {
 	Cpu,
 	MemoryStick,
@@ -923,6 +925,8 @@ function App() {
 	const [settingsPrayerEnabled, setSettingsPrayerEnabled] = useState(
 		() => localStorage.getItem("bloom-prayer-enabled") !== "false"
 	);
+	const prayerTimes = usePrayerTimes();
+	const showAthanBanner = settingsPrayerEnabled && prayerTimes.athanBannerVisible;
 	const [settingsTimerSoundEnabled, setSettingsTimerSoundEnabled] = useState(
 		() => localStorage.getItem("bloom-timer-sound-enabled") !== "false"
 	);
@@ -2743,6 +2747,7 @@ function App() {
 
 	// Calculate width dynamically based on enabled features
 	const getDynamicWidth = () => {
+		if (showAthanBanner) return 480;
 		if (bloomMode === "announcement" && announcement && !announcementDismissed) return 380;
 		if (isCalendarMode) return 480;
 		if (bloomMode === "prayer" && isOpen) return 480;
@@ -2769,6 +2774,7 @@ function App() {
 	};
 
 	const getDynamicHeight = () => {
+		if (showAthanBanner) return 164;
 		if (!isExpanded || !isVisible || isHidden) {
 			return isImpacted ? 28.9 : 44.2;
 		}
@@ -2900,8 +2906,8 @@ function App() {
 						scaleY: 1,
 						borderTopLeftRadius: isImpacted ? 0 : 18,
 						borderTopRightRadius: isImpacted ? 0 : 18,
-						borderBottomLeftRadius: (isCalendarMode || bloomMode === "prayer") ? 28 : 18,
-						borderBottomRightRadius: (isCalendarMode || bloomMode === "prayer") ? 28 : 18,
+						borderBottomLeftRadius: (isCalendarMode || bloomMode === "prayer" || showAthanBanner) ? 28 : 18,
+						borderBottomRightRadius: (isCalendarMode || bloomMode === "prayer" || showAthanBanner) ? 28 : 18,
 						filter: isVisible ? "blur(0px)" : "blur(8px)",
 						pointerEvents: isVisible ? "auto" : "none"
 					}}
@@ -2972,6 +2978,39 @@ function App() {
 									borderRadius: "inherit"
 								}}
 							>
+								{/* Athan Dynamic Island Alert Banner */}
+								<AnimatePresence>
+									{showAthanBanner && (
+										<motion.div
+											key="athan-notch-banner"
+											className="athan-banner-wrapper"
+											initial={{ opacity: 0, y: -8, scale: 0.98 }}
+											animate={{ opacity: 1, y: 0, scale: 1 }}
+											exit={{ opacity: 0, y: -8, scale: 0.98, transition: { duration: 0.15 } }}
+											transition={{ type: "spring", stiffness: 450, damping: 32 }}
+										>
+											<AthanNotchBanner
+												prayerKey={prayerTimes.athanPrayerKey || prayerTimes.activePrayer || "Asr"}
+												prayerNameAr={prayerTimes.athanPrayerName || "الصلاة"}
+												formattedTime={
+													prayerTimes.timings
+														? formatPrayerTime(
+																prayerTimes.timings[
+																	prayerTimes.athanPrayerKey || prayerTimes.activePrayer || "Asr"
+																],
+																timeFormat24h,
+																prayerTimes.timeOffset
+														  )
+														: "--:--"
+												}
+												isPlaying={prayerTimes.isPlayingAthan}
+												onStopAthan={prayerTimes.stopAthan}
+												onClose={() => prayerTimes.setAthanBannerVisible(false)}
+											/>
+										</motion.div>
+									)}
+								</AnimatePresence>
+
 								{/* Faster Waiting Transition Area */}
 								<AnimatePresence mode="wait">
 									{isOpen && isMusicMode && !isCalendarMode ? (
@@ -3957,7 +3996,7 @@ function App() {
 											exit={{ opacity: 0, filter: "blur(4px)", transition: { duration: 0.1 } }}
 											transition={{ type: "spring", stiffness: 400, damping: 30 }}
 										>
-											<PrayerTimesPanel timeFormat24h={timeFormat24h} />
+											<PrayerTimesPanel timeFormat24h={timeFormat24h} prayerData={prayerTimes} />
 										</motion.div>
 									)}
 								</AnimatePresence>

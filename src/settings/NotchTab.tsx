@@ -23,6 +23,7 @@ import {
 	RotateCcw
 } from "lucide-react";
 import { useState, useRef } from "react";
+import { triggerTestAthan } from "../hooks/usePrayerTimes";
 import { SettingRow } from "./SettingRow";
 import { StatusWidgetConfig } from "../components/StatusWidgetConfig";
 import type { WidgetConfig } from "./types";
@@ -252,6 +253,7 @@ export function NotchTab({
 			}
 			setTestingAthan(false);
 		} else {
+			triggerTestAthan("Asr");
 			const audio = new Audio("/sounds/athan.mp3");
 			testAudioRef.current = audio;
 			audio.onended = () => setTestingAthan(false);

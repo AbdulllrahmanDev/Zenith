@@ -37,6 +37,37 @@ export const PRAYER_NAMES_AR: Record<PrayerKey, string> = {
 	Isha: "العشاء"
 };
 
+export const PRAYER_REMINDERS: Record<PrayerKey, string> = {
+	Fajr: "الصلاة خير من النوم.. ركعتا الفجر خير من الدنيا وما فيها، ابدأ يومك بنور الله وتوفيقه.",
+	Dhuhr: "حي على الفلاح.. مشاغل الدنيا تنتظر، ولقاء الله لا ينتظر. قف بين يدي ربك ترتاح نفسك.",
+	Asr: "حافظوا على الصلوات والصلاة الوسطى.. لا تبع آخرتك بلحظة انشغال، كل عمل ينتظر إلا الصلاة.",
+	Maghrib: "أرحنا بها يا بلال.. انقضى نهارك فتوّجه بطاعة ربك، إن الصلاة كانت على المؤمنين كتاباً موقوتاً.",
+	Isha: "ختام يومك نور وبركة.. من صلّى العشاء في جماعة فكأنما قام نصف الليل، لا تؤجل صلاتك."
+};
+
+export const PRAYER_MOSQUES: Record<PrayerKey, { name: string; image: string }> = {
+	Fajr: {
+		name: "المسجد الأقصى المبارك",
+		image: "/images/prayers/fajr.jpg"
+	},
+	Dhuhr: {
+		name: "المسجد النبوي الشريف",
+		image: "/images/prayers/dhuhr.jpg"
+	},
+	Asr: {
+		name: "جامع السلطان أحمد",
+		image: "/images/prayers/asr.jpg"
+	},
+	Maghrib: {
+		name: "جامع الشيخ زايد الكبير",
+		image: "/images/prayers/maghrib.jpg"
+	},
+	Isha: {
+		name: "المسجد الحرام بمكة المكرمة",
+		image: "/images/prayers/isha.jpg"
+	}
+};
+
 const PRAYER_KEYS: readonly PrayerKey[] = ["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"];
 
 const STORAGE_KEY_TIMINGS = "zenith-prayer-timings-cache";
@@ -120,6 +151,8 @@ export function usePrayerTimes() {
 	const [nextPrayer, setNextPrayer] = useState<NextPrayerInfo | null>(null);
 	const [isPlayingAthan, setIsPlayingAthan] = useState(false);
 	const [athanPrayerName, setAthanPrayerName] = useState<string | null>(null);
+	const [athanPrayerKey, setAthanPrayerKey] = useState<PrayerKey | null>(null);
+	const [athanBannerVisible, setAthanBannerVisible] = useState(false);
 	const [loading, setLoading] = useState(false);
 
 	const lastNotifiedPrayerRef = useRef<string | null>(null);
@@ -133,31 +166,29 @@ export function usePrayerTimes() {
 			activeAthanAudio = null;
 		}
 		setIsPlayingAthan(false);
-		setAthanPrayerName(null);
 	}, []);
 
 	// Play Athan audio
 	const playAthan = useCallback(
-		(prayerTitle?: string) => {
+		(prayerTitle?: string, key?: PrayerKey) => {
 			stopAthan();
 			try {
 				const audio = new Audio("/sounds/athan.mp3");
 				audio.volume = 0.85;
 				activeAthanAudio = audio;
 				setIsPlayingAthan(true);
-				setAthanPrayerName(prayerTitle || "الأذان");
+				setAthanPrayerName(prayerTitle || (key ? PRAYER_NAMES_AR[key] : "الأذان"));
+				if (key) setAthanPrayerKey(key);
+				setAthanBannerVisible(true);
 				audio.onended = () => {
 					setIsPlayingAthan(false);
-					setAthanPrayerName(null);
 					activeAthanAudio = null;
 				};
 				audio.play().catch((err) => {
-					console.warn("Failed to autoplay athan:", err);
-					setIsPlayingAthan(false);
+					console.warn("Autoplay note:", err);
 				});
 			} catch (e) {
 				console.error("Audio error:", e);
-				setIsPlayingAthan(false);
 			}
 		},
 		[stopAthan]
@@ -375,7 +406,11 @@ export function usePrayerTimes() {
 						}
 
 						if (alertType === "sound_notification") {
-							playAthan(PRAYER_NAMES_AR[nextKey]);
+							playAthan(PRAYER_NAMES_AR[nextKey], nextKey);
+						} else {
+							setAthanPrayerKey(nextKey);
+							setAthanPrayerName(PRAYER_NAMES_AR[nextKey]);
+							setAthanBannerVisible(true);
 						}
 					}
 				}
@@ -386,6 +421,24 @@ export function usePrayerTimes() {
 		const interval = setInterval(updateCountdown, 1000);
 		return () => clearInterval(interval);
 	}, [timings, timeOffset, alertType, preAlertEnabled, playAthan, timeFormat24h]);
+
+	// Request Notification permission on mount if supported
+	useEffect(() => {
+		if ("Notification" in window && Notification.permission === "default") {
+			Notification.requestPermission().catch(() => {});
+		}
+	}, []);
+
+	// Listen for test athan events
+	useEffect(() => {
+		const handleCustom = (e: Event) => {
+			const detail = (e as CustomEvent)?.detail;
+			const key: PrayerKey = detail?.prayerKey || "Asr";
+			playAthan(PRAYER_NAMES_AR[key], key);
+		};
+		window.addEventListener("zenith-test-athan", handleCustom);
+		return () => window.removeEventListener("zenith-test-athan", handleCustom);
+	}, [playAthan]);
 
 	return {
 		enabled,
@@ -402,10 +455,17 @@ export function usePrayerTimes() {
 		nextPrayer,
 		isPlayingAthan,
 		athanPrayerName,
+		athanPrayerKey,
+		athanBannerVisible,
+		setAthanBannerVisible,
 		loading,
 		playAthan,
 		stopAthan,
 		fetchTimings,
 		timeFormat24h
 	};
+}
+
+export function triggerTestAthan(prayerKey: PrayerKey = "Asr") {
+	window.dispatchEvent(new CustomEvent("zenith-test-athan", { detail: { prayerKey } }));
 }
