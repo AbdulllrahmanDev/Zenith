@@ -54,6 +54,9 @@ export function useSettings() {
 	const [prayerPreAlert, setPrayerPreAlert] = useState(
 		() => localStorage.getItem("bloom-prayer-pre-alert") !== "false"
 	);
+	const [prayerNotchPopup, setPrayerNotchPopup] = useState(
+		() => localStorage.getItem("bloom-prayer-notch-popup") !== "false"
+	);
 	const [timerSoundEnabled, setTimerSoundEnabled] = useState(
 		() => localStorage.getItem("bloom-timer-sound-enabled") !== "false"
 	);
@@ -285,6 +288,7 @@ export function useSettings() {
 			apply(getVal("bloom-prayer-time-offset"), setPrayerTimeOffset, (v) => v);
 			apply(getVal("bloom-prayer-alert-type"), setPrayerAlertType, (v) => v);
 			apply(getVal("bloom-prayer-pre-alert"), setPrayerPreAlert, readBool);
+			apply(getVal("bloom-prayer-notch-popup"), setPrayerNotchPopup, readBool);
 
 			apply(getVal("bloom-theme-mode"), setThemeMode, (v) => v);
 			apply(getVal("bloom-theme-color"), setThemeColor, (v) => v);
@@ -432,6 +436,7 @@ export function useSettings() {
 		"bloom-prayer-time-offset": setPrayerTimeOffset,
 		"bloom-prayer-alert-type": setPrayerAlertType,
 		"bloom-prayer-pre-alert": setPrayerPreAlert,
+		"bloom-prayer-notch-popup": setPrayerNotchPopup,
 		"bloom-timer-sound-enabled": setTimerSoundEnabled,
 		"bloom-music-mode-enabled": setMusicModeEnabled,
 		"bloom-notch-remember-panel": setNotchRememberPanel,
@@ -634,6 +639,12 @@ export function useSettings() {
 		const next = !prayerPreAlert;
 		setPrayerPreAlert(next);
 		saveSetting("bloom-prayer-pre-alert", String(next));
+	};
+
+	const togglePrayerNotchPopup = () => {
+		const next = !prayerNotchPopup;
+		setPrayerNotchPopup(next);
+		saveSetting("bloom-prayer-notch-popup", String(next));
 	};
 
 	const toggleTimerSound = () => {
@@ -1101,6 +1112,8 @@ export function useSettings() {
 		setPrayerAlertTypeValue,
 		prayerPreAlert,
 		togglePrayerPreAlert,
+		prayerNotchPopup,
+		togglePrayerNotchPopup,
 		timerSoundEnabled,
 		toggleTimerSound,
 		musicModeEnabled,
