@@ -2030,9 +2030,9 @@ function App() {
 	const musicActivity =
 		settingsMusicModeEnabled && settingsMusicCompactNotch && mediaInfo.has_media && musicActivityVisible;
 	const collapsedMode = musicActivity && !timerActive ? "music" : "status";
-	const showMusicBubble = musicActivity && timerActive && !isOpen && isVisible && !isHidden;
+	const showMusicBubble = musicActivity && timerActive && !isOpen && isVisible && !isHidden && !showAthanBanner;
 	const showShelfBubble =
-		shelfItems.length > 0 && !isOpen && isVisible && !isHidden && bloomMode !== "announcement";
+		shelfItems.length > 0 && !isOpen && isVisible && !isHidden && bloomMode !== "announcement" && !showAthanBanner;
 	restingModeRef.current = collapsedMode;
 	bloomModeRef.current = bloomMode;
 
@@ -2962,6 +2962,10 @@ function App() {
 					}}
 					onClick={(e) => {
 						e.stopPropagation();
+						if (showAthanBanner) {
+							setIsOpen((prev) => !prev);
+							return;
+						}
 						if (!isOpen) openNotch(openingPanel());
 					}}
 					onHoverStart={() => {
@@ -3595,7 +3599,7 @@ function App() {
 
 								{/* Wi-Fi networks, opened from the controls panel's Wi-Fi tile */}
 								<AnimatePresence>
-									{bloomMode === "wifi" && (
+									{!showAthanBanner && bloomMode === "wifi" && (
 										<motion.div
 											key="wifi-view"
 											initial={{ opacity: 0 }}
@@ -3615,7 +3619,7 @@ function App() {
 
 								{/* Bluetooth devices, opened from the controls panel's Bluetooth tile */}
 								<AnimatePresence>
-									{bloomMode === "bluetooth" && (
+									{!showAthanBanner && bloomMode === "bluetooth" && (
 										<motion.div
 											key="bluetooth-view"
 											initial={{ opacity: 0 }}
@@ -3635,7 +3639,7 @@ function App() {
 
 								{/* Notifications Panel, opened from Command Center's Bell button */}
 								<AnimatePresence>
-									{bloomMode === "notifications" && (
+									{!showAthanBanner && bloomMode === "notifications" && (
 										<motion.div
 											key="notifications-view"
 											initial={{ opacity: 0 }}
@@ -3659,7 +3663,7 @@ function App() {
 
 								{/* Command Center Panel */}
 								<AnimatePresence>
-									{bloomMode === "command-center" && (
+									{!showAthanBanner && bloomMode === "command-center" && (
 										<motion.div
 											className="command-center-content-minimal"
 											onClick={(e) => e.stopPropagation()}
@@ -3920,7 +3924,7 @@ function App() {
 
 								{/* Announcement Card */}
 								<AnimatePresence>
-									{bloomMode === "announcement" && announcement && !announcementDismissed && (
+									{!showAthanBanner && bloomMode === "announcement" && announcement && !announcementDismissed && (
 										<motion.div
 											className={`announcement-content severity-${announcement.severity}`}
 											onClick={(e) => e.stopPropagation()}
@@ -3963,7 +3967,7 @@ function App() {
 
 								{/* Calendar & Timer Split View */}
 								<AnimatePresence>
-									{settingsCalendarEnabled && isCalendarMode && (
+									{!showAthanBanner && settingsCalendarEnabled && isCalendarMode && (
 										<motion.div
 											className="calendar-timer-content split-view"
 											onClick={(e) =>
@@ -4090,7 +4094,7 @@ function App() {
 
 								{/* Shelf Panel */}
 								<AnimatePresence>
-									{bloomMode === "shelf" && (
+									{!showAthanBanner && bloomMode === "shelf" && (
 										<motion.div
 											className="shelf-content"
 											onClick={(e) => e.stopPropagation()}

@@ -40,7 +40,14 @@ export const AthanNotchBanner: React.FC<AthanNotchBannerProps> = ({
 
 	if (!isExpanded) {
 		return (
-			<div className="athan-compact-pill" onClick={onExpand} title="اضغط للتوسيع">
+			<div
+				className="athan-compact-pill"
+				onClick={(e) => {
+					e.stopPropagation();
+					onExpand();
+				}}
+				title="اضغط للتوسيع"
+			>
 				<div className={`athan-compact-waves ${waving ? "is-playing" : "is-paused"}`}>
 					{Array.from({ length: 5 }, (_, i) => (
 						<span key={i} className={`compact-wave-bar bar-${i + 1}`} />
