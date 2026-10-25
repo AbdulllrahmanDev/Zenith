@@ -124,28 +124,6 @@
 	user-select: none;
 }
 
-.athan-banner-close {
-	position: absolute;
-	top: 6px;
-	left: 8px;
-	width: 22px;
-	height: 22px;
-	border-radius: 999px;
-	border: none;
-	background: var(--p-group);
-	color: var(--p-muted);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	cursor: pointer;
-	z-index: 5;
-	transition: background 0.15s ease, color 0.15s ease;
-}
-
-.athan-banner-close:hover {
-	background: var(--p-tint-strong);
-	color: var(--p-text);
-}
 
 .athan-banner-body {
 	display: flex;
@@ -178,13 +156,6 @@
 	color: var(--p-muted);
 }
 
-.athan-pulse-dot {
-	width: 5px;
-	height: 5px;
-	border-radius: 999px;
-	background: var(--p-text);
-	opacity: 0.65;
-}
 
 .athan-title-row {
 	display: flex;
@@ -253,7 +224,7 @@
 .athan-side-media {
 	flex: 0.95;
 	min-width: 150px;
-	padding-top: 16px;
+	padding: 2px 0;
 	display: flex;
 	flex-direction: column;
 	justify-content: space-between;
@@ -264,7 +235,7 @@
 .athan-mosque-card {
 	position: relative;
 	width: 100%;
-	height: 68px;
+	height: 78px;
 	border-radius: 12px;
 	overflow: hidden;
 	color: var(--p-text);
@@ -326,29 +297,28 @@
 	100% { height: 16px; opacity: 1; }
 }
 
-.athan-stop-audio-btn {
+.athan-action-btn {
 	display: inline-flex;
 	align-items: center;
-	gap: 5px;
-	padding: 3px 10px;
-	border-radius: 999px;
-	border: 1px solid var(--p-edge);
-	background: var(--p-tint);
-	color: var(--p-text);
-	font-family: var(--p-display);
-	font-size: 11.5px;
-	font-weight: 600;
-	direction: rtl;
+	justify-content: center;
+	width: 26px;
+	height: 26px;
+	border-radius: 6px;
+	border: none;
+	background: transparent;
+	color: var(--p-muted);
 	cursor: pointer;
-	transition: background 0.15s ease;
+	padding: 0;
+	transition: color 0.15s ease, background 0.15s ease, transform 0.1s ease;
 }
 
-.athan-stop-audio-btn:hover {
-	background: var(--p-tint-strong);
+.athan-action-btn:hover {
+	color: var(--p-text);
+	background: var(--p-tint);
 }
 
-.athan-stop-audio-btn:active {
-	transform: scale(0.97);
+.athan-action-btn:active {
+	transform: scale(0.92);
 }
 
 .athan-audio-ended-badge {
@@ -365,8 +335,7 @@
 
 @media (prefers-reduced-motion: reduce) {
 	.compact-wave-bar,
-	.wave-bar,
-	.athan-pulse-dot {
+	.wave-bar {
 		animation: none !important;
 	}
 }
