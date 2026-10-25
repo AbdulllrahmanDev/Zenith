@@ -10,11 +10,11 @@ import {
 	prayerDate,
 	type PrayerKey
 } from "../utils/prayerSchedule";
-import { GeometricPattern, OrnamentRule, PrayerEmblem, PrayerIcon } from "./prayer/PrayerArt";
+import { PrayerIcon } from "./prayer/PrayerArt";
 import "./prayer/prayer.css";
 import "./PrayerTimesPanel.css";
 
-const RING_RADIUS = 42;
+const RING_RADIUS = 40;
 const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
 
 export interface PrayerTimesPanelProps {
@@ -54,29 +54,23 @@ export const PrayerTimesPanel: React.FC<PrayerTimesPanelProps> = ({
 
 	return (
 		<div className="prayer-split-view" onClick={(e) => e.stopPropagation()}>
-			{/* Countdown to the next prayer */}
+			{/* Left Column: Countdown */}
 			<section className="prayer-countdown-column">
-				<GeometricPattern className="prayer-pattern" />
-
 				<span className="prayer-next-label">{PRAYER_STATUS_AR.nextPrayer}</span>
 
 				<div className="prayer-ring" role="img" aria-label={PRAYER_STATUS_AR.nextPrayer}>
-					<svg className="prayer-ring-svg" viewBox="0 0 104 104" aria-hidden="true" focusable="false">
-						<circle className="prayer-ring-track" cx="52" cy="52" r={RING_RADIUS} />
+					<svg className="prayer-ring-svg" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+						<circle className="prayer-ring-track" cx="50" cy="50" r={RING_RADIUS} />
 						<circle
 							className="prayer-ring-arc"
-							cx="52"
-							cy="52"
+							cx="50"
+							cy="50"
 							r={RING_RADIUS}
 							strokeDasharray={`${(progress * RING_LENGTH).toFixed(2)} ${RING_LENGTH.toFixed(2)}`}
 						/>
 					</svg>
 					<div className="prayer-ring-center">
-						{countdown ? (
-							<PrayerIcon prayer={countdown.key} size={17} className="prayer-ring-icon" />
-						) : (
-							<PrayerEmblem size={19} className="prayer-ring-icon" />
-						)}
+						{countdown && <PrayerIcon prayer={countdown.key} size={16} className="prayer-ring-icon" />}
 						<span className="prayer-clock-digits">
 							{countdown ? formatRemaining(countdown.remainingSeconds) : "--:--:--"}
 						</span>
@@ -95,7 +89,7 @@ export const PrayerTimesPanel: React.FC<PrayerTimesPanelProps> = ({
 							{PRAYER_STATUS_AR.athanPlaying} {athanPrayerName}
 						</span>
 						<button className="prayer-athan-stop-btn" onClick={stopAthan} title={PRAYER_STATUS_AR.stopTitle}>
-							<Square size={9} fill="currentColor" />
+							<Square size={8} fill="currentColor" />
 							<span>{PRAYER_STATUS_AR.stop}</span>
 						</button>
 					</div>
@@ -122,17 +116,15 @@ export const PrayerTimesPanel: React.FC<PrayerTimesPanelProps> = ({
 				)}
 			</section>
 
-			{/* The five prayers */}
+			{/* Right Column: Prayers List */}
 			<section className="prayer-list-column">
 				<header className="prayer-date-header">
-					<PrayerEmblem size={19} className="prayer-header-emblem" />
 					<span className="prayer-date-text">
 						{hijri
 							? `${hijri.weekdayAr}، ${hijri.day} ${hijri.monthAr} ${hijri.year} هـ`
 							: PRAYER_STATUS_AR.title}
 					</span>
 				</header>
-				<OrnamentRule className="prayer-rule" />
 
 				<div className="prayer-items-stack">
 					{PRAYER_KEYS.map((key) => {
@@ -151,10 +143,9 @@ export const PrayerTimesPanel: React.FC<PrayerTimesPanelProps> = ({
 										<PrayerIcon prayer={key} size={15} />
 									</span>
 									<span className="prayer-name-ar">{PRAYER_NAMES_AR[key]}</span>
-									{isActive && <span className="prayer-now-dot" title="الآن" />}
 								</div>
 								<div className="prayer-time-side">
-									{isPast && <Check size={11} strokeWidth={2.4} className="prayer-done-mark" />}
+									{isPast && <Check size={11} strokeWidth={2.2} className="prayer-done-mark" />}
 									<span className="prayer-time-val">{timeVal}</span>
 								</div>
 							</div>

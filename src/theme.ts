@@ -134,15 +134,20 @@ export async function applyTheme(
 	const op = opacity;
 	const opExpanded = Math.min(1.0, opacity + 0.12);
 
+	const setVar = (key: string, val: string) => {
+		root.style.setProperty(`--bloom-${key}`, val);
+		root.style.setProperty(`--zenith-${key}`, val);
+	};
+
 	if (mode === "light") {
-		root.style.setProperty("--bloom-bg", `rgba(255, 255, 255, ${op})`);
-		root.style.setProperty("--bloom-bg-expanded", `rgba(245, 245, 247, ${opExpanded})`);
-		root.style.setProperty("--bloom-text", "#1c1c1e");
-		root.style.setProperty("--bloom-text-muted", "rgba(28, 28, 30, 0.65)");
-		root.style.setProperty("--bloom-border", "rgba(0, 0, 0, 0.12)");
-		root.style.setProperty("--bloom-group-bg", "rgba(0, 0, 0, 0.04)");
-		root.style.setProperty("--bloom-accent", "#007aff");
-		root.style.setProperty("--bloom-scrollbar-thumb", "rgba(0, 0, 0, 0.15)");
+		setVar("bg", `rgba(255, 255, 255, ${op})`);
+		setVar("bg-expanded", `rgba(245, 245, 247, ${opExpanded})`);
+		setVar("text", "#1c1c1e");
+		setVar("text-muted", "rgba(28, 28, 30, 0.65)");
+		setVar("border", "rgba(0, 0, 0, 0.12)");
+		setVar("group-bg", "rgba(0, 0, 0, 0.04)");
+		setVar("accent", "#007aff");
+		setVar("scrollbar-thumb", "rgba(0, 0, 0, 0.15)");
 		root.classList.add("light-mode");
 		root.classList.remove("dark-mode");
 		root.classList.add("theme-light");
@@ -154,26 +159,14 @@ export async function applyTheme(
 		const finalBgColor = hslToHex(hsl.h, hsl.s, hsl.l);
 		const isLight = brightness > 0.55;
 
-		root.style.setProperty("--bloom-bg", hexToRgba(finalBgColor, op));
-		root.style.setProperty("--bloom-bg-expanded", hexToRgba(finalBgColor, opExpanded));
-		root.style.setProperty("--bloom-text", isLight ? "#1c1c1e" : "#ffffff");
-		root.style.setProperty(
-			"--bloom-text-muted",
-			isLight ? "rgba(28, 28, 30, 0.65)" : "rgba(255, 255, 255, 0.65)"
-		);
-		root.style.setProperty(
-			"--bloom-border",
-			isLight ? "rgba(0, 0, 0, 0.12)" : "rgba(255, 255, 255, 0.12)"
-		);
-		root.style.setProperty(
-			"--bloom-group-bg",
-			isLight ? "rgba(0, 0, 0, 0.04)" : "rgba(255, 255, 255, 0.04)"
-		);
-		root.style.setProperty("--bloom-accent", customColor);
-		root.style.setProperty(
-			"--bloom-scrollbar-thumb",
-			isLight ? "rgba(0, 0, 0, 0.15)" : "rgba(255, 255, 255, 0.15)"
-		);
+		setVar("bg", hexToRgba(finalBgColor, op));
+		setVar("bg-expanded", hexToRgba(finalBgColor, opExpanded));
+		setVar("text", isLight ? "#1c1c1e" : "#ffffff");
+		setVar("text-muted", isLight ? "rgba(28, 28, 30, 0.65)" : "rgba(255, 255, 255, 0.65)");
+		setVar("border", isLight ? "rgba(0, 0, 0, 0.12)" : "rgba(255, 255, 255, 0.12)");
+		setVar("group-bg", isLight ? "rgba(0, 0, 0, 0.04)" : "rgba(255, 255, 255, 0.04)");
+		setVar("accent", customColor);
+		setVar("scrollbar-thumb", isLight ? "rgba(0, 0, 0, 0.15)" : "rgba(255, 255, 255, 0.15)");
 		root.classList.add("theme-custom");
 		root.classList.remove("theme-light", "theme-dark", "theme-adaptive");
 		if (isLight) {
@@ -192,26 +185,14 @@ export async function applyTheme(
 			const finalBgColor = hslToHex(hsl.h, hsl.s, hsl.l);
 			const isLight = brightness > 0.55;
 
-			root.style.setProperty("--bloom-bg", hexToRgba(finalBgColor, op));
-			root.style.setProperty("--bloom-bg-expanded", hexToRgba(finalBgColor, opExpanded));
-			root.style.setProperty("--bloom-text", isLight ? "#1c1c1e" : "#ffffff");
-			root.style.setProperty(
-				"--bloom-text-muted",
-				isLight ? "rgba(28, 28, 30, 0.65)" : "rgba(255, 255, 255, 0.65)"
-			);
-			root.style.setProperty(
-				"--bloom-border",
-				isLight ? "rgba(0, 0, 0, 0.12)" : "rgba(255, 255, 255, 0.12)"
-			);
-			root.style.setProperty(
-				"--bloom-group-bg",
-				isLight ? "rgba(0, 0, 0, 0.04)" : "rgba(255, 255, 255, 0.04)"
-			);
-			root.style.setProperty("--bloom-accent", accentHex);
-			root.style.setProperty(
-				"--bloom-scrollbar-thumb",
-				isLight ? "rgba(0, 0, 0, 0.15)" : "rgba(255, 255, 255, 0.15)"
-			);
+			setVar("bg", hexToRgba(finalBgColor, op));
+			setVar("bg-expanded", hexToRgba(finalBgColor, opExpanded));
+			setVar("text", isLight ? "#1c1c1e" : "#ffffff");
+			setVar("text-muted", isLight ? "rgba(28, 28, 30, 0.65)" : "rgba(255, 255, 255, 0.65)");
+			setVar("border", isLight ? "rgba(0, 0, 0, 0.12)" : "rgba(255, 255, 255, 0.12)");
+			setVar("group-bg", isLight ? "rgba(0, 0, 0, 0.04)" : "rgba(255, 255, 255, 0.04)");
+			setVar("accent", accentHex);
+			setVar("scrollbar-thumb", isLight ? "rgba(0, 0, 0, 0.15)" : "rgba(255, 255, 255, 0.15)");
 			root.classList.add("theme-adaptive");
 			root.classList.remove("theme-light", "theme-dark", "theme-custom");
 			if (isLight) {
@@ -227,14 +208,14 @@ export async function applyTheme(
 		}
 	} else {
 		// default/dark
-		root.style.setProperty("--bloom-bg", `rgba(0, 0, 0, ${op})`);
-		root.style.setProperty("--bloom-bg-expanded", `rgba(0, 0, 0, ${opExpanded})`);
-		root.style.setProperty("--bloom-text", "#ffffff");
-		root.style.setProperty("--bloom-text-muted", "rgba(255, 255, 255, 0.6)");
-		root.style.setProperty("--bloom-border", "rgba(255, 255, 255, 0.1)");
-		root.style.setProperty("--bloom-group-bg", "rgba(255, 255, 255, 0.04)");
-		root.style.setProperty("--bloom-accent", "#007aff");
-		root.style.setProperty("--bloom-scrollbar-thumb", "rgba(255, 255, 255, 0.1)");
+		setVar("bg", `rgba(0, 0, 0, ${op})`);
+		setVar("bg-expanded", `rgba(0, 0, 0, ${opExpanded})`);
+		setVar("text", "#ffffff");
+		setVar("text-muted", "rgba(255, 255, 255, 0.6)");
+		setVar("border", "rgba(255, 255, 255, 0.1)");
+		setVar("group-bg", "rgba(255, 255, 255, 0.04)");
+		setVar("accent", "#007aff");
+		setVar("scrollbar-thumb", "rgba(255, 255, 255, 0.1)");
 		root.classList.add("dark-mode");
 		root.classList.remove("light-mode");
 		root.classList.add("theme-dark");

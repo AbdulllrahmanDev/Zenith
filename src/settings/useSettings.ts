@@ -784,6 +784,7 @@ export function useSettings() {
 		const next = !dockEnabled;
 		setDockEnabled(next);
 		saveSetting("bloom-dock-enabled", String(next));
+		saveSetting("zenith-dock-enabled", String(next));
 	};
 
 	const toggleDockPreview = () => {

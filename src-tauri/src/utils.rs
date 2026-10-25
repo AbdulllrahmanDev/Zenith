@@ -1402,7 +1402,13 @@ pub fn dock_enabled() -> bool {
     crate::state::SETTINGS_CACHE.get().is_none_or(|cache| {
         cache
             .lock()
-            .map(|settings| dock_setting_enabled(settings.get("zenith-dock-enabled")))
+            .map(|settings| {
+                dock_setting_enabled(
+                    settings
+                        .get("zenith-dock-enabled")
+                        .or_else(|| settings.get("bloom-dock-enabled")),
+                )
+            })
             .unwrap_or(false)
     })
 }

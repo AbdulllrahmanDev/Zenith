@@ -2930,7 +2930,7 @@ function App() {
 			>
 				<motion.div
 					ref={bloomRef}
-					className={`bloom ${isHovered ? "expanded" : ""} ${isImpacted ? "is-impacted" : ""} ${isDragHovering ? "drag-hover" : ""}`}
+					className={`bloom zenith-notch ${isHovered ? "expanded" : ""} ${isImpacted ? "is-impacted" : ""} ${isDragHovering ? "drag-hover" : ""}`}
 					onMouseEnter={() => setIsNotchHovered(true)}
 					onMouseLeave={() => setIsNotchHovered(false)}
 					onWheel={handleWheel}

@@ -34,12 +34,13 @@ img {
 	initial-value: rgba(0, 0, 0, 0.8);
 }
 
+.bloom,
 .zenith-notch {
 	display: flex;
 	align-items: center;
 	justify-content: flex-start;
 	position: relative;
-	--notch-bg: var(--zenith-bg, rgba(0, 0, 0, 0.8));
+	--notch-bg: var(--zenith-bg, var(--bloom-bg, rgba(0, 0, 0, 0.8)));
 	/* Painted by the .edge-surface child (see components/EdgeSurface.css). */
 	--surface-bg: var(--notch-bg);
 	isolation: isolate;
@@ -66,8 +67,9 @@ img {
 	transition: --notch-bg 0.3s ease;
 }
 
+.bloom.expanded,
 .zenith-notch.expanded {
-	--notch-bg: var(--zenith-bg-expanded, rgba(0, 0, 0, 0.92));
+	--notch-bg: var(--zenith-bg-expanded, var(--bloom-bg-expanded, rgba(0, 0, 0, 0.92)));
 }
 
 .main-row {
