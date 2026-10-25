@@ -50,10 +50,11 @@ export const PrayerEmblem: React.FC<SvgProps> = ({ size = 24, className }) => (
 	>
 		<polygon
 			points={octagram(24, 24, 22.5)}
-			fill="var(--zenith-accent)"
-			fillOpacity="0.14"
-			stroke="var(--zenith-accent)"
-			strokeWidth="1.6"
+			fill="currentColor"
+			fillOpacity="0.08"
+			stroke="currentColor"
+			strokeOpacity="0.3"
+			strokeWidth="1.2"
 			strokeLinejoin="round"
 		/>
 		<g fill="currentColor">
@@ -223,12 +224,12 @@ export const MosqueScene: React.FC<{ prayer: PrayerKey; className?: string }> = 
 		>
 			<defs>
 				<linearGradient id={sky} x1="0" y1="0" x2="0" y2="1">
-					<stop offset="0" style={{ stopColor: "var(--zenith-accent)", stopOpacity: phase === "night" ? 0.1 : 0.06 }} />
-					<stop offset="1" style={{ stopColor: "var(--zenith-accent)", stopOpacity: phase === "noon" ? 0.2 : 0.32 }} />
+					<stop offset="0" style={{ stopColor: "currentColor", stopOpacity: phase === "night" ? 0.03 : 0.05 }} />
+					<stop offset="1" style={{ stopColor: "currentColor", stopOpacity: phase === "noon" ? 0.08 : 0.12 }} />
 				</linearGradient>
 				<radialGradient id={glow}>
-					<stop offset="0" style={{ stopColor: "var(--zenith-accent)", stopOpacity: 0.55 }} />
-					<stop offset="1" style={{ stopColor: "var(--zenith-accent)", stopOpacity: 0 }} />
+					<stop offset="0" style={{ stopColor: "currentColor", stopOpacity: 0.25 }} />
+					<stop offset="1" style={{ stopColor: "currentColor", stopOpacity: 0 }} />
 				</radialGradient>
 				<mask id={mask}>
 					<rect x="-30" width="260" height="92" fill="#fff" />
@@ -258,8 +259,8 @@ export const MosqueScene: React.FC<{ prayer: PrayerKey; className?: string }> = 
 					cx={body.x}
 					cy={body.y}
 					r={body.r}
-					fill={phase === "sunset" || phase === "dawn" ? "var(--zenith-accent)" : "currentColor"}
-					fillOpacity={phase === "sunset" || phase === "dawn" ? 1 : 0.92}
+					fill="currentColor"
+					fillOpacity={phase === "sunset" || phase === "dawn" ? 0.95 : 0.85}
 				/>
 			)}
 
