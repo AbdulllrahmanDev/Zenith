@@ -14,8 +14,9 @@ import { PrayerIcon } from "./prayer/PrayerArt";
 import "./prayer/prayer.css";
 import "./PrayerTimesPanel.css";
 
-const RING_RADIUS = 40;
-const RING_LENGTH = 2 * Math.PI * RING_RADIUS;
+const SQUIRCLE_PATH =
+	"M 54 2 h 34 a 18 18 0 0 1 18 18 v 52 a 18 18 0 0 1 -18 18 h -68 a 18 18 0 0 1 -18 -18 v -52 a 18 18 0 0 1 18 -18 h 34 Z";
+const SQUIRCLE_LENGTH = 353.1;
 
 export interface PrayerTimesPanelProps {
 	/** State from the single app-level usePrayerTimes(). */
@@ -59,14 +60,12 @@ export const PrayerTimesPanel: React.FC<PrayerTimesPanelProps> = ({
 				<span className="prayer-next-label">{PRAYER_STATUS_AR.nextPrayer}</span>
 
 				<div className="prayer-ring" role="img" aria-label={PRAYER_STATUS_AR.nextPrayer}>
-					<svg className="prayer-ring-svg" viewBox="0 0 100 100" aria-hidden="true" focusable="false">
-						<circle className="prayer-ring-track" cx="50" cy="50" r={RING_RADIUS} />
-						<circle
+					<svg className="prayer-ring-svg" viewBox="0 0 108 92" aria-hidden="true" focusable="false">
+						<path className="prayer-ring-track" d={SQUIRCLE_PATH} />
+						<path
 							className="prayer-ring-arc"
-							cx="50"
-							cy="50"
-							r={RING_RADIUS}
-							strokeDasharray={`${(progress * RING_LENGTH).toFixed(2)} ${RING_LENGTH.toFixed(2)}`}
+							d={SQUIRCLE_PATH}
+							strokeDasharray={`${(progress * SQUIRCLE_LENGTH).toFixed(2)} ${SQUIRCLE_LENGTH.toFixed(2)}`}
 						/>
 					</svg>
 					<div className="prayer-ring-center">

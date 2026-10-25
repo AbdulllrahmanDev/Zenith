@@ -49,16 +49,20 @@
 
 .prayer-ring {
 	position: relative;
-	width: 96px;
-	height: 96px;
+	width: 108px;
+	height: 92px;
 	flex-shrink: 0;
 	margin: 2px 0 6px;
+	border-radius: 20px;
+	background: var(--p-group);
+	box-sizing: border-box;
 }
 
 .prayer-ring-svg {
+	position: absolute;
+	inset: 0;
 	width: 100%;
 	height: 100%;
-	transform: rotate(-90deg);
 	overflow: visible;
 }
 
@@ -75,8 +79,12 @@
 .prayer-ring-arc {
 	stroke: var(--p-text);
 	stroke-linecap: round;
-	filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.3));
+	filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.35));
 	transition: stroke-dasharray 0.9s linear;
+}
+
+.light-mode .prayer-ring-arc {
+	filter: none;
 }
 
 .prayer-ring-center {
@@ -86,16 +94,17 @@
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	gap: 4px;
+	gap: 5px;
+	z-index: 1;
 }
 
 .prayer-ring-icon {
 	color: var(--p-muted);
-	opacity: 0.85;
+	opacity: 0.9;
 }
 
 .prayer-clock-digits {
-	font-size: 15px;
+	font-size: 15.5px;
 	font-weight: 600;
 	font-variant-numeric: tabular-nums;
 	letter-spacing: 0.5px;
