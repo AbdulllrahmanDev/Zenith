@@ -37,10 +37,19 @@ unsafe extern "system" fn ctrl_handler(ctrl_type: u32) -> BOOL {
 }
 
 fn main() {
-    std::env::set_var(
-        "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-        "--autoplay-policy=no-user-gesture-required",
-    );
+    // Let the athan play without a click. Keep any arguments already set.
+    {
+        const AUTOPLAY: &str = "--autoplay-policy=no-user-gesture-required";
+        let mut args =
+            std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").unwrap_or_default();
+        if !args.contains("--autoplay-policy") {
+            if !args.is_empty() {
+                args.push(' ');
+            }
+            args.push_str(AUTOPLAY);
+            std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", args);
+        }
+    }
 
     let mut args = std::env::args_os();
     if args.nth(1).as_deref() == Some(std::ffi::OsStr::new("--taskbar-watchdog")) {

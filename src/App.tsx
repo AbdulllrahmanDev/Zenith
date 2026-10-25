@@ -41,13 +41,7 @@ import { BluetoothPanel } from "./components/BluetoothPanel";
 import { PrayerTimesPanel } from "./components/PrayerTimesPanel";
 import { AthanNotchBanner } from "./components/AthanNotchBanner";
 import { NotificationPanel } from "./components/NotificationPanel";
-import {
-	usePrayerTimes,
-	formatPrayerTime,
-	getCurrentPrayerKey,
-	PRAYER_NAMES_AR,
-	type PrayerKey
-} from "./hooks/usePrayerTimes";
+import { usePrayerTimes, formatPrayerTime } from "./hooks/usePrayerTimes";
 import {
 	Cpu,
 	MemoryStick,
@@ -933,8 +927,8 @@ function App() {
 	const [settingsPrayerEnabled, setSettingsPrayerEnabled] = useState(
 		() => localStorage.getItem("bloom-prayer-enabled") !== "false"
 	);
-	const isMain = windowLabel === "main" || windowLabel === "";
-	const prayerTimes = usePrayerTimes({ isMainWindow: isMain });
+	// Only the main notch schedules alerts and plays the athan; the other notches follow it.
+	const prayerTimes = usePrayerTimes({ owner: windowLabel === "main" || windowLabel === "" });
 	const showAthanBanner = prayerTimes.athanBannerVisible;
 
 
@@ -3044,41 +3038,30 @@ function App() {
 											exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.15 } }}
 											transition={{ type: "spring", stiffness: 450, damping: 32 }}
 										>
-											{(() => {
-												const athanDisplayKey: PrayerKey =
-													prayerTimes.athanPrayerKey ||
-													prayerTimes.activePrayer ||
-													prayerTimes.nextPrayer?.key ||
-													getCurrentPrayerKey(prayerTimes.timings);
-												const athanDisplayName =
-													prayerTimes.athanPrayerName ||
-													PRAYER_NAMES_AR[athanDisplayKey] ||
-													"العشاء";
-
-												return (
-													<AthanNotchBanner
-														isExpanded={isOpen}
-														onExpand={() => {
-															setIsOpen(true);
-															openNotch("prayer");
-														}}
-														prayerKey={athanDisplayKey}
-														prayerNameAr={athanDisplayName}
-														formattedTime={
-															prayerTimes.timings
-																? formatPrayerTime(
-																		prayerTimes.timings[athanDisplayKey],
-																		timeFormat24h,
-																		prayerTimes.timeOffset
-																  )
-																: "--:--"
-														}
-														isPlaying={prayerTimes.isPlayingAthan}
-														onStopAthan={prayerTimes.stopAthan}
-														onClose={() => prayerTimes.setAthanBannerVisible(false)}
-													/>
-												);
-											})()}
+											<AthanNotchBanner
+												isExpanded={isOpen}
+												onExpand={() => {
+													setIsOpen(true);
+													openNotch("prayer");
+												}}
+												prayerKey={prayerTimes.athanPrayerKey || prayerTimes.activePrayer || "Asr"}
+												prayerNameAr={prayerTimes.athanPrayerName || "الصلاة"}
+												variant={prayerTimes.athanVariant}
+												formattedTime={
+													prayerTimes.timings
+														? formatPrayerTime(
+																prayerTimes.timings[
+																	prayerTimes.athanPrayerKey || prayerTimes.activePrayer || "Asr"
+																],
+																timeFormat24h,
+																prayerTimes.timeOffset
+														  )
+														: "--:--"
+												}
+												isPlaying={prayerTimes.isPlayingAthan}
+												onStopAthan={prayerTimes.stopAthan}
+												onClose={() => prayerTimes.setAthanBannerVisible(false)}
+											/>
 										</motion.div>
 									)}
 								</AnimatePresence>

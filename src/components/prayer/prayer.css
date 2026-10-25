@@ -1,0 +1,30 @@
+/*
+ * Shared by the prayer panel and the athan banner.
+ * No fixed colours: everything derives from the app theme variables, so the
+ * design follows dark, light, custom and adaptive themes.
+ */
+
+/* Noto Naskh Arabic (SIL OFL 1.1, see NotoNaskhArabic-OFL.txt). Arabic glyphs only. */
+@font-face {
+	font-family: "Zenith Naskh";
+	font-style: normal;
+	font-weight: 400 700;
+	font-display: swap;
+	src: url("../../assets/fonts/NotoNaskhArabic-wght.woff2") format("woff2-variations");
+	unicode-range:
+		U+0600-06FF, U+0750-077F, U+0870-088E, U+0890-0891, U+0897-08E1, U+08E3-08FF, U+200C-200E, U+2010-2011,
+		U+204F, U+2E41, U+FB50-FDFF, U+FE70-FE74, U+FE76-FEFC;
+}
+
+.prayer-split-view,
+.athan-banner-wrapper {
+	--p-accent: var(--zenith-accent, #007aff);
+	--p-text: var(--zenith-text, #ffffff);
+	--p-muted: var(--zenith-text-muted, rgba(255, 255, 255, 0.6));
+	--p-line: var(--zenith-border, rgba(255, 255, 255, 0.1));
+	--p-group: var(--zenith-group-bg, rgba(255, 255, 255, 0.04));
+	--p-tint: color-mix(in srgb, var(--p-accent) 15%, transparent);
+	--p-tint-strong: color-mix(in srgb, var(--p-accent) 28%, transparent);
+	--p-edge: color-mix(in srgb, var(--p-accent) 42%, transparent);
+	--p-display: "Zenith Naskh", "Noto Naskh Arabic", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+}
