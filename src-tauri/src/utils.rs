@@ -71,7 +71,7 @@ pub fn init_taskbar_marker(app: &tauri::AppHandle) {
     }
 }
 
-/// A separate Bloom process restores Explorer's taskbar when this process is
+/// A separate Zenith process restores Explorer's taskbar when this process is
 /// terminated without running Tauri's exit handlers.
 pub fn start_taskbar_watchdog() -> std::io::Result<()> {
     let mut started = TASKBAR_WATCHDOG_STARTED
@@ -106,7 +106,7 @@ pub fn run_taskbar_watchdog(parent_pid: u32, marker: PathBuf) {
         OpenProcess, WaitForSingleObject, INFINITE, PROCESS_SYNCHRONIZE,
     };
     // Only treat a missing PID as an already-exited parent. Access denied or
-    // another wait failure must not restore the taskbar over a live Bloom.
+    // another wait failure must not restore the taskbar over a live Zenith.
     unsafe {
         match OpenProcess(PROCESS_SYNCHRONIZE, false, parent_pid) {
             Ok(parent) => {
@@ -124,7 +124,7 @@ pub fn run_taskbar_watchdog(parent_pid: u32, marker: PathBuf) {
     }
     let _ = TASKBAR_MARKER.set(marker.clone());
     // Explorer can be restarting at the same time. Retry briefly, but never
-    // act on a marker owned by a replacement Bloom process.
+    // act on a marker owned by a replacement Zenith process.
     for _ in 0..120 {
         if std::fs::read_to_string(&marker)
             .ok()
@@ -141,13 +141,13 @@ pub fn run_taskbar_watchdog(parent_pid: u32, marker: PathBuf) {
     }
 }
 
-/// True if a previous Bloom session died without restoring the native taskbar.
+/// True if a previous Zenith session died without restoring the native taskbar.
 pub fn taskbar_marker_exists() -> bool {
     TASKBAR_MARKER.get().is_some_and(|p| p.exists())
 }
 
 /// The marker records the user's own taskbar state (`ABM_GETSTATE`) from
-/// before Bloom forced auto-hide, so a crash can't lose it. Markers written by
+/// before Zenith forced auto-hide, so a crash can't lose it. Markers written by
 /// older versions only contain "1" and carry no state.
 fn marker_contents(
     original_state: i32,
@@ -226,7 +226,7 @@ fn parse_marker_secondaries(
 
 /// Restores the native taskbar after a previous session died with it hidden.
 /// The state saved in the marker becomes the original to restore; without it,
-/// the current state would be captured instead, and that is Bloom's own
+/// the current state would be captured instead, and that is Zenith's own
 /// auto-hide.
 pub fn restore_taskbar_after_crash() {
     let saved = TASKBAR_MARKER
@@ -304,7 +304,7 @@ fn reset_taskbar_rects_after_shell_restart() {
     }
 }
 
-/// Explorer can recreate the tray windows while Bloom remains active. A new
+/// Explorer can recreate the tray windows while Zenith remains active. A new
 /// owner or primary HWND invalidates the saved tray rectangles; a DPI broadcast
 /// with the same HWND must not discard them while the taskbar is parked offscreen.
 pub fn refresh_taskbar_owner() -> bool {
@@ -380,7 +380,7 @@ pub fn set_taskbar_visibility(visible: bool, always_on_top: bool) -> bool {
         let secondary_trays = secondary_taskbar_windows();
 
         // Legacy crash markers did not save the original window rectangle.
-        // Explorer's AppBar position can still recover it after Bloom moved the
+        // Explorer's AppBar position can still recover it after Zenith moved the
         // taskbar window off-screen.
         if visible {
             if let Ok(mut guard) = ORIGINAL_TRAY_RECT.lock() {
@@ -446,7 +446,7 @@ pub fn set_taskbar_visibility(visible: bool, always_on_top: bool) -> bool {
                 .unwrap_or_default();
             let contents = marker_contents(original, std::process::id(), primary, &secondaries);
             let existing = std::fs::read_to_string(p).ok();
-            // Never take over a marker that another Bloom process owns.
+            // Never take over a marker that another Zenith process owns.
             if (existing.is_some() || p.exists())
                 && existing.as_deref().and_then(parse_marker_pid) != Some(std::process::id())
             {
@@ -1210,7 +1210,7 @@ pub fn atomic_write_file(path: &std::path::Path, content: &[u8]) -> Result<(), S
         "{}.tmp-{}-{}",
         path.file_name()
             .and_then(|name| name.to_str())
-            .unwrap_or("bloom"),
+            .unwrap_or("zenith"),
         std::process::id(),
         NEXT_TEMP.fetch_add(1, Ordering::Relaxed)
     ));
@@ -1250,6 +1250,101 @@ pub fn save_setting_file(
     Ok(settings)
 }
 
+/// Identifier of the running app. Must match `identifier` in tauri.conf.json,
+/// which a unit test checks. Used to find the config directory before Tauri
+/// has started, so existing users' data can be moved in time.
+const CURRENT_IDENTIFIER: &str = "io.github.abdulllrahmandev.zenith";
+/// Directory name used by earlier builds. Only read to carry users' files over.
+const PREVIOUS_IDENTIFIER: &str = "com.sehaz.zenith";
+/// Setting-key prefix used by earlier builds, and the one used now.
+const PREVIOUS_KEY_PREFIX: &str = "bloom-";
+const KEY_PREFIX: &str = "zenith-";
+
+/// Rewrites setting keys and start-icon values saved by earlier builds.
+/// Returns true when anything changed. A value already stored under the new
+/// key name wins over the old one.
+pub fn migrate_previous_settings(
+    settings: &mut std::collections::HashMap<String, serde_json::Value>,
+) -> bool {
+    let mut changed = false;
+
+    let old_keys: Vec<String> = settings
+        .keys()
+        .filter(|key| key.starts_with(PREVIOUS_KEY_PREFIX))
+        .cloned()
+        .collect();
+    for old_key in old_keys {
+        if let Some(value) = settings.remove(&old_key) {
+            let new_key = format!("{}{}", KEY_PREFIX, &old_key[PREVIOUS_KEY_PREFIX.len()..]);
+            settings.entry(new_key).or_insert(value);
+            changed = true;
+        }
+    }
+
+    for value in settings.values_mut() {
+        let renamed = match value.as_str() {
+            Some("bloom-colorful") => "zenith-holographic",
+            Some("bloom-golden") => "zenith-gold",
+            Some("bloom-biscuit") => "zenith-ivory-emerald",
+            _ => continue,
+        };
+        *value = serde_json::Value::String(renamed.to_string());
+        changed = true;
+    }
+    changed
+}
+
+fn copy_dir_recursive(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(to)?;
+    for entry in std::fs::read_dir(from)? {
+        let entry = entry?;
+        let target = to.join(entry.file_name());
+        let kind = entry.file_type()?;
+        if kind.is_dir() {
+            copy_dir_recursive(&entry.path(), &target)?;
+        } else if kind.is_file() {
+            std::fs::copy(entry.path(), &target)?;
+        }
+    }
+    Ok(())
+}
+
+/// Carries data over from earlier builds. Runs from main() before any window
+/// exists, because a webview may read settings before the setup hook runs.
+///
+/// 1. First run under the current identifier: copy the previous config
+///    directory across. The old directory is left in place as a backup.
+/// 2. Rename old setting keys and values inside settings.json.
+pub fn migrate_previous_data() {
+    let Some(appdata) = std::env::var_os("APPDATA") else {
+        return;
+    };
+    let base = std::path::PathBuf::from(appdata);
+    let current = base.join(CURRENT_IDENTIFIER);
+    let previous = base.join(PREVIOUS_IDENTIFIER);
+    let settings_path = current.join("settings.json");
+
+    if !settings_path.exists() && previous.is_dir() {
+        match copy_dir_recursive(&previous, &current) {
+            Ok(()) => crate::diagnostics::record(
+                "migration",
+                "copied data from the previous config directory",
+            ),
+            Err(e) => crate::diagnostics::record("migration", &format!("copy failed: {e}")),
+        }
+    }
+
+    // A missing file reads as an empty map, so nothing is written for new installs.
+    if let Ok(mut settings) = read_settings_file(&settings_path) {
+        if migrate_previous_settings(&mut settings) {
+            match write_settings_file(&settings_path, &settings) {
+                Ok(()) => crate::diagnostics::record("migration", "renamed setting keys"),
+                Err(e) => crate::diagnostics::record("migration", &e),
+            }
+        }
+    }
+}
+
 /// Load settings.json into the in-memory cache. Call once at startup.
 pub fn init_settings_cache(app: &tauri::AppHandle) {
     use crate::state::SETTINGS_CACHE;
@@ -1284,8 +1379,8 @@ pub fn replace_settings_cache(new_settings: std::collections::HashMap<String, se
     }
 }
 
-pub fn get_bloom_scale(_app: &tauri::AppHandle) -> f64 {
-    get_setting_str(_app, "bloom-scale")
+pub fn get_zenith_scale(_app: &tauri::AppHandle) -> f64 {
+    get_setting_str(_app, "zenith-scale")
         .and_then(|s| s.parse::<f64>().ok())
         .unwrap_or(1.0)
 }
@@ -1307,7 +1402,7 @@ pub fn dock_enabled() -> bool {
     crate::state::SETTINGS_CACHE.get().is_none_or(|cache| {
         cache
             .lock()
-            .map(|settings| dock_setting_enabled(settings.get("bloom-dock-enabled")))
+            .map(|settings| dock_setting_enabled(settings.get("zenith-dock-enabled")))
             .unwrap_or(false)
     })
 }
@@ -1549,7 +1644,7 @@ mod tests {
 
     #[test]
     fn finds_a_squirrel_app_after_an_update() {
-        let root = std::env::temp_dir().join(format!("bloom-squirrel-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("zenith-squirrel-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         for version in ["app-1.0.9264", "app-1.0.10000"] {
             std::fs::create_dir_all(root.join(version)).unwrap();
@@ -1623,7 +1718,7 @@ mod tests {
         use std::sync::atomic::{AtomicU64, Ordering};
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
-            "bloom-settings-test-{}-{}",
+            "zenith-settings-test-{}-{}",
             std::process::id(),
             NEXT.fetch_add(1, Ordering::Relaxed)
         ));
@@ -1635,16 +1730,16 @@ mod tests {
     fn settings_bom_is_read_and_a_damaged_file_is_never_overwritten() {
         let _guard = TEST_SETTINGS_LOCK.lock().unwrap();
         let path = test_settings_path();
-        std::fs::write(&path, "\u{feff}{\"bloom-existing\":\"true\"}").unwrap();
+        std::fs::write(&path, "\u{feff}{\"zenith-existing\":\"true\"}").unwrap();
         let settings = super::read_settings_file(&path).unwrap();
-        assert_eq!(settings["bloom-existing"], "true");
+        assert_eq!(settings["zenith-existing"], "true");
 
-        super::save_setting_file(&path, "bloom-new".into(), "false".into()).unwrap();
+        super::save_setting_file(&path, "zenith-new".into(), "false".into()).unwrap();
         let settings = super::read_settings_file(&path).unwrap();
         assert_eq!(settings.len(), 2);
 
         std::fs::write(&path, "{invalid").unwrap();
-        assert!(super::save_setting_file(&path, "bloom-another".into(), "true".into()).is_err());
+        assert!(super::save_setting_file(&path, "zenith-another".into(), "true".into()).is_err());
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "{invalid");
         std::fs::remove_file(&path).unwrap();
         std::fs::remove_dir(path.parent().unwrap()).unwrap();
@@ -1660,7 +1755,7 @@ mod tests {
                 std::thread::spawn(move || {
                     super::save_setting_file(
                         &path,
-                        format!("bloom-key-{index}"),
+                        format!("zenith-key-{index}"),
                         serde_json::json!(index.to_string()),
                     )
                     .unwrap();
@@ -1731,7 +1826,7 @@ mod tests {
         };
         assert!(is_placed_rect(&rect(0, 1020, 1920, 1080)));
         assert!(is_placed_rect(&rect(-1920, 1032, 0, 1080)));
-        // A taskbar Explorer hasn't placed yet, and one Bloom parked off-screen.
+        // A taskbar Explorer hasn't placed yet, and one Zenith parked off-screen.
         assert!(!is_placed_rect(&rect(0, 0, 0, 0)));
         assert!(!is_placed_rect(&rect(-10000, -10000, -8080, -9952)));
     }
@@ -1744,8 +1839,8 @@ mod tests {
 
         // Unknown variables stay verbatim
         assert_eq!(
-            expand_env_vars("%BLOOM_NOT_A_REAL_VAR%\\x"),
-            "%BLOOM_NOT_A_REAL_VAR%\\x"
+            expand_env_vars("%ZENITH_NOT_A_REAL_VAR%\\x"),
+            "%ZENITH_NOT_A_REAL_VAR%\\x"
         );
 
         // Unclosed percent is left alone
@@ -1772,7 +1867,7 @@ mod tests {
         // Already-qualified paths and nonsense are not resolved
         assert_eq!(resolve_executable_path("C:\\Windows\\notepad.exe"), None);
         assert_eq!(
-            resolve_executable_path("bloom-definitely-not-installed"),
+            resolve_executable_path("zenith-definitely-not-installed"),
             None
         );
         assert_eq!(resolve_executable_path(""), None);
@@ -1787,13 +1882,13 @@ mod tests {
         // Mirrors a webview invoking save_setting before the setup hook has
         // initialized the cache.
         let mut settings = std::collections::HashMap::new();
-        settings.insert("bloom-test".to_string(), serde_json::json!("true"));
+        settings.insert("zenith-test".to_string(), serde_json::json!("true"));
         replace_settings_cache(settings);
 
         let cache = SETTINGS_CACHE.get().expect("cache initialized");
         let guard = cache.lock().expect("cache lock");
         assert_eq!(
-            guard.get("bloom-test").and_then(|value| value.as_str()),
+            guard.get("zenith-test").and_then(|value| value.as_str()),
             Some("true")
         );
     }
@@ -1807,5 +1902,41 @@ mod tests {
         assert!(!dock_setting_enabled(Some(&serde_json::json!("false"))));
         assert!(!dock_setting_enabled(Some(&serde_json::json!("invalid"))));
         assert!(!dock_setting_enabled(Some(&serde_json::json!(true))));
+    }
+
+    #[test]
+    fn migrates_previous_setting_keys_and_icon_values() {
+        use super::migrate_previous_settings;
+        use std::collections::HashMap;
+
+        let mut settings: HashMap<String, serde_json::Value> = HashMap::new();
+        settings.insert("bloom-scale".into(), serde_json::json!("1.2"));
+        settings.insert("zenith-theme-mode".into(), serde_json::json!("dark"));
+        settings.insert("bloom-theme-mode".into(), serde_json::json!("light"));
+        settings.insert(
+            "bloom-dock-start-icon".into(),
+            serde_json::json!("bloom-golden"),
+        );
+
+        assert!(migrate_previous_settings(&mut settings));
+        assert_eq!(settings.get("zenith-scale"), Some(&serde_json::json!("1.2")));
+        // A value already stored under the new name wins over the old one.
+        assert_eq!(
+            settings.get("zenith-theme-mode"),
+            Some(&serde_json::json!("dark"))
+        );
+        assert_eq!(
+            settings.get("zenith-dock-start-icon"),
+            Some(&serde_json::json!("zenith-gold"))
+        );
+        assert!(settings.keys().all(|key| !key.starts_with("bloom-")));
+        // Running it again changes nothing.
+        assert!(!migrate_previous_settings(&mut settings));
+    }
+
+    #[test]
+    fn current_identifier_matches_tauri_config() {
+        let config = include_str!("../tauri.conf.json");
+        assert!(config.contains(&format!("\"identifier\": \"{}\"", super::CURRENT_IDENTIFIER)));
     }
 }

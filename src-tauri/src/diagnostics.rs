@@ -11,7 +11,7 @@ pub fn initialize() {
     let Some(local_data) = std::env::var_os("LOCALAPPDATA") else {
         return;
     };
-    let directory = PathBuf::from(local_data).join("com.sehaz.bloom");
+    let directory = PathBuf::from(local_data).join("io.github.abdulllrahmandev.zenith");
     if fs::create_dir_all(&directory).is_err() {
         return;
     }
@@ -94,7 +94,7 @@ mod tests {
     #[test]
     fn log_rotates_before_exceeding_limit() {
         let directory = std::env::temp_dir().join(format!(
-            "bloom-log-test-{}-{}",
+            "zenith-log-test-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

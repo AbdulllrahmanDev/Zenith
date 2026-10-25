@@ -45,7 +45,7 @@ jobs:
         shell: bash
         run: |
           if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
-            echo "::error::This workflow must run on a version tag (e.g. v3.8.7)."
+            echo "::error::This workflow must run on a version tag (e.g. v1.1.0)."
             exit 1
           fi
 
@@ -122,7 +122,7 @@ jobs:
           done <<< "$(git log "$RANGE" --no-merges --pretty=format:'COMMIT|%s' --name-only)"
           emit
 
-          NOTES=$(printf "## Bloom %s\n" "$VERSION")
+          NOTES=$(printf "## Zenith %s\n" "$VERSION")
           if [ -n "$FEATURES" ]; then
             NOTES+=$(printf "\n### What's New\n%s\n" "$FEATURES")
           fi
@@ -147,7 +147,7 @@ jobs:
           TAURI_SIGNING_PASSWORD: ${{ secrets.TAURI_SIGNING_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: "Bloom ${{ github.ref_name }}"
+          releaseName: "Zenith ${{ github.ref_name }}"
           releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
           prerelease: false

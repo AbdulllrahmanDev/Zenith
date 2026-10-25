@@ -364,23 +364,23 @@ fn recycle_bin_extra() -> DockExtra {
 #[tauri::command]
 pub async fn get_dock_extras(app: AppHandle) -> Vec<DockExtra> {
     let position =
-        get_setting_str(&app, "bloom-dock-extras-position").unwrap_or_else(|| "off".into());
+        get_setting_str(&app, "zenith-dock-extras-position").unwrap_or_else(|| "off".into());
     if position != "left" && position != "right" {
         return Vec::new();
     }
-    let drives_enabled = get_setting_str(&app, "bloom-dock-extras-drives")
+    let drives_enabled = get_setting_str(&app, "zenith-dock-extras-drives")
         .unwrap_or_else(|| "true".into())
         != "false";
-    let bin_enabled = get_setting_str(&app, "bloom-dock-extras-recycle-bin")
+    let bin_enabled = get_setting_str(&app, "zenith-dock-extras-recycle-bin")
         .unwrap_or_else(|| "true".into())
         != "false";
     let hidden_drives = parse_hidden_drives(
-        &get_setting_str(&app, "bloom-dock-extras-hidden-drives").unwrap_or_default(),
+        &get_setting_str(&app, "zenith-dock-extras-hidden-drives").unwrap_or_default(),
     );
     let folders =
-        get_setting_str(&app, "bloom-dock-extras-folders").unwrap_or_else(|| "downloads".into());
+        get_setting_str(&app, "zenith-dock-extras-folders").unwrap_or_else(|| "downloads".into());
     let custom =
-        get_setting_str(&app, "bloom-dock-extras-custom-folders").unwrap_or_else(|| "[]".into());
+        get_setting_str(&app, "zenith-dock-extras-custom-folders").unwrap_or_else(|| "[]".into());
 
     tauri::async_runtime::spawn_blocking(move || {
         use windows::Win32::System::Com::{CoInitializeEx, CoUninitialize, COINIT_MULTITHREADED};

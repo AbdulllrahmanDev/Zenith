@@ -104,6 +104,7 @@ fn main() {
     }
 
     diagnostics::initialize();
+    crate::utils::migrate_previous_data();
     setup_brightness_worker();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -171,9 +172,7 @@ fn main() {
             focus_app_windows,
             close_window,
             quit_zenith,
-            quit_bloom,
             restart_zenith,
-            restart_bloom,
             get_volume,
             get_volume_state,
             get_brightness,

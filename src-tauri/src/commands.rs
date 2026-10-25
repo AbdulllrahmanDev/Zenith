@@ -287,7 +287,7 @@ fn disable_dock(app: &AppHandle) {
     // Clear this before showing the native taskbar: the WinEvent hook can run
     // during ShowWindow and would otherwise immediately hide it again.
     NATIVE_TASKBAR_HIDDEN.store(false, Ordering::Relaxed);
-    // Keep Bloom's dock available if Explorer has not made its taskbar visible.
+    // Keep Zenith's dock available if Explorer has not made its taskbar visible.
     if !set_taskbar_visibility(true, true) {
         return;
     }
@@ -302,7 +302,7 @@ fn disable_dock(app: &AppHandle) {
 pub async fn toggle_dock(app: AppHandle, enable: bool) {
     if enable {
         // Load the saved dock mode; "smart" is the fresh-install default.
-        let saved_mode = crate::utils::get_setting_str(&app, "bloom-dock-mode")
+        let saved_mode = crate::utils::get_setting_str(&app, "zenith-dock-mode")
             .unwrap_or_else(|| "smart".to_string());
         init_dock(app, saved_mode).await;
     } else {
@@ -475,12 +475,12 @@ pub async fn change_notch_mode(app: AppHandle, mode: String) {
             });
         }
         // Reposition window to span the target monitor so CSS justify-content:center works
-        if let Some(monitor) = crate::utils::get_target_monitor(&app, "bloom-notch-display") {
+        if let Some(monitor) = crate::utils::get_target_monitor(&app, "zenith-notch-display") {
             let m_pos = monitor.position();
             let m_size = monitor.size();
             let scale = monitor.scale_factor();
-            let bloom_scale = crate::utils::get_bloom_scale(&app);
-            let target_height = (420.0 * bloom_scale * scale) as u32;
+            let zenith_scale = crate::utils::get_zenith_scale(&app);
+            let target_height = (420.0 * zenith_scale * scale) as u32;
             let _ = main_win.set_position(tauri::PhysicalPosition::new(m_pos.x, m_pos.y));
             let _ = main_win.set_size(tauri::PhysicalSize::new(m_size.width, target_height));
         }
@@ -569,9 +569,9 @@ pub fn reposition_displays(app: AppHandle) {
         return;
     }
 
-    let notch_mode = crate::utils::get_setting_str(&app, "bloom-notch-display").unwrap_or_else(|| "all".to_string());
-    let dock_mode = crate::utils::get_setting_str(&app, "bloom-dock-display").unwrap_or_else(|| "all".to_string());
-    let bloom_scale = crate::utils::get_bloom_scale(&app);
+    let notch_mode = crate::utils::get_setting_str(&app, "zenith-notch-display").unwrap_or_else(|| "all".to_string());
+    let dock_mode = crate::utils::get_setting_str(&app, "zenith-dock-display").unwrap_or_else(|| "all".to_string());
+    let zenith_scale = crate::utils::get_zenith_scale(&app);
 
     // --- Reposition Notch Windows ---
     if notch_mode == "all" && monitors.len() > 1 {
@@ -581,7 +581,7 @@ pub fn reposition_displays(app: AppHandle) {
                 let m_pos = m.position();
                 let m_size = m.size();
                 let scale = m.scale_factor();
-                let target_height = (420.0 * bloom_scale * scale) as u32;
+                let target_height = (420.0 * zenith_scale * scale) as u32;
                 let _ = win.set_position(tauri::PhysicalPosition::new(m_pos.x, m_pos.y));
                 let _ = win.set_size(tauri::PhysicalSize::new(m_size.width, target_height));
                 let _ = win.show();
@@ -597,12 +597,12 @@ pub fn reposition_displays(app: AppHandle) {
             }
         }
     } else {
-        if let Some(monitor) = crate::utils::get_target_monitor(&app, "bloom-notch-display") {
+        if let Some(monitor) = crate::utils::get_target_monitor(&app, "zenith-notch-display") {
             if let Some(main_win) = app.get_webview_window("main") {
                 let m_pos = monitor.position();
                 let m_size = monitor.size();
                 let scale = monitor.scale_factor();
-                let target_height = (420.0 * bloom_scale * scale) as u32;
+                let target_height = (420.0 * zenith_scale * scale) as u32;
                 let _ = main_win.set_position(tauri::PhysicalPosition::new(m_pos.x, m_pos.y));
                 let _ = main_win.set_size(tauri::PhysicalSize::new(m_size.width, target_height));
                 let _ = main_win.show();
@@ -643,7 +643,7 @@ pub fn reposition_displays(app: AppHandle) {
             }
         }
     } else {
-        if let Some(monitor) = crate::utils::get_target_monitor(&app, "bloom-dock-display") {
+        if let Some(monitor) = crate::utils::get_target_monitor(&app, "zenith-dock-display") {
             if let Some(dock_win) = app.get_webview_window("dock") {
                 let m_pos = monitor.position();
                 let m_size = monitor.size();
@@ -864,7 +864,7 @@ pub async fn open_app(app: AppHandle, app_name: String) {
         return;
     }
 
-    if is_bloom_launch_target(&app_name, &app.config().identifier) {
+    if is_zenith_launch_target(&app_name, &app.config().identifier) {
         open_settings_window(app);
         return;
     }
@@ -873,12 +873,12 @@ pub async fn open_app(app: AppHandle, app_name: String) {
     tauri::async_runtime::spawn_blocking(move || launch_path(Some(&app_handle), &app_name));
 }
 
-fn is_bloom_launch_target(target: &str, identifier: &str) -> bool {
-    target == "bloom-settings"
+fn is_zenith_launch_target(target: &str, identifier: &str) -> bool {
+    target == "zenith-settings"
         || target.eq_ignore_ascii_case(identifier)
         || std::path::Path::new(target)
             .file_name()
-            .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("bloom.exe"))
+            .is_some_and(|name| name.to_string_lossy().eq_ignore_ascii_case("zenith.exe"))
 }
 
 /// Launches another instance of an app instead of focusing an existing window.
@@ -1268,7 +1268,7 @@ fn restore_rect_on_monitor(
     shift_rect(on_screen_restore_rect(on_screen, target.rcWork), (-dx, -dy))
 }
 
-/// The window outside Bloom that most recently became the foreground window.
+/// The window outside Zenith that most recently became the foreground window.
 fn last_focused_window() -> Option<HWND> {
     let map = crate::state::FOCUS_TIMESTAMPS.get()?.lock().ok()?;
     let (&last, _) = map.iter().max_by_key(|(_, &at)| at)?;
@@ -2226,7 +2226,7 @@ pub async fn load_pinned_apps(app: AppHandle) -> Vec<AppInfo> {
         },
         AppInfo {
             name: "Settings".into(),
-            path: "bloom-settings".into(),
+            path: "zenith-settings".into(),
             icon: None,
             is_running: false,
             hwnd: None,
@@ -3306,7 +3306,7 @@ pub fn release_appbars(handle: &AppHandle) {
     DOCK_APPBAR_REGISTERED.store(false, Ordering::Relaxed);
 }
 
-/// Restore the native taskbar, unregister Bloom's appbars, and exit gracefully.
+/// Restore the native taskbar, unregister Zenith's appbars, and exit gracefully.
 /// Shared by the tray menu, the in-app Quit button, and the window CloseRequested
 /// handlers so that any shutdown path (including Task Manager's WM_CLOSE) behaves
 /// identically.
@@ -3331,11 +3331,6 @@ pub async fn quit_zenith(handle: AppHandle) {
 }
 
 #[tauri::command]
-pub async fn quit_bloom(handle: AppHandle) {
-    quit_zenith(handle).await;
-}
-
-#[tauri::command]
 pub async fn restart_zenith(handle: AppHandle) {
     crate::diagnostics::record("restart", "restoring taskbar and releasing AppBars");
     SHUTTING_DOWN.store(true, Ordering::Relaxed);
@@ -3348,11 +3343,6 @@ pub async fn restart_zenith(handle: AppHandle) {
     crate::services::set_native_osd_suppressed(false);
     close_single_instance_handles();
     handle.restart();
-}
-
-#[tauri::command]
-pub async fn restart_bloom(handle: AppHandle) {
-    restart_zenith(handle).await;
 }
 
 #[tauri::command]
@@ -3377,7 +3367,7 @@ fn re_register_appbars(app: &AppHandle, settings: &HashMap<String, serde_json::V
     crate::services::reconcile_main_appbar(app);
     if let Some(dock_win) = app.get_webview_window("dock") {
         let is_fixed = settings
-            .get("bloom-dock-mode")
+            .get("zenith-dock-mode")
             .map(|v| v.as_str() == Some("fixed"))
             .unwrap_or(false);
         if is_fixed {
@@ -3398,15 +3388,15 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
     }
     let settings = crate::utils::save_setting_file(&path, key.clone(), value)?;
 
-    // Broadcast so all windows sync — emit the key as-is (bloom-prefixed)
+    // Broadcast so all windows sync — emit the key as-is (zenith-prefixed)
     let _ = app.emit(
         "settings-changed",
         serde_json::json!({ "key": &key, "value": &settings[&key] }),
     );
 
-    if key == "bloom-scale" {
+    if key == "zenith-scale" {
         re_register_appbars(&app, &settings);
-    } else if key == "bloom-notch-display" || key == "bloom-dock-display" {
+    } else if key == "zenith-notch-display" || key == "zenith-dock-display" {
         reposition_displays(app.clone());
         re_register_appbars(&app, &settings);
     }
@@ -3945,7 +3935,7 @@ pub fn get_system_accent_color() -> Result<String, String> {
 
 /// Export and import both pick their file in a native dialog opened from
 /// Rust, so the path a webview can influence never reaches the filesystem
-/// commands. A script injection in any Bloom window would otherwise turn
+/// commands. A script injection in any Zenith window would otherwise turn
 /// these into arbitrary file read/write as the user.
 #[tauri::command]
 pub async fn export_settings_to_file(
@@ -4003,7 +3993,7 @@ pub async fn import_settings_from_file(
             app.dialog()
                 .file()
                 .set_parent(&window)
-                .set_title("Import Bloom Settings")
+                .set_title("Import Zenith Settings")
                 .add_filter("JSON", &["json"])
                 .blocking_pick_file()
         }
@@ -4046,9 +4036,11 @@ fn read_settings_import(reader: impl std::io::Read) -> Result<String, String> {
 }
 
 fn apply_imported_settings(app: &AppHandle, settings: &str) -> Result<(), String> {
-    let imported: HashMap<String, serde_json::Value> =
+    let mut imported: HashMap<String, serde_json::Value> =
         serde_json::from_str(settings.trim_start_matches('\u{feff}'))
             .map_err(|e| format!("Invalid JSON: {}", e))?;
+    // Exports from earlier builds use the old key names.
+    crate::utils::migrate_previous_settings(&mut imported);
 
     let path = app
         .path()
@@ -4075,9 +4067,9 @@ fn apply_imported_settings(app: &AppHandle, settings: &str) -> Result<(), String
     // Keys the imported file doesn't have must leave each window's localStorage
     // mirror too, or they come back from it on the next start. Same sentinels
     // as reset_settings are kept.
-    let keep = ["bloom-first-run", "bloom-app-version"];
+    let keep = ["zenith-first-run", "zenith-app-version"];
     for key in previous.keys().filter(|key| {
-        key.starts_with("bloom-") && !keep.contains(&key.as_str()) && !imported.contains_key(*key)
+        key.starts_with("zenith-") && !keep.contains(&key.as_str()) && !imported.contains_key(*key)
     }) {
         let _ = app.emit(
             "settings-external-changed",
@@ -4085,7 +4077,7 @@ fn apply_imported_settings(app: &AppHandle, settings: &str) -> Result<(), String
         );
     }
 
-    if imported.get("bloom-scale").is_some() {
+    if imported.get("zenith-scale").is_some() {
         re_register_appbars(app, &imported);
     }
 
@@ -4103,16 +4095,16 @@ pub fn reset_settings(app: AppHandle) -> Result<(), String> {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
 
-    // Keep non-Bloom keys (the file is user-editable) and the first-run/version
+    // Keep non-Zenith keys (the file is user-editable) and the first-run/version
     // sentinels (lifecycle markers, not preferences — keeping them avoids
     // replaying the splash after a reset). Everything else falls back to
     // defaults in both the backend and the frontends.
-    let keep = ["bloom-first-run", "bloom-app-version"];
+    let keep = ["zenith-first-run", "zenith-app-version"];
     let _guard = SETTINGS_FILE_LOCK.lock().map_err(|e| e.to_string())?;
     let mut settings = crate::utils::read_settings_file(&path)?;
     let removed: Vec<String> = settings
         .keys()
-        .filter(|key| key.starts_with("bloom-") && !keep.contains(&key.as_str()))
+        .filter(|key| key.starts_with("zenith-") && !keep.contains(&key.as_str()))
         .cloned()
         .collect();
     for key in &removed {
@@ -4124,7 +4116,7 @@ pub fn reset_settings(app: AppHandle) -> Result<(), String> {
     drop(_guard);
 
     // Mirror the external-edit watcher so every open window drops the removed
-    // keys from localStorage. The caller restarts Bloom right after, but this
+    // keys from localStorage. The caller restarts Zenith right after, but this
     // keeps the reset correct even if a window lingers.
     for key in removed {
         let _ = app.emit(
@@ -4273,7 +4265,7 @@ mod settings_import_tests {
 
     #[test]
     fn accepts_utf8_settings_at_the_size_limit() {
-        let mut content = String::from("{\"bloom-weather-city\":\"Montréal\"}");
+        let mut content = String::from("{\"zenith-weather-city\":\"Montréal\"}");
         content.extend(std::iter::repeat_n(
             ' ',
             MAX_SETTINGS_IMPORT_BYTES as usize - content.len(),
@@ -4403,16 +4395,16 @@ mod pwa_icon_tests {
     use super::*;
 
     #[test]
-    fn bloom_launch_targets_reuse_the_running_settings_window() {
-        let identifier = "com.sehaz.bloom";
-        assert!(is_bloom_launch_target(identifier, identifier));
-        assert!(is_bloom_launch_target("bloom-settings", identifier));
-        assert!(is_bloom_launch_target(
-            "C:\\Users\\test\\AppData\\Local\\bloom\\bloom.exe",
+    fn zenith_launch_targets_reuse_the_running_settings_window() {
+        let identifier = "io.github.abdulllrahmandev.zenith";
+        assert!(is_zenith_launch_target(identifier, identifier));
+        assert!(is_zenith_launch_target("zenith-settings", identifier));
+        assert!(is_zenith_launch_target(
+            "C:\\Users\\test\\AppData\\Local\\zenith\\zenith.exe",
             identifier
         ));
-        assert!(!is_bloom_launch_target("C:\\Apps\\Discord.exe", identifier));
-        assert!(!is_bloom_launch_target("com.other.app", identifier));
+        assert!(!is_zenith_launch_target("C:\\Apps\\Discord.exe", identifier));
+        assert!(!is_zenith_launch_target("com.other.app", identifier));
     }
 
     #[test]

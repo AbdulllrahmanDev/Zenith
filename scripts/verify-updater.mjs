@@ -9,7 +9,7 @@
  *
  * Usage:
  *   bun scripts/verify-updater.mjs          # checks the live 'latest' release
- *   bun scripts/verify-updater.mjs v3.9.0   # checks a specific tag and version
+ *   bun scripts/verify-updater.mjs v1.1.0   # checks a specific tag and version
  */
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -27,7 +27,7 @@ if (!Number.isFinite(budgetSecs) || budgetSecs <= 0) {
 }
 
 if (tag && !/^v\d+\.\d+\.\d+$/.test(tag)) {
-	console.error("Tag must look like v3.9.0");
+	console.error("Tag must look like v1.1.0");
 	process.exit(1);
 }
 

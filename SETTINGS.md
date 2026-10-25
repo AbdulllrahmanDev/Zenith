@@ -1,6 +1,6 @@
 # Zenith Settings Reference
 
-All settings are stored in `settings.json` in the app config directory (`%APPDATA%/bloom/`). The file is a flat JSON object with `bloom-` prefixed keys. Zenith watches this file for external changes and applies them in real-time.
+All settings are stored in `settings.json` in the app config directory (`%APPDATA%/io.github.abdulllrahmandev.zenith/`). The file is a flat JSON object with `zenith-` prefixed keys. Zenith watches this file for external changes and applies them in real-time.
 
 ## Quick Start
 
@@ -8,10 +8,10 @@ Edit `settings.json` with any text editor while Zenith is running. Changes are a
 
 ```json
 {
-	"bloom-dock-enabled": "true",
-	"bloom-dock-mode": "smart",
-	"bloom-theme-mode": "dark",
-	"bloom-scale": "1.0"
+	"zenith-dock-enabled": "true",
+	"zenith-dock-mode": "smart",
+	"zenith-theme-mode": "dark",
+	"zenith-scale": "1.0"
 }
 ```
 
@@ -139,37 +139,37 @@ Example:
 
 | Key                            | Type                 | Default   | Description                                                                                          |
 | ------------------------------ | -------------------- | --------- | ---------------------------------------------------------------------------------------------------- |
-| `bloom-scale`                  | float string         | `"1.0"`   | UI scale factor (0.8 to 1.3). Changing this re-registers AppBars to resize the reserved screen area. |
-| `bloom-low-battery-threshold`  | integer string       | `"20"`    | Battery percentage that triggers the low-battery alert pulse (5 to 50, step 5).                      |
-| `bloom-auto-update`            | `"true"` / `"false"` | `"false"` | Check for and download updates automatically on startup.                                             |
-| `bloom-show-update-indicator`  | `"true"` / `"false"` | `"true"`  | Show a green dot on the notch when an update is available.                                           |
-| `bloom-announcement-dismissed` | announcement id      | `""`      | ID of the last dismissed in-app announcement (published via `website/public/announcements.json`).    |
-| `bloom-time-format-24h`        | `"true"` / `"false"` | `"false"` | Use 24-hour clock format in the notch. When `"false"`, displays 12-hour format with AM/PM.           |
+| `zenith-scale`                  | float string         | `"1.0"`   | UI scale factor (0.8 to 1.3). Changing this re-registers AppBars to resize the reserved screen area. |
+| `zenith-low-battery-threshold`  | integer string       | `"20"`    | Battery percentage that triggers the low-battery alert pulse (5 to 50, step 5).                      |
+| `zenith-auto-update`            | `"true"` / `"false"` | `"false"` | Check for and download updates automatically on startup.                                             |
+| `zenith-show-update-indicator`  | `"true"` / `"false"` | `"true"`  | Show a green dot on the notch when an update is available.                                           |
+| `zenith-announcement-dismissed` | announcement id      | `""`      | ID of the last dismissed in-app announcement (published via `website/public/announcements.json`).    |
+| `zenith-time-format-24h`        | `"true"` / `"false"` | `"false"` | Use 24-hour clock format in the notch. When `"false"`, displays 12-hour format with AM/PM.           |
 
 ### Internal (Do Not Edit Manually)
 
 | Key                 | Type     | Description                                                                           |
 | ------------------- | -------- | ------------------------------------------------------------------------------------- |
-| `bloom-first-run`   | sentinel | Set to `"done"` after first launch. Triggers splash screen if absent.                 |
-| `bloom-app-version` | string   | Last known app version. If it differs from current, splash screen is shown on update. |
+| `zenith-first-run`   | sentinel | Set to `"done"` after first launch. Triggers splash screen if absent.                 |
+| `zenith-app-version` | string   | Last known app version. If it differs from current, splash screen is shown on update. |
 
 ## Event System
 
-Bloom uses two Tauri events for settings synchronization:
+Zenith uses two Tauri events for settings synchronization:
 
 ### `settings-changed`
 
 - **Emitted by:** `save_setting` command (frontend or backend)
-- **Payload:** `{ "key": "bloom-...", "value": ... }`
-- **Purpose:** Broadcasts changes made through the Bloom UI to all windows
-- **Key format:** Bloom-prefixed keys as-is (e.g. `"bloom-dock-mode"`)
+- **Payload:** `{ "key": "zenith-...", "value": ... }`
+- **Purpose:** Broadcasts changes made through the Zenith UI to all windows
+- **Key format:** Zenith-prefixed keys as-is (e.g. `"zenith-dock-mode"`)
 
 ### `settings-external-changed`
 
 - **Emitted by:** File watcher (detects external edits to `settings.json`)
-- **Payload:** `{ "key": "bloom-...", "value": ... }` or `{ "key": "bloom-...", "value": null }` for removed keys
+- **Payload:** `{ "key": "zenith-...", "value": ... }` or `{ "key": "zenith-...", "value": null }` for removed keys
 - **Purpose:** Broadcasts changes made by external editors (VS Code, notepad, scripts)
-- **Key format:** Bloom-prefixed keys as-is
+- **Key format:** Zenith-prefixed keys as-is
 - **Behavior:** Also syncs values to `localStorage` for instant frontend reads
 
 ### Flow
@@ -194,17 +194,17 @@ UI re-renders with new values
 
 ```powershell
 # PowerShell: switch dock to smart mode
-$json = Get-Content "$env:APPDATA\bloom\settings.json" | ConvertFrom-Json
-$json.'bloom-dock-mode' = 'smart'
-$json | ConvertTo-Json | Set-Content "$env:APPDATA\bloom\settings.json"
+$json = Get-Content "$env:APPDATA\io.github.abdulllrahmandev.zenith\settings.json" | ConvertFrom-Json
+$json.'zenith-dock-mode' = 'smart'
+$json | ConvertTo-Json | Set-Content "$env:APPDATA\io.github.abdulllrahmandev.zenith\settings.json"
 ```
 
 ```python
 # Python: disable dock
 import json, os
-path = os.path.join(os.environ['APPDATA'], 'bloom', 'settings.json')
+path = os.path.join(os.environ["APPDATA"], "io.github.abdulllrahmandev.zenith", "settings.json")
 with open(path) as f: settings = json.load(f)
-settings['bloom-dock-enabled'] = 'false'
+settings['zenith-dock-enabled'] = 'false'
 with open(path, 'w') as f: json.dump(settings, f)
 ```
 
@@ -212,7 +212,7 @@ with open(path, 'w') as f: json.dump(settings, f)
 
 - All boolean values are strings (`"true"` / `"false"`) for consistency with `localStorage`.
 - The `useSettingsSync` hook auto-converts `"true"` / `"false"` strings to booleans.
-- `auto-hide` mode values in `bloom-dock-mode` and `bloom-notch-mode` are legacy aliases for `smart` — they are mapped automatically.
-- Changing `bloom-scale` triggers AppBar re-registration to adjust reserved screen space.
-- Settings → General → Reset to Defaults removes every `bloom-` key from `settings.json` and `localStorage` (except the `bloom-first-run` / `bloom-app-version` lifecycle sentinels), then restarts Bloom. Pinned apps (`pinned_apps.json`) and uploaded icons (`custom_icons/`) are preserved.
-- Theme changes (`bloom-theme-*`) are applied by reading all theme values from `localStorage` and calling `applyTheme()` — the theme system depends on all five theme keys being in sync.
+- `auto-hide` mode values in `zenith-dock-mode` and `zenith-notch-mode` are legacy aliases for `smart` — they are mapped automatically.
+- Changing `zenith-scale` triggers AppBar re-registration to adjust reserved screen space.
+- Settings → General → Reset to Defaults removes every `zenith-` key from `settings.json` and `localStorage` (except the `zenith-first-run` / `zenith-app-version` lifecycle sentinels), then restarts Zenith. Pinned apps (`pinned_apps.json`) and uploaded icons (`custom_icons/`) are preserved.
+- Theme changes (`zenith-theme-*`) are applied by reading all theme values from `localStorage` and calling `applyTheme()` — the theme system depends on all five theme keys being in sync.

@@ -34,18 +34,18 @@ img {
 	initial-value: rgba(0, 0, 0, 0.8);
 }
 
-.bloom {
+.zenith-notch {
 	display: flex;
 	align-items: center;
 	justify-content: flex-start;
 	position: relative;
-	--notch-bg: var(--bloom-bg, rgba(0, 0, 0, 0.8));
+	--notch-bg: var(--zenith-bg, rgba(0, 0, 0, 0.8));
 	/* Painted by the .edge-surface child (see components/EdgeSurface.css). */
 	--surface-bg: var(--notch-bg);
 	isolation: isolate;
 	border-radius: 0 0 18px 18px;
 	border: none;
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	pointer-events: auto;
 	cursor: default;
 	padding: 0px 12px;
@@ -66,8 +66,8 @@ img {
 	transition: --notch-bg 0.3s ease;
 }
 
-.bloom.expanded {
-	--notch-bg: var(--bloom-bg-expanded, rgba(0, 0, 0, 0.92));
+.zenith-notch.expanded {
+	--notch-bg: var(--zenith-bg-expanded, rgba(0, 0, 0, 0.92));
 }
 
 .main-row {
@@ -179,7 +179,7 @@ img {
 }
 
 /* Shelf: OS file drag hovering over the notch (see onDragDropEvent in App.tsx) */
-.bloom.drag-hover {
+.zenith-notch.drag-hover {
 	outline: 2px dashed rgba(255, 255, 255, 0.75);
 	outline-offset: 5px;
 }
@@ -187,7 +187,7 @@ img {
 /* Live activities shown as rounded squares beside the collapsed pill:
    music on the right while a timer holds the pill, the shelf on the left. */
 .activity-bubble {
-	--bubble-bg: var(--bloom-bg, rgba(0, 0, 0, 0.8));
+	--bubble-bg: var(--zenith-bg, rgba(0, 0, 0, 0.8));
 	position: absolute;
 	/* Centred on the 36px collapsed pill. */
 	top: 3px;
@@ -200,16 +200,16 @@ img {
 	gap: 4px;
 	border: none;
 	border-radius: 10px;
-	/* --notch-bg only exists inside the pill (.bloom), so use the theme
+	/* --notch-bg only exists inside the pill (.zenith-notch), so use the theme
 	   colours it is built from, matching the pill in every theme and fading
 	   with it while it's hovered. */
 	background: transparent;
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	cursor: pointer;
 }
 
 .activity-bubble.expanded {
-	--bubble-bg: var(--bloom-bg-expanded, rgba(0, 0, 0, 0.92));
+	--bubble-bg: var(--zenith-bg-expanded, rgba(0, 0, 0, 0.92));
 }
 
 /* Both the round music activity and the count-width shelf activity use the
@@ -244,7 +244,7 @@ img {
 }
 
 .activity-bubble:focus-visible {
-	outline: 2px solid var(--bloom-text, white);
+	outline: 2px solid var(--zenith-text, white);
 	outline-offset: 2px;
 }
 
@@ -262,14 +262,14 @@ img {
 	border: none;
 	border-radius: 50%;
 	background: transparent;
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.7));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.7));
 	cursor: pointer;
 	z-index: 11;
 	transition: color 0.15s ease;
 }
 
 .panel-arrow:hover {
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 }
 
 .panel-arrow.prev {
@@ -295,7 +295,7 @@ img {
 }
 
 .time-flip-container:hover .time {
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.8));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.8));
 }
 
 .time-flip-container:active {
@@ -307,7 +307,7 @@ img {
 	font-weight: 500;
 	letter-spacing: 0.3px;
 	line-height: 1;
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	backface-visibility: hidden;
 	position: absolute;
 	transition: color 0.2s ease;
@@ -420,7 +420,7 @@ img {
 	display: flex;
 	align-items: center;
 	gap: 5px;
-	color: var(--bloom-text, rgba(255, 255, 255, 0.9));
+	color: var(--zenith-text, rgba(255, 255, 255, 0.9));
 }
 
 /* Drawn by the notch because native tooltips never show for it (see
@@ -432,8 +432,8 @@ img {
 	pointer-events: none;
 	padding: 8px 11px;
 	border-radius: 11px;
-	background: var(--bloom-bg-expanded, rgba(20, 20, 20, 0.92));
-	color: var(--bloom-text, white);
+	background: var(--zenith-bg-expanded, rgba(20, 20, 20, 0.92));
+	color: var(--zenith-text, white);
 	box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 	font-size: 11px;
 	font-weight: 500;
@@ -485,8 +485,8 @@ img {
 .visualizer-horizontal .bar-horizontal {
 	width: 3px;
 	height: 100%;
-	background: var(--bloom-text, white);
-	box-shadow: 0 0 8px var(--bloom-border, rgba(255, 255, 255, 0.3));
+	background: var(--zenith-text, white);
+	box-shadow: 0 0 8px var(--zenith-border, rgba(255, 255, 255, 0.3));
 	border-radius: 2px;
 	transform-origin: center;
 	will-change: transform;
@@ -712,7 +712,7 @@ img {
 	flex-direction: row;
 	/* Side-by-Side */
 	gap: 16px;
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	box-sizing: border-box;
 	border-radius: 0 0 28px 28px;
 	overflow: hidden;
@@ -731,7 +731,7 @@ img {
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
-	border-left: 1px solid var(--bloom-border, rgba(255, 255, 255, 0.1));
+	border-left: 1px solid var(--zenith-border, rgba(255, 255, 255, 0.1));
 	padding-left: 16px;
 }
 
@@ -775,8 +775,8 @@ img {
 }
 
 .calendar-day.today {
-	background: var(--bloom-text, white);
-	color: var(--bloom-bg-expanded, black);
+	background: var(--zenith-text, white);
+	color: var(--zenith-bg-expanded, black);
 	font-weight: 600;
 }
 
@@ -789,7 +789,7 @@ img {
 	justify-content: center;
 	width: 100%;
 	height: 100%;
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	transition: color 0.3s ease;
 }
 
@@ -868,7 +868,7 @@ img {
 	font-size: 36px;
 	font-weight: 600;
 	letter-spacing: -0.5px;
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	backface-visibility: hidden;
 }
 
@@ -967,7 +967,7 @@ img {
 }
 
 .timer-section-new.state-paused {
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.55));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.55));
 }
 
 .timer-section-new.state-finished {
@@ -1003,8 +1003,8 @@ img {
 	align-items: center;
 	justify-content: center;
 	gap: 7px;
-	background: var(--bloom-text, white);
-	color: var(--bloom-bg-expanded, black);
+	background: var(--zenith-text, white);
+	color: var(--zenith-bg-expanded, black);
 	font-family: inherit;
 	font-size: 12px;
 	font-weight: 600;
@@ -1033,7 +1033,7 @@ img {
 	border: none;
 	border-radius: 7px;
 	background: transparent;
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	font-size: 10px;
 	font-weight: 600;
 	cursor: pointer;
@@ -1048,11 +1048,11 @@ img {
 }
 
 .timer-preset-segment.active {
-	background: var(--bloom-border, rgba(255, 255, 255, 0.12));
+	background: var(--zenith-border, rgba(255, 255, 255, 0.12));
 	opacity: 1;
 }
 
-.bloom.calendar-mode {
+.zenith-notch.calendar-mode {
 	padding-top: 4px;
 	border-radius: 0 0 28px 28px !important;
 }
@@ -1163,7 +1163,7 @@ img {
 .premium-title {
 	font-size: 14.5px;
 	font-weight: 600;
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	white-space: nowrap;
 	letter-spacing: -0.15px;
 	display: inline-block;
@@ -1191,7 +1191,7 @@ img {
 .premium-artist {
 	font-size: 12px;
 	font-weight: 400;
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.55));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.55));
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -1219,7 +1219,7 @@ img {
 .sleek-btn {
 	background: none;
 	border: none;
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	cursor: pointer;
 	padding: 8px;
 	display: flex;
@@ -1276,7 +1276,7 @@ img {
 	left: 0;
 	top: 0;
 	height: 100%;
-	background: var(--bloom-text, white);
+	background: var(--zenith-text, white);
 	border-radius: 3px;
 	pointer-events: none;
 	transition: width 0.1s ease-out;
@@ -1314,7 +1314,7 @@ img {
 .classic-audio-output-btn {
 	background: none;
 	border: none;
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	cursor: pointer;
 	padding: 2px;
 	display: flex;
@@ -1418,7 +1418,7 @@ img {
 	flex-direction: column;
 	justify-content: space-between;
 	align-items: center;
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	border-radius: 0 0 18px 18px;
 	overflow: hidden;
 }
@@ -1435,7 +1435,7 @@ img {
 	padding: 12px 14px;
 	display: flex;
 	flex-direction: column;
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	border-radius: 0 0 18px 18px;
 	overflow: hidden;
 }
@@ -1502,17 +1502,17 @@ img {
 
 /* Drawn from the theme's text colour so it reads in light and dark themes. */
 .shelf-items-grid::-webkit-scrollbar-track {
-	background: color-mix(in srgb, var(--bloom-text, white) 8%, transparent);
+	background: color-mix(in srgb, var(--zenith-text, white) 8%, transparent);
 	border-radius: 3px;
 }
 
 .shelf-items-grid::-webkit-scrollbar-thumb {
-	background: color-mix(in srgb, var(--bloom-text, white) 35%, transparent);
+	background: color-mix(in srgb, var(--zenith-text, white) 35%, transparent);
 	border-radius: 3px;
 }
 
 .shelf-items-grid::-webkit-scrollbar-thumb:hover {
-	background: color-mix(in srgb, var(--bloom-text, white) 55%, transparent);
+	background: color-mix(in srgb, var(--zenith-text, white) 55%, transparent);
 }
 
 .shelf-items-grid::-webkit-scrollbar-button {
@@ -1654,7 +1654,7 @@ img {
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	border-radius: 0 0 18px 18px;
 	overflow: hidden;
 }
@@ -1675,7 +1675,7 @@ img {
 
 .announcement-icon {
 	flex-shrink: 0;
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.6));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.6));
 }
 
 .severity-warning .announcement-icon {
@@ -1700,8 +1700,8 @@ img {
 	flex-shrink: 0;
 	border: none;
 	border-radius: 50%;
-	background: var(--bloom-border, rgba(255, 255, 255, 0.12));
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.7));
+	background: var(--zenith-border, rgba(255, 255, 255, 0.12));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.7));
 	cursor: pointer;
 	transition:
 		background 0.15s ease,
@@ -1710,14 +1710,14 @@ img {
 
 .announcement-close:hover {
 	background: rgba(255, 255, 255, 0.22);
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 }
 
 .announcement-body {
 	margin: 0;
 	font-size: 12px;
 	line-height: 16px;
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.72));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.72));
 	display: -webkit-box;
 	-webkit-line-clamp: 3;
 	-webkit-box-orient: vertical;
@@ -1730,8 +1730,8 @@ img {
 	padding: 4px 10px;
 	border: none;
 	border-radius: 999px;
-	background: var(--bloom-text, white);
-	color: var(--bloom-bg-expanded, black);
+	background: var(--zenith-text, white);
+	color: var(--zenith-bg-expanded, black);
 	font-size: 11px;
 	font-weight: 600;
 	cursor: pointer;
@@ -1757,8 +1757,8 @@ img {
 	gap: 8px;
 	padding: 5px 8px;
 	border-radius: 10px;
-	background: var(--bloom-group-bg, rgba(255, 255, 255, 0.04));
-	border: 1px solid var(--bloom-border, rgba(255, 255, 255, 0.02));
+	background: var(--zenith-group-bg, rgba(255, 255, 255, 0.04));
+	border: 1px solid var(--zenith-border, rgba(255, 255, 255, 0.02));
 	cursor: pointer;
 	transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
 	user-select: none;
@@ -1767,7 +1767,7 @@ img {
 }
 
 .cc-pill-tile:hover {
-	background: var(--bloom-border, rgba(255, 255, 255, 0.08));
+	background: var(--zenith-border, rgba(255, 255, 255, 0.08));
 	transform: translateY(-0.5px);
 }
 
@@ -1782,8 +1782,8 @@ img {
 	width: 20px;
 	height: 20px;
 	border-radius: 50%;
-	background: var(--bloom-group-bg, rgba(255, 255, 255, 0.08));
-	color: var(--bloom-text, rgba(255, 255, 255, 0.9));
+	background: var(--zenith-group-bg, rgba(255, 255, 255, 0.08));
+	color: var(--zenith-text, rgba(255, 255, 255, 0.9));
 	transition: all 0.15s ease;
 }
 
@@ -1802,12 +1802,12 @@ img {
 .cc-pill-title {
 	font-size: 9px;
 	font-weight: 600;
-	color: var(--bloom-text, rgba(255, 255, 255, 0.9));
+	color: var(--zenith-text, rgba(255, 255, 255, 0.9));
 }
 
 .cc-pill-status {
 	font-size: 7.5px;
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.4));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.4));
 	font-weight: 500;
 	/* The connected network's name can be long. */
 	white-space: nowrap;
@@ -1817,21 +1817,21 @@ img {
 
 /* Active Monochrome pill states */
 .cc-pill-tile.active {
-	background: var(--bloom-text, rgba(255, 255, 255, 0.95));
-	border-color: var(--bloom-text, rgba(255, 255, 255, 0.95));
+	background: var(--zenith-text, rgba(255, 255, 255, 0.95));
+	border-color: var(--zenith-text, rgba(255, 255, 255, 0.95));
 }
 
 .cc-pill-tile.active .cc-pill-title {
-	color: var(--bloom-bg-expanded, rgba(0, 0, 0, 0.9));
+	color: var(--zenith-bg-expanded, rgba(0, 0, 0, 0.9));
 }
 
 .cc-pill-tile.active .cc-pill-status {
-	color: var(--bloom-bg-expanded, rgba(0, 0, 0, 0.5));
+	color: var(--zenith-bg-expanded, rgba(0, 0, 0, 0.5));
 }
 
 .cc-pill-tile.active .cc-pill-icon-wrapper {
-	background: var(--bloom-group-bg, rgba(0, 0, 0, 0.08));
-	color: var(--bloom-bg-expanded, #000);
+	background: var(--zenith-group-bg, rgba(0, 0, 0, 0.08));
+	color: var(--zenith-bg-expanded, #000);
 }
 
 /* Opens a tile's detail view from the controls panel. */
@@ -1857,7 +1857,7 @@ img {
 
 .cc-pill-more:hover {
 	opacity: 1;
-	background: var(--bloom-group-bg, rgba(255, 255, 255, 0.12));
+	background: var(--zenith-group-bg, rgba(255, 255, 255, 0.12));
 }
 
 .cc-pill-more svg {
@@ -1866,7 +1866,7 @@ img {
 }
 
 .cc-pill-tile.active .cc-pill-more {
-	color: var(--bloom-bg-expanded, black);
+	color: var(--zenith-bg-expanded, black);
 }
 
 /* Circular Actions Row */
@@ -1882,9 +1882,9 @@ img {
 	width: 32px;
 	height: 32px;
 	border-radius: 50%;
-	background: var(--bloom-group-bg, rgba(255, 255, 255, 0.04));
-	border: 1px solid var(--bloom-border, rgba(255, 255, 255, 0.02));
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.7));
+	background: var(--zenith-group-bg, rgba(255, 255, 255, 0.04));
+	border: 1px solid var(--zenith-border, rgba(255, 255, 255, 0.02));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.7));
 	display: flex;
 	align-items: center;
 	justify-content: center;
@@ -1893,8 +1893,8 @@ img {
 }
 
 .cc-circular-btn:hover {
-	background: var(--bloom-border, rgba(255, 255, 255, 0.1));
-	color: var(--bloom-text, #fff);
+	background: var(--zenith-border, rgba(255, 255, 255, 0.1));
+	color: var(--zenith-text, #fff);
 	transform: translateY(-1px);
 }
 
@@ -1903,10 +1903,10 @@ img {
 }
 
 .cc-circular-btn.active {
-	background: var(--bloom-text, #ffffff);
-	border-color: var(--bloom-text, #ffffff);
-	color: var(--bloom-bg-expanded, #000000);
-	box-shadow: 0 2px 8px var(--bloom-border, rgba(255, 255, 255, 0.1));
+	background: var(--zenith-text, #ffffff);
+	border-color: var(--zenith-text, #ffffff);
+	color: var(--zenith-bg-expanded, #000000);
+	box-shadow: 0 2px 8px var(--zenith-border, rgba(255, 255, 255, 0.1));
 }
 
 .cc-circular-btn.active:hover {
@@ -1937,7 +1937,7 @@ img {
 	width: 75px;
 	font-size: 9px;
 	font-weight: 600;
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.65));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.65));
 }
 
 .cc-classic-slider-label svg {
@@ -1950,7 +1950,7 @@ img {
 	flex: 1;
 	height: 6px;
 	border-radius: 3px;
-	background: var(--bloom-group-bg, rgba(255, 255, 255, 0.08));
+	background: var(--zenith-group-bg, rgba(255, 255, 255, 0.08));
 	position: relative;
 	display: flex;
 	align-items: center;
@@ -1958,11 +1958,11 @@ img {
 }
 
 .cc-classic-slider-row:hover .cc-classic-slider-track {
-	background: var(--bloom-border, rgba(255, 255, 255, 0.12));
+	background: var(--zenith-border, rgba(255, 255, 255, 0.12));
 }
 
 .cc-classic-fill {
-	background: var(--bloom-text, rgba(255, 255, 255, 0.9));
+	background: var(--zenith-text, rgba(255, 255, 255, 0.9));
 	border-radius: 3px;
 	height: 100%;
 	position: absolute;
@@ -1975,8 +1975,8 @@ img {
 }
 
 .cc-classic-slider-row:hover .cc-classic-fill {
-	background: var(--bloom-text, #ffffff);
-	box-shadow: 0 0 4px var(--bloom-border, rgba(255, 255, 255, 0.15));
+	background: var(--zenith-text, #ffffff);
+	box-shadow: 0 0 4px var(--zenith-border, rgba(255, 255, 255, 0.15));
 }
 
 .cc-classic-percentage {
@@ -1984,12 +1984,12 @@ img {
 	text-align: right;
 	font-size: 9px;
 	font-weight: 600;
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.55));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.55));
 	font-variant-numeric: tabular-nums;
 }
 
 .cc-classic-slider-row:hover .cc-classic-percentage {
-	color: var(--bloom-text, rgba(255, 255, 255, 0.85));
+	color: var(--zenith-text, rgba(255, 255, 255, 0.85));
 }
 
 .cc-classic-input {
@@ -2006,22 +2006,22 @@ img {
 
 /* Light Mode overrides for Notch App components */
 .light-mode .power-pulse-content .label {
-	color: var(--bloom-text);
+	color: var(--zenith-text);
 }
 
 .light-mode .bottom-row {
-	border-top: 1px solid var(--bloom-border);
+	border-top: 1px solid var(--zenith-border);
 }
 
 .light-mode .marquee-content {
-	color: var(--bloom-text);
+	color: var(--zenith-text);
 }
 
 .light-mode .music-controls svg,
 .light-mode .notch-status-icons svg,
 .light-mode .weather-notch svg {
-	stroke: var(--bloom-text);
-	color: var(--bloom-text);
+	stroke: var(--zenith-text);
+	color: var(--zenith-text);
 }
 
 .light-mode .volume-slider-bar,
@@ -2036,7 +2036,7 @@ img {
 }
 
 .light-mode .cc-classic-slider-row svg {
-	color: var(--bloom-text);
+	color: var(--zenith-text);
 }
 
 /* ===== Immersive Media Player (iPhone Dynamic Island style) ===== */
@@ -2120,7 +2120,7 @@ img {
 .cmp-title {
 	font-size: 15px;
 	font-weight: 600;
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	white-space: nowrap;
 	letter-spacing: -0.2px;
 	line-height: 1.2;
@@ -2149,7 +2149,7 @@ img {
 .cmp-artist {
 	font-size: 12px;
 	font-weight: 400;
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.5));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.5));
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -2165,7 +2165,7 @@ img {
 .cmp-btn {
 	background: none;
 	border: none;
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	cursor: pointer;
 	padding: 5px;
 	display: flex;
@@ -2221,7 +2221,7 @@ img {
 .cmp-time {
 	font-size: 11px;
 	font-weight: 500;
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.5));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.5));
 	min-width: 30px;
 	text-align: center;
 	font-variant-numeric: tabular-nums;
@@ -2251,7 +2251,7 @@ img {
 	left: 0;
 	top: 0;
 	height: 100%;
-	background: var(--bloom-text, white);
+	background: var(--zenith-text, white);
 	border-radius: 2px;
 	pointer-events: none;
 	transition: width 0.1s linear;
@@ -2314,7 +2314,7 @@ img {
 	left: 0;
 	top: 0;
 	height: 100%;
-	background: var(--bloom-text, white);
+	background: var(--zenith-text, white);
 	border-radius: 2px;
 	pointer-events: none;
 	transition: width 0.1s ease-out;
@@ -2358,7 +2358,7 @@ img {
 	border-radius: 6px;
 	cursor: pointer;
 	transition: background 0.15s ease;
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.6));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.6));
 	font-size: 12px;
 }
 
@@ -2367,7 +2367,7 @@ img {
 }
 
 .cmp-output-item.active {
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 }
 
 .cmp-output-name {

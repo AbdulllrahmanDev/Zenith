@@ -1,0 +1,17 @@
+Zenith
+Copyright (C) 2026 AbdulllrahmanDev
+
+Zenith is free software, licensed under the GNU General Public License,
+version 3 (see the LICENSE file).
+
+Parts of this program are derived from earlier work that was released under
+the same license:
+
+  Copyright (C) 2026 Sehajveer Singh
+
+The GPL requires these notices to stay with the source code. Do not remove
+them from copies you distribute.
+
+Modifications by AbdulllrahmanDev (2026): new name, identifiers and release
+infrastructure; prayer times, Athan alerts and the notification panel; and
+the changes recorded in this repository's commit history.
