@@ -2822,7 +2822,7 @@ function App() {
 	};
 
 	const getDynamicHeight = () => {
-		if (showAthanBanner) return isOpen ? 148 : (isImpacted ? 28.9 : 44.2);
+		if (showAthanBanner) return isOpen ? 148 : 36;
 		if (!isExpanded || !isVisible || isHidden) {
 			return isImpacted ? 28.9 : 44.2;
 		}
@@ -3042,7 +3042,6 @@ function App() {
 												isExpanded={isOpen}
 												onExpand={() => {
 													setIsOpen(true);
-													openNotch("prayer");
 												}}
 												prayerKey={prayerTimes.athanPrayerKey || prayerTimes.activePrayer || "Asr"}
 												prayerNameAr={prayerTimes.athanPrayerName || "الصلاة"}
@@ -3060,7 +3059,10 @@ function App() {
 												}
 												isPlaying={prayerTimes.isPlayingAthan}
 												onStopAthan={prayerTimes.stopAthan}
-												onClose={() => prayerTimes.setAthanBannerVisible(false)}
+												onClose={() => {
+													setIsOpen(false);
+													prayerTimes.setAthanBannerVisible(false);
+												}}
 											/>
 										</motion.div>
 									)}
@@ -3068,8 +3070,9 @@ function App() {
 
 								{/* Faster Waiting Transition Area */}
 								<AnimatePresence mode="wait">
-									{isOpen && isMusicMode && !isCalendarMode ? (
-										<motion.div
+									{!showAthanBanner && (
+										isOpen && isMusicMode && !isCalendarMode ? (
+											<motion.div
 											key="expanded-music"
 											className="expanded-music-container"
 											initial={{ opacity: 0, scale: 0.98 }}
@@ -3587,7 +3590,7 @@ function App() {
 												</AnimatePresence>
 											</div>
 										</motion.div>
-									)}
+									))}
 								</AnimatePresence>
 
 								{/* Wi-Fi networks, opened from the controls panel's Wi-Fi tile */}
@@ -4070,7 +4073,7 @@ function App() {
 
 								{/* Prayer Times Split View */}
 								<AnimatePresence>
-									{settingsPrayerEnabled && bloomMode === "prayer" && (
+									{settingsPrayerEnabled && bloomMode === "prayer" && !showAthanBanner && (
 										<motion.div
 											key="prayer-view"
 											className="prayer-content-wrapper"
