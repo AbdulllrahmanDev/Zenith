@@ -1,4 +1,4 @@
-/* Prayer times panel. Colours come from ./prayer/prayer.css (theme variables only). */
+/* Prayer times panel - Clean, minimal monochrome Apple-style UX */
 .prayer-content-wrapper {
 	width: 100%;
 	height: calc(100% - 36px);
@@ -16,15 +16,15 @@
 	height: 100%;
 	max-height: 236px;
 	box-sizing: border-box;
-	padding: 8px 16px 12px 16px;
-	gap: 14px;
+	padding: 10px 18px 12px 18px;
+	gap: 16px;
 	color: var(--p-text);
 	font-family: inherit;
 	background: transparent;
 	overflow: hidden;
 }
 
-/* ---- left: countdown --------------------------------------------------- */
+/* ---- Left: Countdown & Ring -------------------------------------------- */
 .prayer-countdown-column {
 	position: relative;
 	flex: 1;
@@ -35,39 +35,24 @@
 	align-items: center;
 	text-align: center;
 	box-sizing: border-box;
-	padding: 2px 4px;
-	border-radius: 14px;
-}
-
-.prayer-pattern {
-	position: absolute;
-	inset: 0;
-	z-index: 0;
-	color: var(--p-text);
-	opacity: 0.07;
-	pointer-events: none;
-	-webkit-mask-image: radial-gradient(ellipse 75% 70% at 50% 46%, #000 0%, transparent 100%);
-	mask-image: radial-gradient(ellipse 75% 70% at 50% 46%, #000 0%, transparent 100%);
-}
-
-.prayer-countdown-column > :not(.prayer-pattern) {
-	position: relative;
-	z-index: 1;
+	padding: 4px 6px;
 }
 
 .prayer-next-label {
 	font-family: var(--p-display);
-	font-size: 12px;
+	font-size: 11.5px;
 	font-weight: 500;
 	color: var(--p-muted);
-	margin-bottom: 4px;
+	margin-bottom: 6px;
+	letter-spacing: 0.2px;
 }
 
 .prayer-ring {
 	position: relative;
-	width: 104px;
-	height: 104px;
+	width: 96px;
+	height: 96px;
 	flex-shrink: 0;
+	margin: 2px 0 6px;
 }
 
 .prayer-ring-svg {
@@ -80,7 +65,7 @@
 .prayer-ring-track,
 .prayer-ring-arc {
 	fill: none;
-	stroke-width: 3;
+	stroke-width: 2.5;
 }
 
 .prayer-ring-track {
@@ -88,9 +73,9 @@
 }
 
 .prayer-ring-arc {
-	stroke: var(--p-accent);
+	stroke: var(--p-text);
 	stroke-linecap: round;
-	filter: drop-shadow(0 0 4px color-mix(in srgb, var(--p-accent) 55%, transparent));
+	filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.3));
 	transition: stroke-dasharray 0.9s linear;
 }
 
@@ -101,18 +86,19 @@
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	gap: 5px;
+	gap: 4px;
 }
 
 .prayer-ring-icon {
-	color: var(--p-accent);
+	color: var(--p-muted);
+	opacity: 0.85;
 }
 
 .prayer-clock-digits {
-	font-size: 16px;
+	font-size: 15px;
 	font-weight: 600;
 	font-variant-numeric: tabular-nums;
-	letter-spacing: 0.3px;
+	letter-spacing: 0.5px;
 	color: var(--p-text);
 	direction: ltr;
 	line-height: 1;
@@ -123,20 +109,20 @@
 	align-items: baseline;
 	justify-content: center;
 	gap: 8px;
-	margin-top: 7px;
+	margin-top: 4px;
 	direction: rtl;
 }
 
 .prayer-next-name {
 	font-family: var(--p-display);
-	font-size: 21px;
+	font-size: 18px;
 	font-weight: 700;
 	line-height: 1.15;
 	color: var(--p-text);
 }
 
 .prayer-next-time {
-	font-size: 12px;
+	font-size: 11.5px;
 	font-weight: 500;
 	font-variant-numeric: tabular-nums;
 	color: var(--p-muted);
@@ -147,20 +133,20 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
-	margin-top: 8px;
-	padding: 3px 4px 3px 9px;
+	margin-top: 6px;
+	padding: 3px 6px 3px 10px;
 	border-radius: 999px;
-	background: var(--p-tint);
+	background: var(--p-tint-strong);
 	border: 1px solid var(--p-edge);
 	color: var(--p-text);
 	font-family: var(--p-display);
-	font-size: 12px;
+	font-size: 11.5px;
 	font-weight: 500;
 	direction: rtl;
 }
 
 .prayer-athan-icon {
-	color: var(--p-accent);
+	color: var(--p-text);
 	animation: prayerPulse 1.6s ease-in-out infinite;
 }
 
@@ -170,18 +156,18 @@
 	gap: 4px;
 	border: 1px solid var(--p-edge);
 	border-radius: 999px;
-	padding: 2px 8px;
-	background: var(--p-tint-strong);
+	padding: 2px 7px;
+	background: var(--p-tint);
 	color: var(--p-text);
 	font-family: var(--p-display);
-	font-size: 11px;
+	font-size: 10.5px;
 	font-weight: 600;
 	cursor: pointer;
 	transition: background 0.15s ease;
 }
 
 .prayer-athan-stop-btn:hover {
-	background: color-mix(in srgb, var(--p-accent) 42%, transparent);
+	background: var(--p-tint-strong);
 }
 
 .prayer-footer-location {
@@ -189,36 +175,19 @@
 	align-items: center;
 	justify-content: center;
 	gap: 5px;
-	margin-top: 5px;
+	margin-top: 4px;
 	max-width: 100%;
 	font-family: var(--p-display);
-	font-size: 11px;
+	font-size: 10.5px;
 	color: var(--p-muted);
 	direction: rtl;
 }
 
-.prayer-footer-location.is-error,
-.prayer-footer-location.is-stale {
-	color: var(--p-text);
-}
-
 .prayer-location-text {
-	max-width: 150px;
+	max-width: 140px;
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
-}
-
-/* Problems must be readable in full, so they wrap instead of being cut off. */
-.prayer-footer-location.is-error .prayer-location-text,
-.prayer-footer-location.is-stale .prayer-location-text {
-	max-width: 168px;
-	white-space: normal;
-	line-height: 1.4;
-	display: -webkit-box;
-	line-clamp: 2;
-	-webkit-line-clamp: 2;
-	-webkit-box-orient: vertical;
 }
 
 .prayer-refresh-btn {
@@ -231,7 +200,7 @@
 	background: transparent;
 	color: inherit;
 	cursor: pointer;
-	opacity: 0.8;
+	opacity: 0.7;
 	transition: opacity 0.2s ease, background 0.2s ease;
 }
 
@@ -241,11 +210,11 @@
 }
 
 .prayer-refresh-btn:disabled {
-	opacity: 0.35;
+	opacity: 0.3;
 	cursor: default;
 }
 
-/* ---- right: the five prayers ------------------------------------------- */
+/* ---- Right: 5 Prayers List --------------------------------------------- */
 .prayer-list-column {
 	flex: 1.15;
 	min-width: 0;
@@ -261,28 +230,21 @@
 .prayer-date-header {
 	display: flex;
 	align-items: center;
-	gap: 8px;
 	min-height: 24px;
-}
-
-.prayer-header-emblem {
-	flex-shrink: 0;
-	color: var(--p-text);
+	padding-bottom: 6px;
+	border-bottom: 1px solid var(--p-line);
+	margin-bottom: 6px;
 }
 
 .prayer-date-text {
 	font-family: var(--p-display);
-	font-size: 13px;
+	font-size: 12.5px;
 	font-weight: 600;
 	color: var(--p-text);
+	opacity: 0.85;
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
-}
-
-.prayer-rule {
-	color: var(--p-line);
-	margin: 5px 0 6px;
 }
 
 .prayer-items-stack {
@@ -294,80 +256,60 @@
 }
 
 .prayer-row {
-	position: relative;
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	min-height: 30px;
-	padding: 3px 10px;
+	padding: 4px 10px;
 	box-sizing: border-box;
-	border-radius: 10px;
+	border-radius: 8px;
 	border: 1px solid transparent;
-	transition: background 0.2s ease, border-color 0.2s ease, opacity 0.2s ease;
+	transition: background 0.2s ease, opacity 0.2s ease;
 }
 
+/* Clean, modern highlight for the upcoming prayer */
 .prayer-row.is-next {
 	background: var(--p-tint);
 	border-color: var(--p-edge);
 }
 
-.prayer-row.is-next::before {
-	content: "";
-	position: absolute;
-	top: 50%;
-	right: -1px;
-	width: 3px;
-	height: 16px;
-	border-radius: 3px;
-	background: var(--p-accent);
-	transform: translateY(-50%);
-}
-
 .prayer-row.is-past {
-	opacity: 0.55;
+	opacity: 0.45;
 }
 
 .prayer-info-side {
 	display: flex;
 	align-items: center;
-	gap: 9px;
+	gap: 10px;
 	min-width: 0;
 }
 
+/* Clean inline icon without heavy box */
 .prayer-icon-wrapper {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 24px;
-	height: 24px;
 	flex-shrink: 0;
-	border-radius: 8px;
-	background: var(--p-group);
 	color: var(--p-muted);
+	opacity: 0.75;
 }
 
-.prayer-row.is-next .prayer-icon-wrapper {
-	background: var(--p-tint-strong);
-	color: var(--p-accent);
+.prayer-row.is-next .prayer-icon-wrapper,
+.prayer-row.is-active .prayer-icon-wrapper {
+	color: var(--p-text);
+	opacity: 1;
 }
 
 .prayer-name-ar {
 	font-family: var(--p-display);
-	font-size: 14px;
+	font-size: 13.5px;
 	font-weight: 500;
 	color: var(--p-text);
 }
 
-.prayer-row.is-next .prayer-name-ar {
+.prayer-row.is-next .prayer-name-ar,
+.prayer-row.is-active .prayer-name-ar {
 	font-weight: 700;
-}
-
-.prayer-now-dot {
-	width: 6px;
-	height: 6px;
-	border-radius: 999px;
-	background: var(--p-accent);
-	box-shadow: 0 0 6px var(--p-accent);
 }
 
 .prayer-time-side {
@@ -377,11 +319,12 @@
 }
 
 .prayer-done-mark {
-	color: var(--p-accent);
+	color: var(--p-muted);
+	opacity: 0.8;
 }
 
 .prayer-time-val {
-	font-size: 12.5px;
+	font-size: 12px;
 	font-weight: 500;
 	font-variant-numeric: tabular-nums;
 	color: var(--p-muted);
@@ -389,20 +332,21 @@
 	white-space: nowrap;
 }
 
-.prayer-row.is-next .prayer-time-val {
+.prayer-row.is-next .prayer-time-val,
+.prayer-row.is-active .prayer-time-val {
 	color: var(--p-text);
-	font-weight: 700;
+	font-weight: 600;
 }
 
 @keyframes prayerPulse {
 	0%,
 	100% {
 		opacity: 0.6;
-		transform: scale(0.94);
+		transform: scale(0.96);
 	}
 	50% {
 		opacity: 1;
-		transform: scale(1.08);
+		transform: scale(1.04);
 	}
 }
 
