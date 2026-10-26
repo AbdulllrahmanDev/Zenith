@@ -1393,13 +1393,13 @@ pub fn get_setting_str(_app: &tauri::AppHandle, key: &str) -> Option<String> {
 }
 
 fn dock_setting_enabled(value: Option<&serde_json::Value>) -> bool {
-    value.is_none_or(|value| value.as_str() == Some("true"))
+    value.is_some_and(|value| value.as_str() == Some("true"))
 }
 
-/// An absent setting uses the fresh-install default; any explicit value other
-/// than the string "true" leaves Windows' taskbar in charge.
+/// An absent setting uses the fresh-install default (disabled); only an explicit
+/// string "true" enables the dock and takes over from Windows' taskbar.
 pub fn dock_enabled() -> bool {
-    crate::state::SETTINGS_CACHE.get().is_none_or(|cache| {
+    crate::state::SETTINGS_CACHE.get().is_some_and(|cache| {
         cache
             .lock()
             .map(|settings| {
@@ -1900,10 +1900,10 @@ mod tests {
     }
 
     #[test]
-    fn dock_setting_defaults_on_but_rejects_explicit_invalid_values() {
+    fn dock_setting_defaults_off_and_accepts_explicit_true() {
         use super::dock_setting_enabled;
 
-        assert!(dock_setting_enabled(None));
+        assert!(!dock_setting_enabled(None));
         assert!(dock_setting_enabled(Some(&serde_json::json!("true"))));
         assert!(!dock_setting_enabled(Some(&serde_json::json!("false"))));
         assert!(!dock_setting_enabled(Some(&serde_json::json!("invalid"))));

@@ -119,7 +119,9 @@ export function useSettings() {
 		left: ["weather"],
 		right: ["battery"]
 	});
-	const [dockEnabled, setDockEnabled] = useState(true);
+	const [dockEnabled, setDockEnabled] = useState(
+		() => localStorage.getItem("bloom-dock-enabled") === "true"
+	);
 	const [dockPreviewEnabled, setDockPreviewEnabled] = useState(true);
 	const [dockIconOnly, setDockIconOnly] = useState(
 		() => localStorage.getItem("bloom-dock-icon-only") === "true"

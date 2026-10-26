@@ -705,7 +705,7 @@ function App() {
 	});
 	const [dndActive, setDndActive] = useState(false);
 	const [dockEnabled, setDockEnabled] = useState(
-		() => localStorage.getItem("bloom-dock-enabled") !== "false"
+		() => localStorage.getItem("bloom-dock-enabled") === "true"
 	);
 	const [isNotchHovered, setIsNotchHovered] = useState(false);
 
@@ -1082,7 +1082,7 @@ function App() {
 					const rawDockMode = getVal("bloom-dock-mode", "smart") as string;
 					const dockMode = rawDockMode === "auto-hide" ? "smart" : rawDockMode;
 					setDockMode(dockMode);
-					setDockEnabled(getVal("bloom-dock-enabled", "true") === "true");
+					setDockEnabled(getVal("bloom-dock-enabled", "false") === "true");
 					const storedVersion = localStorage.getItem("bloom-app-version");
 					let waitForSplash = firstRun || storedVersion === null;
 					if (!waitForSplash) {

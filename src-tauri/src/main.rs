@@ -425,10 +425,6 @@ fn main() {
             }
 
             if let Some(settings_win) = app.get_webview_window("settings") {
-                #[cfg(target_os = "windows")]
-                {
-                    let _ = window_vibrancy::apply_mica(&settings_win, None);
-                }
                 let win_clone = settings_win.clone();
                 settings_win.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
