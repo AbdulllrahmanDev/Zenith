@@ -145,12 +145,13 @@ export function MouseTab({
 					label="Trigger Button"
 					desc="Mouse button used to trigger the radial wheel"
 				>
-					<div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+					<div style={{ display: "flex", flexDirection: "column", gap: "6px", minWidth: "160px" }}>
 						<select
 							className="settings-select"
 							value={mouseTriggerButton}
 							onChange={(e) => handleMouseTriggerButtonChange(e.target.value)}
 							disabled={recording}
+							style={{ width: "100%" }}
 						>
 							<option value="middle">Wheel (Middle Button)</option>
 							<option value="x1">Mouse 4 (Back Button)</option>
@@ -164,9 +165,10 @@ export function MouseTab({
 						</select>
 
 						<button
+							type="button"
 							className={`settings-btn ${recording ? "primary" : ""}`}
 							onClick={handleRecordClick}
-							style={{ minWidth: "90px" }}
+							style={{ width: "100%" }}
 						>
 							{recording ? "Listening..." : "Record"}
 						</button>

@@ -768,9 +768,11 @@ input:checked + .slider:before {
 	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.3));
 }
 
+.settings-btn,
 .settings-btn-detect {
 	display: inline-flex;
 	align-items: center;
+	justify-content: center;
 	gap: 6px;
 	background: rgba(255, 255, 255, 0.08);
 	border: 1px solid rgba(255, 255, 255, 0.12);
@@ -780,17 +782,26 @@ input:checked + .slider:before {
 	padding: 4px 10px;
 	border-radius: 6px;
 	cursor: pointer;
+	text-align: center;
 	transition: background 0.15s ease, border-color 0.15s ease;
 }
 
+.settings-btn:hover:not(:disabled),
 .settings-btn-detect:hover:not(:disabled) {
 	background: rgba(255, 255, 255, 0.15);
 	border-color: rgba(255, 255, 255, 0.25);
 }
 
+.settings-btn:disabled,
 .settings-btn-detect:disabled {
 	opacity: 0.5;
 	cursor: default;
+}
+
+.settings-btn.primary {
+	background: rgba(239, 68, 68, 0.2);
+	border-color: rgba(239, 68, 68, 0.5);
+	color: #f87171;
 }
 
 .setting-item.action {
