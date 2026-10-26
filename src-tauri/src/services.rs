@@ -2359,7 +2359,22 @@ fn apply_capture_ui_state(app: &AppHandle, active: bool) {
     MH_DOCK_EDGE_ARMED.store(false, Ordering::Relaxed);
 }
 
+static MOUSE_HOOK_APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
+static MOUSE_RADIAL_RECORDING: AtomicBool = AtomicBool::new(false);
+static MOUSE_RADIAL_MENU_OPEN: AtomicBool = AtomicBool::new(false);
+static MOUSE_RADIAL_DOWN_TIME: AtomicI64 = AtomicI64::new(0);
+static MOUSE_RADIAL_DOWN_POINT: AtomicI64 = AtomicI64::new(0);
+
+pub fn set_mouse_recording(enabled: bool) {
+    MOUSE_RADIAL_RECORDING.store(enabled, Ordering::Relaxed);
+}
+
+pub fn set_radial_menu_open(open: bool) {
+    MOUSE_RADIAL_MENU_OPEN.store(open, Ordering::Relaxed);
+}
+
 pub fn setup_mouse_hook(app_handle: AppHandle) {
+    let _ = MOUSE_HOOK_APP_HANDLE.set(app_handle.clone());
     let (updates, receiver) = sync_channel::<()>(1);
     if MOUSE_HOOK_UPDATES.set(updates).is_err() {
         return;
@@ -2941,16 +2956,255 @@ fn setup_dock_edge_watchdog(app_handle: AppHandle) {
     });
 }
 
+fn get_modifier_keys() -> (bool, bool, bool, bool) {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT};
+    unsafe {
+        let ctrl = (GetKeyState(VK_CONTROL.0 as i32) as u16 & 0x8000) != 0;
+        let alt = (GetKeyState(VK_MENU.0 as i32) as u16 & 0x8000) != 0;
+        let shift = (GetKeyState(VK_SHIFT.0 as i32) as u16 & 0x8000) != 0;
+        let win = (GetKeyState(VK_LWIN.0 as i32) as u16 & 0x8000) != 0
+            || (GetKeyState(VK_RWIN.0 as i32) as u16 & 0x8000) != 0;
+        (ctrl, alt, shift, win)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MouseBtn {
+    Left,
+    Right,
+    Middle,
+    X1,
+    X2,
+}
+
+fn classify_mouse_msg(msg: u32, mouse_data: u32) -> Option<(MouseBtn, bool)> {
+    const WM_LBUTTONDOWN: u32 = 0x0201;
+    const WM_LBUTTONUP: u32 = 0x0202;
+    const WM_RBUTTONDOWN: u32 = 0x0204;
+    const WM_RBUTTONUP: u32 = 0x0205;
+    const WM_MBUTTONDOWN: u32 = 0x0207;
+    const WM_MBUTTONUP: u32 = 0x0208;
+    const WM_XBUTTONDOWN: u32 = 0x020B;
+    const WM_XBUTTONUP: u32 = 0x020C;
+    const XBUTTON2: u16 = 0x0002;
+
+    match msg {
+        WM_MBUTTONDOWN => Some((MouseBtn::Middle, true)),
+        WM_MBUTTONUP => Some((MouseBtn::Middle, false)),
+        WM_XBUTTONDOWN => {
+            let btn = if (mouse_data >> 16) as u16 == XBUTTON2 {
+                MouseBtn::X2
+            } else {
+                MouseBtn::X1
+            };
+            Some((btn, true))
+        }
+        WM_XBUTTONUP => {
+            let btn = if (mouse_data >> 16) as u16 == XBUTTON2 {
+                MouseBtn::X2
+            } else {
+                MouseBtn::X1
+            };
+            Some((btn, false))
+        }
+        WM_LBUTTONDOWN => Some((MouseBtn::Left, true)),
+        WM_LBUTTONUP => Some((MouseBtn::Left, false)),
+        WM_RBUTTONDOWN => Some((MouseBtn::Right, true)),
+        WM_RBUTTONUP => Some((MouseBtn::Right, false)),
+        _ => None,
+    }
+}
+
+fn matches_mouse_trigger(btn: MouseBtn, trigger_setting: &str) -> bool {
+    let lower = trigger_setting.to_ascii_lowercase();
+    let parts: Vec<&str> = lower.split('+').map(|s| s.trim()).collect();
+    let (ctrl, alt, shift, win) = get_modifier_keys();
+    let req_ctrl = parts.contains(&"ctrl") || parts.contains(&"control");
+    let req_alt = parts.contains(&"alt") || parts.contains(&"option");
+    let req_shift = parts.contains(&"shift");
+    let req_win = parts.contains(&"win") || parts.contains(&"super");
+
+    if ctrl != req_ctrl || alt != req_alt || shift != req_shift || win != req_win {
+        return false;
+    }
+
+    match btn {
+        MouseBtn::Middle => parts.contains(&"middle") || parts.contains(&"wheel") || parts.contains(&"mouse3"),
+        MouseBtn::X1 => parts.contains(&"x1") || parts.contains(&"mouse4") || parts.contains(&"back"),
+        MouseBtn::X2 => parts.contains(&"x2") || parts.contains(&"mouse5") || parts.contains(&"forward"),
+        MouseBtn::Left => parts.contains(&"left") || parts.contains(&"mouse1"),
+        MouseBtn::Right => parts.contains(&"right") || parts.contains(&"mouse2"),
+    }
+}
+
+fn format_recorded_trigger(btn: MouseBtn) -> String {
+    let (ctrl, alt, shift, win) = get_modifier_keys();
+    let mut parts = Vec::new();
+    if ctrl { parts.push("Ctrl"); }
+    if alt { parts.push("Alt"); }
+    if shift { parts.push("Shift"); }
+    if win { parts.push("Win"); }
+    let btn_name = match btn {
+        MouseBtn::Middle => "middle",
+        MouseBtn::X1 => "x1",
+        MouseBtn::X2 => "x2",
+        MouseBtn::Left => "left",
+        MouseBtn::Right => "right",
+    };
+    parts.push(btn_name);
+    parts.join("+")
+}
+
+fn get_foreground_process_name() -> Option<String> {
+    unsafe {
+        use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+        let hwnd = GetForegroundWindow();
+        if hwnd.0.is_null() {
+            return None;
+        }
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        if pid == 0 {
+            return None;
+        }
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+        let mut buf = [0u16; 1024];
+        let mut len = buf.len() as u32;
+        let res = QueryFullProcessImageNameW(
+            handle,
+            PROCESS_NAME_WIN32,
+            windows::core::PWSTR(buf.as_mut_ptr()),
+            &mut len,
+        );
+        let _ = CloseHandle(handle);
+        if res.is_ok() {
+            let path = String::from_utf16_lossy(&buf[..len as usize]);
+            let name = Path::new(&path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            Some(name)
+        } else {
+            None
+        }
+    }
+}
+
 unsafe extern "system" fn mouse_hook_proc(
     code: i32,
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> windows::Win32::Foundation::LRESULT {
-    if code >= 0 && wparam.0 == WM_MOUSEMOVE as usize && !SHUTTING_DOWN.load(Ordering::Relaxed) {
-        let cursor = (*(lparam.0 as *const MSLLHOOKSTRUCT)).pt;
+    let message = wparam.0 as u32;
+    let data = &*(lparam.0 as *const MSLLHOOKSTRUCT);
+
+    if code >= 0 && message == WM_MOUSEMOVE && !SHUTTING_DOWN.load(Ordering::Relaxed) {
+        let cursor = data.pt;
         queue_cursor(cursor);
         MOUSE_HOOK_LAST_EVENT_MS.store(hook_tick_ms(), Ordering::Relaxed);
     }
+
+    let app_opt = MOUSE_HOOK_APP_HANDLE.get().or_else(|| WINDOW_CHANGE_APP_HANDLE.get()).cloned();
+
+    // 1. Mouse Button Recording (when user clicks Record in Settings)
+    if code >= 0 && MOUSE_RADIAL_RECORDING.load(Ordering::Relaxed) {
+        if let Some((btn, true)) = classify_mouse_msg(message, data.mouseData) {
+            let (ctrl, alt, shift, win) = get_modifier_keys();
+            let is_bare_left_or_right = matches!(btn, MouseBtn::Left | MouseBtn::Right) && !ctrl && !alt && !shift && !win;
+            if !is_bare_left_or_right {
+                let recorded = format_recorded_trigger(btn);
+                if let Some(ref app) = app_opt {
+                    let _ = crate::commands::save_setting(
+                        app.clone(),
+                        "zenith-mouse-trigger-button".into(),
+                        serde_json::Value::String(recorded),
+                    );
+                }
+                MOUSE_RADIAL_RECORDING.store(false, Ordering::Relaxed);
+                return windows::Win32::Foundation::LRESULT(1);
+            }
+        }
+    }
+
+    // 2. Mouse Radial Menu Trigger
+    if code >= 0 {
+        if let Some(ref app) = app_opt {
+            let radial_enabled = crate::utils::get_setting_str(app, "zenith-mouse-radial-enabled").as_deref() != Some("false");
+            if radial_enabled {
+                if let Some((btn, is_down)) = classify_mouse_msg(message, data.mouseData) {
+                    let trigger_btn = crate::utils::get_setting_str(app, "zenith-mouse-trigger-button").unwrap_or_else(|| "middle".into());
+                    if matches_mouse_trigger(btn, &trigger_btn) {
+                        // Game mode protection
+                        let game_mode_enabled = crate::utils::get_setting_str(app, "zenith-mouse-game-mode-enabled").as_deref() != Some("false");
+                        let fg_fs = CURRENT_FOREGROUND_FULLSCREEN.load(Ordering::Relaxed);
+                        let blocked = if game_mode_enabled && fg_fs {
+                            let scope = crate::utils::get_setting_str(app, "zenith-mouse-game-mode-scope").unwrap_or_else(|| "all".into());
+                            if scope == "all" {
+                                true
+                            } else {
+                                let blocked_apps = crate::utils::get_setting_str(app, "zenith-mouse-game-mode-blocked-apps").unwrap_or_default();
+                                let fg_exe = get_foreground_process_name().unwrap_or_default().to_ascii_lowercase();
+                                blocked_apps.to_ascii_lowercase().split(',').any(|b| b.trim() == fg_exe)
+                            }
+                        } else {
+                            false
+                        };
+
+                        if !blocked {
+                            let trigger_mode = crate::utils::get_setting_str(app, "zenith-mouse-trigger-mode").unwrap_or_else(|| "hold".into());
+                            let cursor_pt = data.pt;
+
+                            if trigger_mode == "hold" {
+                                if is_down {
+                                    MOUSE_RADIAL_MENU_OPEN.store(true, Ordering::Relaxed);
+                                    let app_clone = app.clone();
+                                    std::thread::spawn(move || {
+                                        crate::commands::show_overlay_for_radial(&app_clone, cursor_pt.x, cursor_pt.y);
+                                    });
+                                    return windows::Win32::Foundation::LRESULT(1);
+                                } else if MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed) {
+                                    MOUSE_RADIAL_MENU_OPEN.store(false, Ordering::Relaxed);
+                                    let app_clone = app.clone();
+                                    std::thread::spawn(move || {
+                                        let _ = app_clone.emit("radial-close", ());
+                                    });
+                                    return windows::Win32::Foundation::LRESULT(1);
+                                }
+                            } else {
+                                // Click mode
+                                if is_down {
+                                    MOUSE_RADIAL_DOWN_TIME.store(hook_tick_ms(), Ordering::Relaxed);
+                                    MOUSE_RADIAL_DOWN_POINT.store(pack_cursor(cursor_pt), Ordering::Relaxed);
+                                } else {
+                                    let down_time = MOUSE_RADIAL_DOWN_TIME.load(Ordering::Relaxed);
+                                    let elapsed = hook_tick_ms() - down_time;
+                                    let down_pt = unpack_cursor(MOUSE_RADIAL_DOWN_POINT.load(Ordering::Relaxed));
+                                    let dx = (cursor_pt.x - down_pt.x).abs();
+                                    let dy = (cursor_pt.y - down_pt.y).abs();
+
+                                    if down_time > 0 && elapsed < 350 && dx < 15 && dy < 15 {
+                                        let currently_open = MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed);
+                                        MOUSE_RADIAL_MENU_OPEN.store(!currently_open, Ordering::Relaxed);
+                                        let app_clone = app.clone();
+                                        std::thread::spawn(move || {
+                                            if !currently_open {
+                                                crate::commands::show_overlay_for_radial(&app_clone, cursor_pt.x, cursor_pt.y);
+                                            } else {
+                                                let _ = app_clone.emit("radial-close", ());
+                                            }
+                                        });
+                                        return windows::Win32::Foundation::LRESULT(1);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Start closes itself on the press of a click outside it, the dock's
     // Start button included, before that click reaches Zenith. The hook sees
     // the press first, so it records whether Start was open for the click to

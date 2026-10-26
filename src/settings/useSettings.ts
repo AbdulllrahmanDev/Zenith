@@ -185,6 +185,74 @@ export function useSettings() {
 	const [dockIsolation, setDockIsolation] = useState(
 		() => localStorage.getItem("bloom-dock-isolation") === "true"
 	);
+
+	// Mouse & Radial Menu State
+	const [mouseRadialEnabled, setMouseRadialEnabled] = useState(
+		() => localStorage.getItem("zenith-mouse-radial-enabled") !== "false"
+	);
+	const [mouseTriggerButton, setMouseTriggerButton] = useState(
+		() => localStorage.getItem("zenith-mouse-trigger-button") || "middle"
+	);
+	const [mouseTriggerMode, setMouseTriggerMode] = useState<"hold" | "click">(
+		() => (localStorage.getItem("zenith-mouse-trigger-mode") === "click" ? "click" : "hold")
+	);
+	const [mousePlacement, setMousePlacement] = useState<"cursor" | "center">(
+		() => (localStorage.getItem("zenith-mouse-placement") === "center" ? "center" : "cursor")
+	);
+	const [mouseMonitor, setMouseMonitor] = useState<"cursor" | "primary">(
+		() => (localStorage.getItem("zenith-mouse-monitor") === "primary" ? "primary" : "cursor")
+	);
+	const [mouseSelectionMode, setMouseSelectionMode] = useState<"area" | "cursor">(
+		() => (localStorage.getItem("zenith-mouse-selection-mode") === "cursor" ? "cursor" : "area")
+	);
+	const [mouseAreaWedges, setMouseAreaWedges] = useState(
+		() => localStorage.getItem("zenith-mouse-area-wedges") === "true"
+	);
+	const [mouseInstantActivate, setMouseInstantActivate] = useState<"off" | "dwell">(
+		() => (localStorage.getItem("zenith-mouse-instant-activate") === "dwell" ? "dwell" : "off")
+	);
+	const [mouseInstantDwellMs, setMouseInstantDwellMs] = useState<number>(
+		() => parseInt(localStorage.getItem("zenith-mouse-instant-dwell-ms") || "350", 10)
+	);
+	const [mouseInstantSensitivity, setMouseInstantSensitivity] = useState<"low" | "medium" | "high">(
+		() => {
+			const s = localStorage.getItem("zenith-mouse-instant-sensitivity");
+			return s === "low" || s === "high" ? s : "medium";
+		}
+	);
+	const [mouseNumberLaunch, setMouseNumberLaunch] = useState(
+		() => localStorage.getItem("zenith-mouse-number-launch") === "true"
+	);
+	const [mouseNumberLabels, setMouseNumberLabels] = useState(
+		() => localStorage.getItem("zenith-mouse-number-labels") !== "false"
+	);
+	const [mouseWorkspacePeek, setMouseWorkspacePeek] = useState(
+		() => localStorage.getItem("zenith-mouse-workspace-peek") === "true"
+	);
+	const [mouseWorkspacePeekStyle, setMouseWorkspacePeekStyle] = useState<"fan" | "ring">(
+		() => (localStorage.getItem("zenith-mouse-workspace-peek-style") === "ring" ? "ring" : "fan")
+	);
+	const [mouseWorkspacePeekDelayMs, setMouseWorkspacePeekDelayMs] = useState<number>(
+		() => parseInt(localStorage.getItem("zenith-mouse-workspace-peek-delay-ms") || "300", 10)
+	);
+	const [mouseGameModeEnabled, setMouseGameModeEnabled] = useState(
+		() => localStorage.getItem("zenith-mouse-game-mode-enabled") !== "false"
+	);
+	const [mouseGameModeScope, setMouseGameModeScope] = useState<"all" | "list">(
+		() => (localStorage.getItem("zenith-mouse-game-mode-scope") === "list" ? "list" : "all")
+	);
+	const [mouseGameModeBlockedApps, setMouseGameModeBlockedApps] = useState(
+		() => localStorage.getItem("zenith-mouse-game-mode-blocked-apps") || "csgo.exe, valorant.exe, league of legends.exe, dota2.exe"
+	);
+	const [mouseGameModeAutoDetect, setMouseGameModeAutoDetect] = useState(
+		() => localStorage.getItem("zenith-mouse-game-mode-auto-detect") !== "false"
+	);
+	const [mouseSoundEnabled, setMouseSoundEnabled] = useState(
+		() => localStorage.getItem("zenith-mouse-sound-enabled") !== "false"
+	);
+	const [mouseSoundVolume, setMouseSoundVolume] = useState<number>(
+		() => parseInt(localStorage.getItem("zenith-mouse-sound-volume") || "70", 10)
+	);
 	const [lowBatteryThreshold, setLowBatteryThreshold] = useState(20);
 	const [updateStatus, setUpdateStatus] = useState<
 		"idle" | "checking" | "available" | "uptodate" | "error" | "downloading" | "installing"
@@ -287,6 +355,29 @@ export function useSettings() {
 			apply(getVal("bloom-notch-display"), setNotchDisplay, (v) => v);
 			apply(getVal("bloom-dock-display"), setDockDisplay, (v) => v);
 			apply(getVal("bloom-dock-isolation"), setDockIsolation, readBool);
+
+			// Mouse & Radial Menu Settings
+			apply(getVal("zenith-mouse-radial-enabled"), setMouseRadialEnabled, readBool);
+			apply(getVal("zenith-mouse-trigger-button"), setMouseTriggerButton, (v) => v);
+			apply(getVal("zenith-mouse-trigger-mode"), setMouseTriggerMode, (v) => v === "click" ? "click" : "hold");
+			apply(getVal("zenith-mouse-placement"), setMousePlacement, (v) => v === "center" ? "center" : "cursor");
+			apply(getVal("zenith-mouse-monitor"), setMouseMonitor, (v) => v === "primary" ? "primary" : "cursor");
+			apply(getVal("zenith-mouse-selection-mode"), setMouseSelectionMode, (v) => v === "cursor" ? "cursor" : "area");
+			apply(getVal("zenith-mouse-area-wedges"), setMouseAreaWedges, readBool);
+			apply(getVal("zenith-mouse-instant-activate"), setMouseInstantActivate, (v) => v === "dwell" ? "dwell" : "off");
+			apply(getVal("zenith-mouse-instant-dwell-ms"), setMouseInstantDwellMs, parseInt);
+			apply(getVal("zenith-mouse-instant-sensitivity"), setMouseInstantSensitivity, (v) => v === "low" || v === "high" ? v : "medium");
+			apply(getVal("zenith-mouse-number-launch"), setMouseNumberLaunch, readBool);
+			apply(getVal("zenith-mouse-number-labels"), setMouseNumberLabels, readBool);
+			apply(getVal("zenith-mouse-workspace-peek"), setMouseWorkspacePeek, readBool);
+			apply(getVal("zenith-mouse-workspace-peek-style"), setMouseWorkspacePeekStyle, (v) => v === "ring" ? "ring" : "fan");
+			apply(getVal("zenith-mouse-workspace-peek-delay-ms"), setMouseWorkspacePeekDelayMs, parseInt);
+			apply(getVal("zenith-mouse-game-mode-enabled"), setMouseGameModeEnabled, readBool);
+			apply(getVal("zenith-mouse-game-mode-scope"), setMouseGameModeScope, (v) => v === "list" ? "list" : "all");
+			apply(getVal("zenith-mouse-game-mode-blocked-apps"), setMouseGameModeBlockedApps, (v) => v);
+			apply(getVal("zenith-mouse-game-mode-auto-detect"), setMouseGameModeAutoDetect, readBool);
+			apply(getVal("zenith-mouse-sound-enabled"), setMouseSoundEnabled, readBool);
+			apply(getVal("zenith-mouse-sound-volume"), setMouseSoundVolume, parseInt);
 
 			const savedCity = getVal("bloom-weather-city");
 			if (savedCity) setCityName(savedCity);
@@ -479,7 +570,30 @@ export function useSettings() {
 		"bloom-theme-opacity": setThemeOpacity,
 		"bloom-theme-saturation": setThemeSaturation,
 		"bloom-theme-brightness": setThemeBrightness,
-		"bloom-weather-city": (v) => setCityName(v || "")
+		"bloom-weather-city": (v) => setCityName(v || ""),
+
+		// Mouse & Radial Settings Sync
+		"zenith-mouse-radial-enabled": setMouseRadialEnabled,
+		"zenith-mouse-trigger-button": setMouseTriggerButton,
+		"zenith-mouse-trigger-mode": (v: unknown) => setMouseTriggerMode(v === "click" ? "click" : "hold"),
+		"zenith-mouse-placement": (v: unknown) => setMousePlacement(v === "center" ? "center" : "cursor"),
+		"zenith-mouse-monitor": (v: unknown) => setMouseMonitor(v === "primary" ? "primary" : "cursor"),
+		"zenith-mouse-selection-mode": (v: unknown) => setMouseSelectionMode(v === "cursor" ? "cursor" : "area"),
+		"zenith-mouse-area-wedges": setMouseAreaWedges,
+		"zenith-mouse-instant-activate": (v: unknown) => setMouseInstantActivate(v === "dwell" ? "dwell" : "off"),
+		"zenith-mouse-instant-dwell-ms": setMouseInstantDwellMs,
+		"zenith-mouse-instant-sensitivity": (v: unknown) => setMouseInstantSensitivity(v === "low" || v === "high" ? v : "medium"),
+		"zenith-mouse-number-launch": setMouseNumberLaunch,
+		"zenith-mouse-number-labels": setMouseNumberLabels,
+		"zenith-mouse-workspace-peek": setMouseWorkspacePeek,
+		"zenith-mouse-workspace-peek-style": (v: unknown) => setMouseWorkspacePeekStyle(v === "ring" ? "ring" : "fan"),
+		"zenith-mouse-workspace-peek-delay-ms": setMouseWorkspacePeekDelayMs,
+		"zenith-mouse-game-mode-enabled": setMouseGameModeEnabled,
+		"zenith-mouse-game-mode-scope": (v: unknown) => setMouseGameModeScope(v === "list" ? "list" : "all"),
+		"zenith-mouse-game-mode-blocked-apps": setMouseGameModeBlockedApps,
+		"zenith-mouse-game-mode-auto-detect": setMouseGameModeAutoDetect,
+		"zenith-mouse-sound-enabled": setMouseSoundEnabled,
+		"zenith-mouse-sound-volume": setMouseSoundVolume
 	});
 
 	// ── Listen for system accent changes (adaptive theme) ──
@@ -756,6 +870,120 @@ export function useSettings() {
 		const next = !mediaCompactGlowEnabled;
 		setMediaCompactGlowEnabled(next);
 		saveSetting("bloom-media-compact-glow-enabled", String(next));
+	};
+
+	// Mouse & Radial Menu Actions
+	const toggleMouseRadial = () => {
+		const next = !mouseRadialEnabled;
+		setMouseRadialEnabled(next);
+		saveSetting("zenith-mouse-radial-enabled", String(next));
+	};
+
+	const handleMouseTriggerButtonChange = (btn: string) => {
+		setMouseTriggerButton(btn);
+		saveSetting("zenith-mouse-trigger-button", btn);
+	};
+
+	const handleMouseTriggerModeChange = (mode: "hold" | "click") => {
+		setMouseTriggerMode(mode);
+		saveSetting("zenith-mouse-trigger-mode", mode);
+	};
+
+	const handleMousePlacementChange = (placement: "cursor" | "center") => {
+		setMousePlacement(placement);
+		saveSetting("zenith-mouse-placement", placement);
+	};
+
+	const handleMouseMonitorChange = (monitor: "cursor" | "primary") => {
+		setMouseMonitor(monitor);
+		saveSetting("zenith-mouse-monitor", monitor);
+	};
+
+	const handleMouseSelectionModeChange = (mode: "area" | "cursor") => {
+		setMouseSelectionMode(mode);
+		saveSetting("zenith-mouse-selection-mode", mode);
+	};
+
+	const toggleMouseAreaWedges = () => {
+		const next = !mouseAreaWedges;
+		setMouseAreaWedges(next);
+		saveSetting("zenith-mouse-area-wedges", String(next));
+	};
+
+	const handleMouseInstantActivateChange = (val: "off" | "dwell") => {
+		setMouseInstantActivate(val);
+		saveSetting("zenith-mouse-instant-activate", val);
+	};
+
+	const handleMouseInstantDwellMsChange = (val: number) => {
+		setMouseInstantDwellMs(val);
+		saveSetting("zenith-mouse-instant-dwell-ms", String(val));
+	};
+
+	const handleMouseInstantSensitivityChange = (val: "low" | "medium" | "high") => {
+		setMouseInstantSensitivity(val);
+		saveSetting("zenith-mouse-instant-sensitivity", val);
+	};
+
+	const toggleMouseNumberLaunch = () => {
+		const next = !mouseNumberLaunch;
+		setMouseNumberLaunch(next);
+		saveSetting("zenith-mouse-number-launch", String(next));
+	};
+
+	const toggleMouseNumberLabels = () => {
+		const next = !mouseNumberLabels;
+		setMouseNumberLabels(next);
+		saveSetting("zenith-mouse-number-labels", String(next));
+	};
+
+	const toggleMouseWorkspacePeek = () => {
+		const next = !mouseWorkspacePeek;
+		setMouseWorkspacePeek(next);
+		saveSetting("zenith-mouse-workspace-peek", String(next));
+	};
+
+	const handleMouseWorkspacePeekStyleChange = (style: "fan" | "ring") => {
+		setMouseWorkspacePeekStyle(style);
+		saveSetting("zenith-mouse-workspace-peek-style", style);
+	};
+
+	const handleMouseWorkspacePeekDelayMsChange = (val: number) => {
+		setMouseWorkspacePeekDelayMs(val);
+		saveSetting("zenith-mouse-workspace-peek-delay-ms", String(val));
+	};
+
+	const toggleMouseGameMode = () => {
+		const next = !mouseGameModeEnabled;
+		setMouseGameModeEnabled(next);
+		saveSetting("zenith-mouse-game-mode-enabled", String(next));
+	};
+
+	const handleMouseGameModeScopeChange = (scope: "all" | "list") => {
+		setMouseGameModeScope(scope);
+		saveSetting("zenith-mouse-game-mode-scope", scope);
+	};
+
+	const handleMouseGameModeBlockedAppsChange = (apps: string) => {
+		setMouseGameModeBlockedApps(apps);
+		saveSetting("zenith-mouse-game-mode-blocked-apps", apps);
+	};
+
+	const toggleMouseGameModeAutoDetect = () => {
+		const next = !mouseGameModeAutoDetect;
+		setMouseGameModeAutoDetect(next);
+		saveSetting("zenith-mouse-game-mode-auto-detect", String(next));
+	};
+
+	const toggleMouseSound = () => {
+		const next = !mouseSoundEnabled;
+		setMouseSoundEnabled(next);
+		saveSetting("zenith-mouse-sound-enabled", String(next));
+	};
+
+	const handleMouseSoundVolumeChange = (val: number) => {
+		setMouseSoundVolume(val);
+		saveSetting("zenith-mouse-sound-volume", String(val));
 	};
 
 	const toggleCorners = () => {
@@ -1234,6 +1462,50 @@ export function useSettings() {
 		toggleBrightnessOverlay,
 		brightnessEdgeEnabled,
 		toggleBrightnessEdge,
+
+		// Mouse & Radial Menu
+		mouseRadialEnabled,
+		toggleMouseRadial,
+		mouseTriggerButton,
+		handleMouseTriggerButtonChange,
+		mouseTriggerMode,
+		handleMouseTriggerModeChange,
+		mousePlacement,
+		handleMousePlacementChange,
+		mouseMonitor,
+		handleMouseMonitorChange,
+		mouseSelectionMode,
+		handleMouseSelectionModeChange,
+		mouseAreaWedges,
+		toggleMouseAreaWedges,
+		mouseInstantActivate,
+		handleMouseInstantActivateChange,
+		mouseInstantDwellMs,
+		handleMouseInstantDwellMsChange,
+		mouseInstantSensitivity,
+		handleMouseInstantSensitivityChange,
+		mouseNumberLaunch,
+		toggleMouseNumberLaunch,
+		mouseNumberLabels,
+		toggleMouseNumberLabels,
+		mouseWorkspacePeek,
+		toggleMouseWorkspacePeek,
+		mouseWorkspacePeekStyle,
+		handleMouseWorkspacePeekStyleChange,
+		mouseWorkspacePeekDelayMs,
+		handleMouseWorkspacePeekDelayMsChange,
+		mouseGameModeEnabled,
+		toggleMouseGameMode,
+		mouseGameModeScope,
+		handleMouseGameModeScopeChange,
+		mouseGameModeBlockedApps,
+		handleMouseGameModeBlockedAppsChange,
+		mouseGameModeAutoDetect,
+		toggleMouseGameModeAutoDetect,
+		mouseSoundEnabled,
+		toggleMouseSound,
+		mouseSoundVolume,
+		handleMouseSoundVolumeChange,
 
 		// Notifications
 		notificationsEnabled,

@@ -2485,6 +2485,53 @@ pub fn hide_overlay(app: AppHandle) {
 }
 
 #[tauri::command]
+pub fn start_mouse_recording() {
+    crate::services::set_mouse_recording(true);
+}
+
+#[tauri::command]
+pub fn stop_mouse_recording() {
+    crate::services::set_mouse_recording(false);
+}
+
+#[tauri::command]
+pub fn close_radial_menu(app: AppHandle) {
+    crate::services::set_radial_menu_open(false);
+    let _ = app.emit("radial-close", ());
+    if let Some(win) = app.get_webview_window("overlay") {
+        let _ = win.hide();
+    }
+}
+
+pub fn show_overlay_for_radial(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
+    if let Some(ov_win) = app.get_webview_window("overlay") {
+        let monitor_choice = crate::utils::get_setting_str(app, "zenith-mouse-monitor").unwrap_or_else(|| "cursor".into());
+        if monitor_choice == "cursor" {
+            if let Ok(monitors) = app.available_monitors() {
+                for m in monitors {
+                    let pos = m.position();
+                    let size = m.size();
+                    if cursor_x >= pos.x
+                        && cursor_x < pos.x + size.width as i32
+                        && cursor_y >= pos.y
+                        && cursor_y < pos.y + size.height as i32
+                    {
+                        let _ = ov_win.set_position(tauri::PhysicalPosition::new(pos.x, pos.y));
+                        let _ = ov_win.set_size(tauri::PhysicalSize::new(size.width, size.height));
+                        break;
+                    }
+                }
+            }
+        } else {
+            crate::services::sync_overlays(app);
+        }
+        let _ = ov_win.show();
+        let _ = ov_win.set_focus();
+        let _ = app.emit("radial-open", serde_json::json!({ "x": cursor_x, "y": cursor_y }));
+    }
+}
+
+#[tauri::command]
 pub fn set_splash_fullscreen(app: AppHandle, fullscreen: bool) {
     crate::state::OVERLAY_IN_SPLASH.store(fullscreen, Ordering::Relaxed);
     if let Some(win) = app.get_webview_window("overlay") {

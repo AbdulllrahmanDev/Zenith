@@ -11,6 +11,7 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { MixerIcon, SpeakerIcon } from "./icons";
 import "./Overlay.css";
 import { EdgeSurface } from "./components/EdgeSurface";
+import { RadialMenu } from "./components/RadialMenu";
 import { initTheme } from "./theme";
 import { createRegionSender, measureElements, type RegionRect } from "./windowRegion";
 
@@ -599,10 +600,47 @@ function OverlayApp() {
 		return initTheme();
 	}, []);
 
-	type Mode = "idle" | "volume" | "brightness" | "splash" | "updating";
+	type Mode = "idle" | "volume" | "brightness" | "splash" | "updating" | "radial";
 	const [mode, setMode] = useState<Mode>("idle");
 	const [updateStatus, setUpdateStatus] = useState<string>("checking");
 	const [updateProgress, setUpdateProgress] = useState(0);
+
+	// Mouse Radial Menu State
+	const [radialOpen, setRadialOpen] = useState(false);
+	const [radialPosition, setRadialPosition] = useState({ x: 0, y: 0 });
+	const [mouseRadialEnabled, setMouseRadialEnabled] = useState(
+		() => localStorage.getItem("zenith-mouse-radial-enabled") !== "false"
+	);
+	const [mouseTriggerMode, setMouseTriggerMode] = useState<"hold" | "click">(
+		() => (localStorage.getItem("zenith-mouse-trigger-mode") === "click" ? "click" : "hold")
+	);
+	const [mousePlacement, setMousePlacement] = useState<"cursor" | "center">(
+		() => (localStorage.getItem("zenith-mouse-placement") === "center" ? "center" : "cursor")
+	);
+	const [mouseSelectionMode, setMouseSelectionMode] = useState<"area" | "cursor">(
+		() => (localStorage.getItem("zenith-mouse-selection-mode") === "cursor" ? "cursor" : "area")
+	);
+	const [mouseAreaWedges, setMouseAreaWedges] = useState(
+		() => localStorage.getItem("zenith-mouse-area-wedges") === "true"
+	);
+	const [mouseInstantActivate, setMouseInstantActivate] = useState<"off" | "dwell">(
+		() => (localStorage.getItem("zenith-mouse-instant-activate") === "dwell" ? "dwell" : "off")
+	);
+	const [mouseInstantDwellMs, setMouseInstantDwellMs] = useState(
+		() => parseInt(localStorage.getItem("zenith-mouse-instant-dwell-ms") || "350", 10)
+	);
+	const [mouseNumberLaunch, setMouseNumberLaunch] = useState(
+		() => localStorage.getItem("zenith-mouse-number-launch") === "true"
+	);
+	const [mouseNumberLabels, setMouseNumberLabels] = useState(
+		() => localStorage.getItem("zenith-mouse-number-labels") !== "false"
+	);
+	const [mouseSoundEnabled, setMouseSoundEnabled] = useState(
+		() => localStorage.getItem("zenith-mouse-sound-enabled") !== "false"
+	);
+	const [mouseSoundVolume, setMouseSoundVolume] = useState(
+		() => parseInt(localStorage.getItem("zenith-mouse-sound-volume") || "70", 10)
+	);
 
 	// Volume state
 	const [volume, setVolume] = useState(0.5);
@@ -787,12 +825,26 @@ function OverlayApp() {
 			}
 		);
 
+		const radialOpenPromise = listen<{ x: number; y: number }>("radial-open", (event) => {
+			if (splashActiveRef.current || !mouseRadialEnabled) return;
+			setRadialPosition({ x: event.payload.x, y: event.payload.y });
+			setRadialOpen(true);
+			setMode("radial");
+		});
+
+		const radialClosePromise = listen("radial-close", () => {
+			setRadialOpen(false);
+			setMode("idle");
+		});
+
 		return () => {
 			volPromise.then((fn) => fn());
 			volEdgePromise.then((fn) => fn());
 			brightPromise.then((fn) => fn());
 			brightEdgePromise.then((fn) => fn());
 			autoUpdatePromise.then((fn) => fn());
+			radialOpenPromise.then((fn) => fn());
+			radialClosePromise.then((fn) => fn());
 			document.removeEventListener("contextmenu", preventContext);
 		};
 	}, [
@@ -800,6 +852,7 @@ function OverlayApp() {
 		volumeEdgeEnabled,
 		brightnessOverlayEnabled,
 		brightnessEdgeEnabled,
+		mouseRadialEnabled,
 		resetHideTimeout
 	]);
 
@@ -808,7 +861,18 @@ function OverlayApp() {
 		"bloom-volume-edge-enabled": setVolumeEdgeEnabled,
 		"bloom-brightness-overlay-enabled": setBrightnessOverlayEnabled,
 		"bloom-brightness-edge-enabled": setBrightnessEdgeEnabled,
-		"bloom-scale": setScale
+		"bloom-scale": setScale,
+		"zenith-mouse-radial-enabled": setMouseRadialEnabled,
+		"zenith-mouse-trigger-mode": (v: unknown) => setMouseTriggerMode(v === "click" ? "click" : "hold"),
+		"zenith-mouse-placement": (v: unknown) => setMousePlacement(v === "center" ? "center" : "cursor"),
+		"zenith-mouse-selection-mode": (v: unknown) => setMouseSelectionMode(v === "cursor" ? "cursor" : "area"),
+		"zenith-mouse-area-wedges": setMouseAreaWedges,
+		"zenith-mouse-instant-activate": (v: unknown) => setMouseInstantActivate(v === "dwell" ? "dwell" : "off"),
+		"zenith-mouse-instant-dwell-ms": setMouseInstantDwellMs,
+		"zenith-mouse-number-launch": setMouseNumberLaunch,
+		"zenith-mouse-number-labels": setMouseNumberLabels,
+		"zenith-mouse-sound-enabled": setMouseSoundEnabled,
+		"zenith-mouse-sound-volume": setMouseSoundVolume
 	});
 
 	// Side effects: reset overlay mode to idle when overlay is disabled
@@ -937,7 +1001,7 @@ function OverlayApp() {
 	useEffect(() => {
 		const width = window.innerWidth;
 		const height = window.innerHeight;
-		if (mode === "splash" || mode === "updating") {
+		if (mode === "splash" || mode === "updating" || mode === "radial") {
 			sendOverlayRegion([{ x: 0, y: 0, width, height }]);
 			return;
 		}
@@ -1020,8 +1084,30 @@ function OverlayApp() {
 				)}
 			</AnimatePresence>
 
+			{/* Mouse Radial Wheel Launcher */}
+			{mode === "radial" && (
+				<RadialMenu
+					isOpen={radialOpen}
+					position={radialPosition}
+					onClose={() => {
+						setRadialOpen(false);
+						setMode("idle");
+					}}
+					triggerMode={mouseTriggerMode}
+					placement={mousePlacement}
+					selectionMode={mouseSelectionMode}
+					areaWedges={mouseAreaWedges}
+					instantActivate={mouseInstantActivate}
+					instantDwellMs={mouseInstantDwellMs}
+					numberLaunch={mouseNumberLaunch}
+					numberLabels={mouseNumberLabels}
+					soundEnabled={mouseSoundEnabled}
+					soundVolume={mouseSoundVolume}
+				/>
+			)}
+
 			{/* Volume / Brightness Overlay */}
-			{mode !== "splash" && mode !== "updating" && (
+			{mode !== "splash" && mode !== "updating" && mode !== "radial" && (
 				<div
 					style={{
 						zoom: scale,

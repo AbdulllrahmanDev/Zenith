@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { X, Settings, Palette, PanelTop, Monitor, Layers, Info, Megaphone } from "lucide-react";
+import { X, Settings, Palette, PanelTop, Monitor, Layers, MousePointer, Info, Megaphone } from "lucide-react";
 import {
 	useSettings,
 	GeneralTab,
@@ -11,6 +11,7 @@ import {
 	NotchTab,
 	DockTab,
 	OverlaysTab,
+	MouseTab,
 	AboutTab
 } from "./settings/index";
 import type { SettingsTab } from "./settings/index";
@@ -26,6 +27,7 @@ const TABS: { id: SettingsTab; label: string; icon: typeof Settings }[] = [
 	{ id: "notch", label: "Notch", icon: PanelTop },
 	{ id: "dock", label: "Dock", icon: Monitor },
 	{ id: "overlays", label: "Overlays", icon: Layers },
+	{ id: "mouse", label: "Mouse", icon: MousePointer },
 	{ id: "about", label: "About", icon: Info }
 ];
 
@@ -271,6 +273,52 @@ function SettingsApp() {
 							toggleBrightnessOverlay={settings.toggleBrightnessOverlay}
 							brightnessEdgeEnabled={settings.brightnessEdgeEnabled}
 							toggleBrightnessEdge={settings.toggleBrightnessEdge}
+						/>
+					)}
+					{activeTab === "mouse" && (
+						<MouseTab
+							mouseRadialEnabled={settings.mouseRadialEnabled}
+							toggleMouseRadial={settings.toggleMouseRadial}
+							mouseTriggerButton={settings.mouseTriggerButton}
+							handleMouseTriggerButtonChange={settings.handleMouseTriggerButtonChange}
+							mouseTriggerMode={settings.mouseTriggerMode}
+							handleMouseTriggerModeChange={settings.handleMouseTriggerModeChange}
+							mousePlacement={settings.mousePlacement}
+							handleMousePlacementChange={settings.handleMousePlacementChange}
+							mouseMonitor={settings.mouseMonitor}
+							handleMouseMonitorChange={settings.handleMouseMonitorChange}
+							mouseSelectionMode={settings.mouseSelectionMode}
+							handleMouseSelectionModeChange={settings.handleMouseSelectionModeChange}
+							mouseAreaWedges={settings.mouseAreaWedges}
+							toggleMouseAreaWedges={settings.toggleMouseAreaWedges}
+							mouseInstantActivate={settings.mouseInstantActivate}
+							handleMouseInstantActivateChange={settings.handleMouseInstantActivateChange}
+							mouseInstantDwellMs={settings.mouseInstantDwellMs}
+							handleMouseInstantDwellMsChange={settings.handleMouseInstantDwellMsChange}
+							mouseInstantSensitivity={settings.mouseInstantSensitivity}
+							handleMouseInstantSensitivityChange={settings.handleMouseInstantSensitivityChange}
+							mouseNumberLaunch={settings.mouseNumberLaunch}
+							toggleMouseNumberLaunch={settings.toggleMouseNumberLaunch}
+							mouseNumberLabels={settings.mouseNumberLabels}
+							toggleMouseNumberLabels={settings.toggleMouseNumberLabels}
+							mouseWorkspacePeek={settings.mouseWorkspacePeek}
+							toggleMouseWorkspacePeek={settings.toggleMouseWorkspacePeek}
+							mouseWorkspacePeekStyle={settings.mouseWorkspacePeekStyle}
+							handleMouseWorkspacePeekStyleChange={settings.handleMouseWorkspacePeekStyleChange}
+							mouseWorkspacePeekDelayMs={settings.mouseWorkspacePeekDelayMs}
+							handleMouseWorkspacePeekDelayMsChange={settings.handleMouseWorkspacePeekDelayMsChange}
+							mouseGameModeEnabled={settings.mouseGameModeEnabled}
+							toggleMouseGameMode={settings.toggleMouseGameMode}
+							mouseGameModeScope={settings.mouseGameModeScope}
+							handleMouseGameModeScopeChange={settings.handleMouseGameModeScopeChange}
+							mouseGameModeBlockedApps={settings.mouseGameModeBlockedApps}
+							handleMouseGameModeBlockedAppsChange={settings.handleMouseGameModeBlockedAppsChange}
+							mouseGameModeAutoDetect={settings.mouseGameModeAutoDetect}
+							toggleMouseGameModeAutoDetect={settings.toggleMouseGameModeAutoDetect}
+							mouseSoundEnabled={settings.mouseSoundEnabled}
+							toggleMouseSound={settings.toggleMouseSound}
+							mouseSoundVolume={settings.mouseSoundVolume}
+							handleMouseSoundVolumeChange={settings.handleMouseSoundVolumeChange}
 						/>
 					)}
 					{activeTab === "about" && (

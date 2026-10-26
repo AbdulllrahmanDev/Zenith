@@ -110,6 +110,27 @@ Edit `settings.json` with any text editor while Zenith is running. Changes are a
 | `bloom-brightness-overlay-enabled` | `"true"` / `"false"` | `"true"` | Show Bloom brightness HUD when brightness changes.                       |
 | `bloom-brightness-edge-enabled`    | `"true"` / `"false"` | `"true"` | Trigger brightness HUD by hovering the right screen edge.                |
 
+### Mouse
+
+| Key                                   | Type                                            | Default     | Description                                                                                                                                                 |
+| ------------------------------------- | ----------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `zenith-mouse-radial-enabled`          | `"true"` / `"false"`                            | `"true"`    | Enable or disable the Zenith Mouse Radial Menu launcher.                                                                                                   |
+| `zenith-mouse-trigger-button`         | string                                          | `"middle"`  | Activation button / combo (e.g. `"middle"`, `"x1"`, `"x2"`, `"ctrl+middle"`, `"shift+x1"`). Can be recorded directly in Settings.                        |
+| `zenith-mouse-trigger-mode`           | `"hold"` / `"click"`                            | `"hold"`    | Activation interaction mode. **hold** = menu opens on press and activates on release. **click** = click opens/pins menu, click item executes.              |
+| `zenith-mouse-placement`              | `"cursor"` / `"screen-center"`                  | `"cursor"`  | Where the wheel spawns: at cursor coordinates or fixed at monitor center.                                                                                  |
+| `zenith-mouse-target-monitor`         | `"cursor"` / `"primary"` / `"all"`              | `"cursor"`  | Which display to show the menu on: monitor where cursor resides, primary display, or all displays.                                                         |
+| `zenith-mouse-aiming-mode`            | `"area"` / `"precise"`                          | `"area"`    | Aiming mechanics: **area** = directional pie slices (infinite flick-out selection); **precise** = cursor must hover inside the item card.                   |
+| `zenith-mouse-dwell-enabled`          | `"true"` / `"false"`                            | `"false"`   | Dwell activation: hovering steadily over an item automatically triggers it after a configurable timer without clicking.                                     |
+| `zenith-mouse-dwell-delay`            | milliseconds string (`"150"`–`"1000"`)          | `"300"`     | Delay in milliseconds required for dwell activation to trigger.                                                                                             |
+| `zenith-mouse-wedge-count`            | integer string (`"4"`–`"8"`)                    | `"8"`       | Maximum visible slots per radial wheel workspace (4 to 8 slices).                                                                                           |
+| `zenith-mouse-shortcuts-enabled`      | `"true"` / `"false"`                            | `"true"`    | Allow pressing number keys 1 through 9 while radial menu is visible to instantly trigger the corresponding slot.                                             |
+| `zenith-mouse-game-mode-enabled`      | `"true"` / `"false"`                            | `"true"`    | Suppress radial menu triggers while a fullscreen game or application is in the foreground.                                                                  |
+| `zenith-mouse-game-mode-scope`        | `"all"` / `"custom"`                            | `"all"`     | Game protection scope: suppress on **all** fullscreen apps, or only for specified executables.                                                            |
+| `zenith-mouse-game-mode-blocked-apps` | comma-separated executables                     | `""`        | Process names to block trigger for (e.g. `"cs2.exe, valorant.exe"`).                                                                                       |
+| `zenith-mouse-sound-bloom`            | `"true"` / `"false"`                            | `"true"`    | Play a harmonic glass bloom chime when the radial wheel opens.                                                                                              |
+| `zenith-mouse-sound-tick`             | `"true"` / `"false"`                            | `"true"`    | Play subtle haptic-like micro-ticks when traversing wheel wedges.                                                                                           |
+| `zenith-mouse-workspaces`             | JSON string array                               | (default)   | Custom radial workspaces and items (`[{"id":"main","name":"Main","items":[...]}]`).                                                                        |
+
 ### Appearance
 
 | Key                      | Type                                             | Default     | Description                                                                                                                                                 |
