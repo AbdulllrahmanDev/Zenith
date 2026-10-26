@@ -3167,7 +3167,7 @@ unsafe extern "system" fn mouse_hook_proc(
                                     MOUSE_RADIAL_MENU_OPEN.store(false, Ordering::Relaxed);
                                     let app_clone = app.clone();
                                     std::thread::spawn(move || {
-                                        let _ = app_clone.emit("radial-close", ());
+                                        let _ = app_clone.emit("radial-release", ());
                                     });
                                     return windows::Win32::Foundation::LRESULT(1);
                                 }

@@ -12,6 +12,7 @@ import { MixerIcon, SpeakerIcon } from "./icons";
 import "./Overlay.css";
 import { EdgeSurface } from "./components/EdgeSurface";
 import { RadialMenu } from "./components/RadialMenu";
+import { DEFAULT_WORKSPACES, type RadialWorkspace } from "./radial/types";
 import { initTheme } from "./theme";
 import { createRegionSender, measureElements, type RegionRect } from "./windowRegion";
 
@@ -641,6 +642,14 @@ function OverlayApp() {
 	const [mouseSoundVolume, setMouseSoundVolume] = useState(
 		() => parseInt(localStorage.getItem("zenith-mouse-sound-volume") || "70", 10)
 	);
+	const [mouseWorkspaces, setMouseWorkspaces] = useState<RadialWorkspace[]>(() => {
+		try {
+			const stored = localStorage.getItem("zenith-mouse-workspaces");
+			return stored ? JSON.parse(stored) : DEFAULT_WORKSPACES;
+		} catch {
+			return DEFAULT_WORKSPACES;
+		}
+	});
 
 	// Volume state
 	const [volume, setVolume] = useState(0.5);
@@ -872,7 +881,14 @@ function OverlayApp() {
 		"zenith-mouse-number-launch": setMouseNumberLaunch,
 		"zenith-mouse-number-labels": setMouseNumberLabels,
 		"zenith-mouse-sound-enabled": setMouseSoundEnabled,
-		"zenith-mouse-sound-volume": setMouseSoundVolume
+		"zenith-mouse-sound-volume": setMouseSoundVolume,
+		"zenith-mouse-workspaces": (v: unknown) => {
+			try {
+				if (typeof v === "string") {
+					setMouseWorkspaces(JSON.parse(v));
+				}
+			} catch {}
+		}
 	});
 
 	// Side effects: reset overlay mode to idle when overlay is disabled
@@ -1089,9 +1105,11 @@ function OverlayApp() {
 				<RadialMenu
 					isOpen={radialOpen}
 					position={radialPosition}
+					workspaces={mouseWorkspaces}
 					onClose={() => {
 						setRadialOpen(false);
 						setMode("idle");
+						invoke("close_radial_menu").catch(() => {});
 					}}
 					triggerMode={mouseTriggerMode}
 					placement={mousePlacement}

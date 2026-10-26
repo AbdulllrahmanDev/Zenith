@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getRadialIcon } from "../radial/iconMap";
 import { playRadialBloom, playRadialHover } from "../radial/sound";
 import { DEFAULT_WORKSPACES } from "../radial/types";
@@ -38,8 +39,18 @@ export function RadialMenu({
 	numberLabels = true,
 	soundEnabled = true,
 	soundVolume = 70,
-	workspaces = DEFAULT_WORKSPACES
+	workspaces
 }: RadialMenuProps) {
+	const effectiveWorkspaces = useMemo(() => {
+		if (workspaces && workspaces.length > 0) return workspaces;
+		try {
+			const stored = localStorage.getItem("zenith-mouse-workspaces");
+			return stored ? JSON.parse(stored) : DEFAULT_WORKSPACES;
+		} catch {
+			return DEFAULT_WORKSPACES;
+		}
+	}, [workspaces]);
+
 	const [activeWorkspaceIndex, setActiveWorkspaceIndex] = useState(0);
 	const [activeSliceIndex, setActiveSliceIndex] = useState<number | null>(null);
 	const [dwellProgress, setDwellProgress] = useState(0);
@@ -48,7 +59,10 @@ export function RadialMenu({
 	const activeSliceRef = useRef<number | null>(null);
 	activeSliceRef.current = activeSliceIndex;
 
-	const currentWorkspace = workspaces[activeWorkspaceIndex] || workspaces[0] || DEFAULT_WORKSPACES[0];
+	const currentWorkspace =
+		effectiveWorkspaces[activeWorkspaceIndex] ||
+		effectiveWorkspaces[0] ||
+		DEFAULT_WORKSPACES[0];
 	const items = currentWorkspace.items || [];
 	const numItems = items.length;
 
@@ -84,38 +98,10 @@ export function RadialMenu({
 	const executeItem = useCallback(
 		async (item: RadialItem) => {
 			try {
-				if (item.type === "system") {
-					switch (item.target) {
-						case "task_manager":
-							await invoke("open_system_action", { action: "TaskManager" });
-							break;
-						case "open_settings":
-							await invoke("open_settings_window");
-							break;
-						case "wifi_settings":
-							await invoke("open_wifi_settings");
-							break;
-						case "bluetooth_settings":
-							await invoke("open_bluetooth_settings");
-							break;
-						case "sound_settings":
-							await invoke("open_sound_settings");
-							break;
-						case "action_center":
-							await invoke("open_notification_center");
-							break;
-						case "task_view":
-							await invoke("open_system_tray");
-							break;
-						default:
-							await invoke("open_app", { appName: item.target });
-							break;
-					}
-				} else if (item.type === "command" || item.type === "app" || item.type === "file" || item.type === "url" || item.type === "folder") {
-					await invoke("shelf_open", { path: item.target }).catch(async () => {
-						await invoke("launch_new_instance", { appPath: item.target, appName: item.label });
-					});
-				}
+				await invoke("launch_radial_item", {
+					itemType: item.type,
+					target: item.target
+				});
 			} catch (e) {
 				console.error("Radial menu launch error:", e);
 			}
@@ -225,11 +211,23 @@ export function RadialMenu({
 		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, [isOpen, onClose, numberLaunch, numItems, items, executeItem]);
 
-	// Hold-mode release support: when mouse is released anywhere, confirm selection
+	// Hold-mode release support: listen to "radial-release" event from Rust hook or mouseup
 	useEffect(() => {
-		if (!isOpen || triggerMode !== "hold") return;
+		if (!isOpen) return;
+
+		let active = true;
+		const unlistenPromise = listen("radial-release", () => {
+			if (!active) return;
+			const currentIdx = activeSliceRef.current;
+			if (currentIdx !== null && items[currentIdx]) {
+				executeItem(items[currentIdx]);
+			} else {
+				onClose();
+			}
+		});
 
 		const handleMouseUp = () => {
+			if (triggerMode !== "hold") return;
 			const currentIdx = activeSliceRef.current;
 			if (currentIdx !== null && items[currentIdx]) {
 				executeItem(items[currentIdx]);
@@ -239,7 +237,11 @@ export function RadialMenu({
 		};
 
 		window.addEventListener("mouseup", handleMouseUp);
-		return () => window.removeEventListener("mouseup", handleMouseUp);
+		return () => {
+			active = false;
+			unlistenPromise.then((fn) => fn());
+			window.removeEventListener("mouseup", handleMouseUp);
+		};
 	}, [isOpen, triggerMode, items, executeItem, onClose]);
 
 	if (!isOpen) return null;
@@ -273,7 +275,7 @@ export function RadialMenu({
 					{/* Optional wedge divider lines */}
 					{areaWedges && numItems > 1 && (
 						<svg className="radial-wedges-svg" viewBox="0 0 520 520">
-							{items.map((_, i) => {
+							{items.map((_: RadialItem, i: number) => {
 								const sliceAngle = (2 * Math.PI) / numItems;
 								const angle = i * sliceAngle - Math.PI / 2 + sliceAngle / 2;
 								const x2 = 260 + 240 * Math.cos(angle);
@@ -300,7 +302,7 @@ export function RadialMenu({
 					</div>
 
 					{/* Radial Slices */}
-					{items.map((item, index) => {
+					{items.map((item: RadialItem, index: number) => {
 						const sliceAngle = (2 * Math.PI) / numItems;
 						const angle = index * sliceAngle - Math.PI / 2;
 						const posX = 260 + RADIUS * Math.cos(angle);
@@ -358,9 +360,9 @@ export function RadialMenu({
 					})}
 
 					{/* Workspaces navigation pill */}
-					{workspaces.length > 1 && (
+					{effectiveWorkspaces.length > 1 && (
 						<div className="radial-workspaces-bar">
-							{workspaces.map((ws, idx) => {
+							{effectiveWorkspaces.map((ws: RadialWorkspace, idx: number) => {
 								const WsIcon = getRadialIcon(ws.icon);
 								const isSelected = activeWorkspaceIndex === idx;
 								return (

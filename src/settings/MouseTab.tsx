@@ -9,11 +9,17 @@ import {
 	Play,
 	Monitor,
 	Hash,
-	Sparkles
+	Sparkles,
+	Plus,
+	Trash2,
+	RotateCcw
 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
+import { DEFAULT_WORKSPACES } from "../radial/types";
+import type { RadialItem, RadialWorkspace, RadialItemType } from "../radial/types";
+import { getRadialIcon } from "../radial/iconMap";
 
 interface MouseTabProps {
 	mouseRadialEnabled: boolean;
@@ -60,6 +66,21 @@ interface MouseTabProps {
 	handleMouseSoundVolumeChange: (val: number) => void;
 }
 
+const PRESET_OPTIONS = [
+	{ label: "Custom App / URL", target: "", type: "command" as RadialItemType, icon: "Sparkles" },
+	{ label: "File Explorer", target: "explorer.exe", type: "command" as RadialItemType, icon: "Folder" },
+	{ label: "Web Browser", target: "https://google.com", type: "url" as RadialItemType, icon: "Globe" },
+	{ label: "Terminal (PowerShell)", target: "powershell.exe", type: "command" as RadialItemType, icon: "Terminal" },
+	{ label: "Zenith Settings", target: "open_settings", type: "system" as RadialItemType, icon: "Settings" },
+	{ label: "Task Manager", target: "task_manager", type: "system" as RadialItemType, icon: "Activity" },
+	{ label: "Calculator", target: "calc.exe", type: "command" as RadialItemType, icon: "Calculator" },
+	{ label: "Notepad", target: "notepad.exe", type: "command" as RadialItemType, icon: "FileText" },
+	{ label: "Snipping Tool", target: "snippingtool.exe", type: "command" as RadialItemType, icon: "Scissors" },
+	{ label: "WiFi Settings", target: "wifi_settings", type: "system" as RadialItemType, icon: "Wifi" },
+	{ label: "Bluetooth Settings", target: "bluetooth_settings", type: "system" as RadialItemType, icon: "Bluetooth" },
+	{ label: "Sound Settings", target: "sound_settings", type: "system" as RadialItemType, icon: "Volume2" }
+];
+
 export function MouseTab({
 	mouseRadialEnabled,
 	toggleMouseRadial,
@@ -104,7 +125,84 @@ export function MouseTab({
 	mouseSoundVolume,
 	handleMouseSoundVolumeChange
 }: MouseTabProps) {
+
 	const [recording, setRecording] = useState(false);
+	const [workspaces, setWorkspaces] = useState<RadialWorkspace[]>(() => {
+		try {
+			const stored = localStorage.getItem("zenith-mouse-workspaces");
+			return stored ? JSON.parse(stored) : DEFAULT_WORKSPACES;
+		} catch {
+			return DEFAULT_WORKSPACES;
+		}
+	});
+	const [selectedWsIndex, setSelectedWsIndex] = useState(0);
+	const [showAddForm, setShowAddForm] = useState(false);
+	const [newItemLabel, setNewItemLabel] = useState("");
+	const [newItemTarget, setNewItemTarget] = useState("");
+	const [newItemType, setNewItemType] = useState<RadialItemType>("command");
+	const [newItemIcon, setNewItemIcon] = useState("Sparkles");
+
+	const saveWorkspaces = (updated: RadialWorkspace[]) => {
+		setWorkspaces(updated);
+		const json = JSON.stringify(updated);
+		localStorage.setItem("zenith-mouse-workspaces", json);
+		invoke("save_setting", { key: "zenith-mouse-workspaces", value: json }).catch(() => {});
+	};
+
+	const currentWs = workspaces[selectedWsIndex] || workspaces[0] || DEFAULT_WORKSPACES[0];
+
+	const handleDeleteItem = (itemId: string) => {
+		const updated = workspaces.map((ws, idx) => {
+			if (idx !== selectedWsIndex) return ws;
+			return {
+				...ws,
+				items: ws.items.filter((it) => it.id !== itemId)
+			};
+		});
+		saveWorkspaces(updated);
+	};
+
+	const handleAddItem = () => {
+		if (!newItemLabel.trim() || !newItemTarget.trim()) return;
+		const newItem: RadialItem = {
+			id: `item_${Date.now()}`,
+			label: newItemLabel.trim(),
+			target: newItemTarget.trim(),
+			type: newItemType,
+			icon: newItemIcon
+		};
+		const updated = workspaces.map((ws, idx) => {
+			if (idx !== selectedWsIndex) return ws;
+			return {
+				...ws,
+				items: [...ws.items, newItem]
+			};
+		});
+		saveWorkspaces(updated);
+		setNewItemLabel("");
+		setNewItemTarget("");
+		setShowAddForm(false);
+	};
+
+	const handleResetWorkspaces = () => {
+		saveWorkspaces(DEFAULT_WORKSPACES);
+	};
+
+	const handlePresetChange = (presetLabel: string) => {
+		const p = PRESET_OPTIONS.find((opt) => opt.label === presetLabel);
+		if (!p) return;
+		if (p.target) {
+			setNewItemLabel(p.label);
+			setNewItemTarget(p.target);
+			setNewItemType(p.type);
+			setNewItemIcon(p.icon);
+		} else {
+			setNewItemLabel("");
+			setNewItemTarget("");
+			setNewItemType("command");
+			setNewItemIcon("Sparkles");
+		}
+	};
 
 	const handleRecordClick = () => {
 		if (recording) {
@@ -192,6 +290,159 @@ export function MouseTab({
 						<option value="click">Click to Toggle</option>
 					</select>
 				</SettingRow>
+			</div>
+
+			{/* Radial Items & Shortcuts */}
+			<div className="setting-group-label">Radial Items & Shortcuts</div>
+			<div className="setting-group">
+				<div className="radial-manager-container">
+					{/* Workspace tabs & reset */}
+					<div className="radial-ws-tabs">
+						<div className="radial-ws-tabs-left">
+							{workspaces.map((ws, idx) => {
+								const WsIcon = getRadialIcon(ws.icon);
+								return (
+									<button
+										key={ws.id || idx}
+										type="button"
+										className={`radial-ws-tab-btn ${selectedWsIndex === idx ? "active" : ""}`}
+										onClick={() => setSelectedWsIndex(idx)}
+									>
+										<WsIcon size={12} strokeWidth={1.8} />
+										<span>{ws.name}</span>
+										<span style={{ opacity: 0.6, fontSize: "10px" }}>({ws.items.length})</span>
+									</button>
+								);
+							})}
+						</div>
+
+						<button
+							type="button"
+							className="settings-btn-detect"
+							onClick={handleResetWorkspaces}
+							title="Reset items to default"
+						>
+							<RotateCcw size={11} />
+							<span>Reset Defaults</span>
+						</button>
+					</div>
+
+					{/* Items List */}
+					<div className="radial-items-list">
+						{currentWs.items.map((item, index) => {
+							const ItemIcon = getRadialIcon(item.icon);
+							return (
+								<div key={item.id || index} className="radial-item-row">
+									<div className="radial-item-left">
+										<span className="radial-item-num">#{index + 1}</span>
+										<div className="radial-item-icon-box">
+											<ItemIcon size={15} strokeWidth={1.8} />
+										</div>
+										<div className="radial-item-meta">
+											<span className="radial-item-name">{item.label}</span>
+											<span className="radial-item-target">{item.target}</span>
+										</div>
+									</div>
+
+									<div className="radial-item-actions">
+										<span className="radial-item-type-badge">{item.type}</span>
+										<button
+											type="button"
+											className="radial-item-del-btn"
+											onClick={() => handleDeleteItem(item.id)}
+											title="Delete item"
+										>
+											<Trash2 size={13} />
+										</button>
+									</div>
+								</div>
+							);
+						})}
+					</div>
+
+					{/* Add Item Box */}
+					{showAddForm ? (
+						<div className="radial-add-box">
+							<div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+								<select
+									className="settings-select"
+									style={{ flex: 1, textAlign: "left" }}
+									onChange={(e) => handlePresetChange(e.target.value)}
+									defaultValue=""
+								>
+									<option value="" disabled>Choose a Preset (or Custom)...</option>
+									{PRESET_OPTIONS.map((opt) => (
+										<option key={opt.label} value={opt.label}>
+											{opt.label}
+										</option>
+									))}
+								</select>
+
+								<select
+									className="settings-select"
+									value={newItemType}
+									onChange={(e) => setNewItemType(e.target.value as RadialItemType)}
+									style={{ minWidth: "90px" }}
+								>
+									<option value="command">Command / App</option>
+									<option value="url">Web URL</option>
+									<option value="system">System Action</option>
+									<option value="file">File</option>
+									<option value="folder">Folder</option>
+								</select>
+							</div>
+
+							<div style={{ display: "flex", gap: "8px" }}>
+								<input
+									type="text"
+									className="settings-text-input"
+									placeholder="Label (e.g. Chrome, Discord)"
+									value={newItemLabel}
+									onChange={(e) => setNewItemLabel(e.target.value)}
+									style={{ flex: "1 1 40%" }}
+								/>
+								<input
+									type="text"
+									className="settings-text-input"
+									placeholder="Target (e.g. chrome.exe, https://...)"
+									value={newItemTarget}
+									onChange={(e) => setNewItemTarget(e.target.value)}
+									style={{ flex: "2 1 60%" }}
+								/>
+							</div>
+
+							<div style={{ display: "flex", justifyContent: "flex-end", gap: "6px", marginTop: "4px" }}>
+								<button
+									type="button"
+									className="settings-btn"
+									onClick={() => setShowAddForm(false)}
+								>
+									Cancel
+								</button>
+								<button
+									type="button"
+									className="settings-btn-detect"
+									style={{ background: "var(--bloom-accent, #007aff)", color: "#fff", borderColor: "transparent" }}
+									onClick={handleAddItem}
+									disabled={!newItemLabel.trim() || !newItemTarget.trim()}
+								>
+									<Plus size={12} />
+									<span>Add Item</span>
+								</button>
+							</div>
+						</div>
+					) : (
+						<button
+							type="button"
+							className="settings-btn-detect"
+							onClick={() => setShowAddForm(true)}
+							style={{ alignSelf: "flex-start" }}
+						>
+							<Plus size={12} />
+							<span>Add Shortcut to {currentWs.name}</span>
+						</button>
+					)}
+				</div>
 			</div>
 
 			{/* Placement & Display */}

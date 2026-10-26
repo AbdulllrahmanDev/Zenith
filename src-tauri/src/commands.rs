@@ -2503,9 +2503,59 @@ pub fn close_radial_menu(app: AppHandle) {
     }
 }
 
+#[tauri::command]
+pub async fn launch_radial_item(app: AppHandle, item_type: String, target: String) -> Result<(), String> {
+    crate::services::set_radial_menu_open(false);
+    let _ = app.emit("radial-close", ());
+    if let Some(win) = app.get_webview_window("overlay") {
+        let _ = win.hide();
+    }
+
+    match item_type.as_str() {
+        "system" => {
+            match target.as_str() {
+                "task_manager" => {
+                    open_system_action(SystemAction::TaskManager).await?;
+                }
+                "open_settings" => {
+                    open_settings_window(app);
+                }
+                "wifi_settings" => {
+                    open_wifi_settings();
+                }
+                "bluetooth_settings" => {
+                    open_bluetooth_settings();
+                }
+                "sound_settings" => {
+                    open_sound_settings();
+                }
+                "action_center" => {
+                    open_notification_center();
+                }
+                "task_view" => {
+                    open_system_tray();
+                }
+                _ => {
+                    open_app(app, target).await;
+                }
+            }
+        }
+        "url" => {
+            if tauri_plugin_opener::open_url(&target, None::<&str>).is_err() {
+                launch_path(Some(&app), &target);
+            }
+        }
+        _ => {
+            launch_path(Some(&app), &target);
+        }
+    }
+    Ok(())
+}
+
 pub fn show_overlay_for_radial(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
     if let Some(ov_win) = app.get_webview_window("overlay") {
         let monitor_choice = crate::utils::get_setting_str(app, "zenith-mouse-monitor").unwrap_or_else(|| "cursor".into());
+        let mut target_monitor = None;
         if monitor_choice == "cursor" {
             if let Ok(monitors) = app.available_monitors() {
                 for m in monitors {
@@ -2518,16 +2568,36 @@ pub fn show_overlay_for_radial(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
                     {
                         let _ = ov_win.set_position(tauri::PhysicalPosition::new(pos.x, pos.y));
                         let _ = ov_win.set_size(tauri::PhysicalSize::new(size.width, size.height));
+                        target_monitor = Some(m);
                         break;
                     }
                 }
             }
-        } else {
-            crate::services::sync_overlays(app);
         }
+        if target_monitor.is_none() {
+            if let Ok(Some(m)) = ov_win.primary_monitor() {
+                let pos = m.position();
+                let size = m.size();
+                let _ = ov_win.set_position(tauri::PhysicalPosition::new(pos.x, pos.y));
+                let _ = ov_win.set_size(tauri::PhysicalSize::new(size.width, size.height));
+                target_monitor = Some(m);
+            }
+        }
+
+        let (rel_x, rel_y) = if let Some(m) = target_monitor {
+            let pos = m.position();
+            let scale = m.scale_factor();
+            (
+                ((cursor_x - pos.x) as f64 / scale).round() as i32,
+                ((cursor_y - pos.y) as f64 / scale).round() as i32,
+            )
+        } else {
+            (cursor_x, cursor_y)
+        };
+
         let _ = ov_win.show();
         let _ = ov_win.set_focus();
-        let _ = app.emit("radial-open", serde_json::json!({ "x": cursor_x, "y": cursor_y }));
+        let _ = app.emit("radial-open", serde_json::json!({ "x": rel_x, "y": rel_y }));
     }
 }
 
