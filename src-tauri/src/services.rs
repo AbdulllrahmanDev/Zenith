@@ -2362,6 +2362,8 @@ fn apply_capture_ui_state(app: &AppHandle, active: bool) {
 static MOUSE_HOOK_APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 static MOUSE_RADIAL_RECORDING: AtomicBool = AtomicBool::new(false);
 static MOUSE_RADIAL_MENU_OPEN: AtomicBool = AtomicBool::new(false);
+static MOUSE_RADIAL_DOWN_TIME: AtomicI64 = AtomicI64::new(0);
+static MOUSE_RADIAL_DOWN_POINT: AtomicI64 = AtomicI64::new(0);
 
 pub fn set_mouse_recording(enabled: bool) {
     MOUSE_RADIAL_RECORDING.store(enabled, Ordering::Relaxed);
