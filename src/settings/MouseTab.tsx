@@ -12,7 +12,9 @@ import {
 	Sparkles,
 	Plus,
 	Trash2,
-	RotateCcw
+	RotateCcw,
+	X,
+	ExternalLink
 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
 import { invoke } from "@tauri-apps/api/core";
@@ -136,11 +138,13 @@ export function MouseTab({
 		}
 	});
 	const [selectedWsIndex, setSelectedWsIndex] = useState(0);
+	const [previewHoverIndex, setPreviewHoverIndex] = useState<number | null>(null);
 	const [showAddForm, setShowAddForm] = useState(false);
 	const [newItemLabel, setNewItemLabel] = useState("");
 	const [newItemTarget, setNewItemTarget] = useState("");
 	const [newItemType, setNewItemType] = useState<RadialItemType>("command");
 	const [newItemIcon, setNewItemIcon] = useState("Sparkles");
+	const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
 	const saveWorkspaces = (updated: RadialWorkspace[]) => {
 		setWorkspaces(updated);
@@ -220,14 +224,24 @@ export function MouseTab({
 
 	return (
 		<>
-			{/* Activation & Trigger */}
-			<div className="setting-group-label">Activation</div>
-			<div className="setting-group">
-				<SettingRow
-					icon={MousePointer}
-					label="Enable Mouse Radial Menu"
-					desc="Open radial launcher with mouse gestures"
-				>
+			{/* 1. Rovyl Hero Banner & Status */}
+			<div className="rovyl-hero-banner">
+				<div className="rovyl-hero-top">
+					<div className="rovyl-hero-brand">
+						<div className="rovyl-hero-icon">
+							<Compass size={22} strokeWidth={2.2} />
+						</div>
+						<div>
+							<div className="rovyl-hero-title">
+								<span>Rovyl Radial Launcher</span>
+								<span className="rovyl-hero-badge">Original Architecture</span>
+							</div>
+							<div className="rovyl-hero-sub">
+								High-performance hold-aim-release radial wheel for Windows
+							</div>
+						</div>
+					</div>
+
 					<label className="toggle-switch">
 						<input
 							type="checkbox"
@@ -236,12 +250,139 @@ export function MouseTab({
 						/>
 						<span className="slider"></span>
 					</label>
-				</SettingRow>
+				</div>
+
+				<div className="rovyl-hero-body">
+					<div className="rovyl-hero-desc">
+						Hold your configured mouse trigger button, glide toward any shortcut slice in 360°, and release anywhere to launch instantly with sub-millisecond precision.
+					</div>
+					<button
+						type="button"
+						className="settings-btn-detect"
+						onClick={testRadialMenu}
+						style={{ background: "var(--bloom-accent, #007aff)", color: "#fff", borderColor: "transparent", flexShrink: 0 }}
+					>
+						<Play size={12} fill="currentColor" />
+						<span>Test Wheel</span>
+					</button>
+				</div>
+			</div>
+
+			{/* 2. Interactive Wheel Live Preview */}
+			<div className="setting-group-label">Wheel Preview ({currentWs.name})</div>
+			<div className="setting-group">
+				<div className="rovyl-preview-box">
+					{/* Wedge dividers preview */}
+					{mouseAreaWedges && currentWs.items.length > 1 && (
+						<svg style={{ position: "absolute", width: "100%", height: "100%", pointerEvents: "none", opacity: 0.25 }}>
+							{currentWs.items.map((_, i) => {
+								const sliceAngle = (2 * Math.PI) / currentWs.items.length;
+								const angle = i * sliceAngle - Math.PI / 2 + sliceAngle / 2;
+								const x2 = 50 + 40 * Math.cos(angle);
+								const y2 = 50 + 40 * Math.sin(angle);
+								return (
+									<line
+										key={i}
+										x1="50%"
+										y1="50%"
+										x2={`${x2}%`}
+										y2={`${y2}%`}
+										stroke="currentColor"
+										strokeDasharray="3 3"
+									/>
+								);
+							})}
+						</svg>
+					)}
+
+					{/* Center Hub */}
+					<div className="rovyl-preview-center-hub">
+						{(() => {
+							const HubIcon = getRadialIcon(currentWs.icon);
+							return <HubIcon size={18} strokeWidth={2} style={{ color: "var(--bloom-accent, #007aff)" }} />;
+						})()}
+						<span style={{ marginTop: "2px" }}>{currentWs.name}</span>
+					</div>
+
+					{/* Slices */}
+					{currentWs.items.map((item, idx) => {
+						const count = currentWs.items.length;
+						const angle = (idx * (360 / count) - 90) * (Math.PI / 180);
+						const radius = 78;
+						const posX = `calc(50% + ${Math.round(radius * Math.cos(angle))}px)`;
+						const posY = `calc(50% + ${Math.round(radius * Math.sin(angle))}px)`;
+						const isActive = previewHoverIndex === idx;
+						const ItemIcon = getRadialIcon(item.icon);
+
+						return (
+							<div
+								key={item.id || idx}
+								className={`rovyl-preview-item ${isActive ? "active" : ""}`}
+								style={{ left: posX, top: posY }}
+								onMouseEnter={() => setPreviewHoverIndex(idx)}
+								onMouseLeave={() => setPreviewHoverIndex(null)}
+								onClick={() => {
+									setPreviewHoverIndex(idx);
+									emit("radial-open", { x: window.screen.width / 2, y: window.screen.height / 2 });
+								}}
+								title={`${item.label} (${item.target})`}
+							>
+								{mouseNumberLabels && (
+									<span style={{ position: "absolute", top: "1px", left: "3px", fontSize: "7px", opacity: 0.6 }}>
+										{idx + 1}
+									</span>
+								)}
+								<ItemIcon size={14} strokeWidth={1.8} />
+								<span style={{ maxWidth: "38px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+									{item.label}
+								</span>
+							</div>
+						);
+					})}
+				</div>
+			</div>
+
+			{/* 3. Activation & Trigger Settings */}
+			<div className="setting-group-label">Trigger & Gesture Behavior</div>
+			<div className="setting-group">
+				{/* Visual Selector for Hold vs Click */}
+				<div style={{ padding: "12px 14px 4px 14px" }}>
+					<span style={{ fontSize: "11px", fontWeight: 600, color: "var(--bloom-text, #fff)" }}>
+						Gesture Behavior
+					</span>
+					<div className="rovyl-visual-grid">
+						<div
+							className={`rovyl-visual-card ${mouseTriggerMode === "hold" ? "active" : ""}`}
+							onClick={() => handleMouseTriggerModeChange("hold")}
+						>
+							<div className="rovyl-visual-card-header">
+								<span className="rovyl-visual-card-title">Hold & Release</span>
+								<Hand size={15} className="rovyl-visual-card-icon" />
+							</div>
+							<span className="rovyl-visual-card-desc">
+								Hold the trigger button, flick mouse toward the shortcut, and let go to launch instantly.
+							</span>
+						</div>
+
+						<div
+							className={`rovyl-visual-card ${mouseTriggerMode === "click" ? "active" : ""}`}
+							onClick={() => handleMouseTriggerModeChange("click")}
+						>
+							<div className="rovyl-visual-card-header">
+								<span className="rovyl-visual-card-title">Click to Toggle</span>
+								<MousePointer size={15} className="rovyl-visual-card-icon" />
+							</div>
+							<span className="rovyl-visual-card-desc">
+								Click the trigger button to open the wheel, click any slice to launch, or click center to cancel.
+							</span>
+						</div>
+					</div>
+				</div>
 
 				<SettingRow
 					icon={Sparkles}
 					label="Trigger Button"
-					desc="Mouse button used to trigger the radial wheel"
+					desc="Physical mouse button used to trigger the radial wheel"
 				>
 					<div style={{ display: "flex", flexDirection: "column", gap: "6px", minWidth: "160px" }}>
 						<select
@@ -272,28 +413,207 @@ export function MouseTab({
 						</button>
 					</div>
 				</SettingRow>
+			</div>
+
+			{/* 4. Aiming & Sector Targeting */}
+			<div className="setting-group-label">Aiming & Targeting Mode</div>
+			<div className="setting-group">
+				<div style={{ padding: "12px 14px 4px 14px" }}>
+					<span style={{ fontSize: "11px", fontWeight: 600, color: "var(--bloom-text, #fff)" }}>
+						Targeting Mechanics
+					</span>
+					<div className="rovyl-visual-grid">
+						<div
+							className={`rovyl-visual-card ${mouseSelectionMode === "area" ? "active" : ""}`}
+							onClick={() => handleMouseSelectionModeChange("area")}
+						>
+							<div className="rovyl-visual-card-header">
+								<span className="rovyl-visual-card-title">Directional / Sector</span>
+								<Compass size={15} className="rovyl-visual-card-icon" />
+							</div>
+							<span className="rovyl-visual-card-desc">
+								360° is divided into equal sectors. Moving the cursor anywhere in a slice's angle selects it instantly.
+							</span>
+						</div>
+
+						<div
+							className={`rovyl-visual-card ${mouseSelectionMode === "cursor" ? "active" : ""}`}
+							onClick={() => handleMouseSelectionModeChange("cursor")}
+						>
+							<div className="rovyl-visual-card-header">
+								<span className="rovyl-visual-card-title">Direct Hover</span>
+								<MousePointer size={15} className="rovyl-visual-card-icon" />
+							</div>
+							<span className="rovyl-visual-card-desc">
+								Requires pointer to reach the slice card boundary directly. Releasing in open space cancels.
+							</span>
+						</div>
+					</div>
+				</div>
 
 				<SettingRow
-					icon={Hand}
-					label="Gesture Behavior"
-					desc="Hold and release to launch, or click to toggle wheel open"
+					icon={Layers}
+					label="Wedge Dividers"
+					desc="Draw radial divider seams separating sectors outwards"
+				>
+					<label className="toggle-switch">
+						<input
+							type="checkbox"
+							checked={mouseAreaWedges}
+							onChange={toggleMouseAreaWedges}
+						/>
+						<span className="slider"></span>
+					</label>
+				</SettingRow>
+
+				<SettingRow
+					icon={Hash}
+					label="Number Badges"
+					desc="Display 1-9 numeric index badges on each slice card"
+				>
+					<label className="toggle-switch">
+						<input
+							type="checkbox"
+							checked={mouseNumberLabels}
+							onChange={toggleMouseNumberLabels}
+						/>
+						<span className="slider"></span>
+					</label>
+				</SettingRow>
+
+				<SettingRow
+					icon={Hash}
+					label="Number Key Launch"
+					desc="Press keys 1-9 on keyboard to immediately trigger matching slice"
+				>
+					<label className="toggle-switch">
+						<input
+							type="checkbox"
+							checked={mouseNumberLaunch}
+							onChange={toggleMouseNumberLaunch}
+						/>
+						<span className="slider"></span>
+					</label>
+				</SettingRow>
+
+				<SettingRow
+					icon={Layers}
+					label="Workspace Peek"
+					desc="Hovering a workspace button reveals its shortcuts without switching"
+					divider={!mouseWorkspacePeek}
+				>
+					<label className="toggle-switch">
+						<input
+							type="checkbox"
+							checked={mouseWorkspacePeek}
+							onChange={toggleMouseWorkspacePeek}
+						/>
+						<span className="slider"></span>
+					</label>
+				</SettingRow>
+
+				{mouseWorkspacePeek && (
+					<>
+						<SettingRow
+							icon={Compass}
+							label="Peek Layout Style"
+							desc="Display peeked shortcuts as a fan arc or full outer ring"
+						>
+							<select
+								className="settings-select"
+								value={mouseWorkspacePeekStyle}
+								onChange={(e) =>
+									handleMouseWorkspacePeekStyleChange(
+										e.target.value as "fan" | "ring"
+									)
+								}
+							>
+								<option value="fan">Fan Arc</option>
+								<option value="ring">Outer Ring</option>
+							</select>
+						</SettingRow>
+
+						<SettingRow
+							icon={Hand}
+							label="Peek Delay"
+							desc={`Reveal shortcuts after ${mouseWorkspacePeekDelayMs} ms of hover`}
+							divider={false}
+						>
+							<input
+								type="range"
+								min="100"
+								max="800"
+								step="50"
+								value={mouseWorkspacePeekDelayMs}
+								onChange={(e) =>
+									handleMouseWorkspacePeekDelayMsChange(
+										parseInt(e.target.value, 10)
+									)
+								}
+								className="settings-slider"
+							/>
+						</SettingRow>
+					</>
+				)}
+			</div>
+
+			{/* 5. Placement & Display */}
+			<div className="setting-group-label">Placement & Display</div>
+			<div className="setting-group">
+				<div style={{ padding: "12px 14px 4px 14px" }}>
+					<span style={{ fontSize: "11px", fontWeight: 600, color: "var(--bloom-text, #fff)" }}>
+						Spawn Placement
+					</span>
+					<div className="rovyl-visual-grid">
+						<div
+							className={`rovyl-visual-card ${mousePlacement === "cursor" ? "active" : ""}`}
+							onClick={() => handleMousePlacementChange("cursor")}
+						>
+							<div className="rovyl-visual-card-header">
+								<span className="rovyl-visual-card-title">Under Pointer</span>
+								<Compass size={15} className="rovyl-visual-card-icon" />
+							</div>
+							<span className="rovyl-visual-card-desc">
+								Blooms centered exactly under the mouse cursor for minimal hand travel distance.
+							</span>
+						</div>
+
+						<div
+							className={`rovyl-visual-card ${mousePlacement === "center" ? "active" : ""}`}
+							onClick={() => handleMousePlacementChange("center")}
+						>
+							<div className="rovyl-visual-card-header">
+								<span className="rovyl-visual-card-title">Screen Center</span>
+								<Monitor size={15} className="rovyl-visual-card-icon" />
+							</div>
+							<span className="rovyl-visual-card-desc">
+								Always blooms in the exact center of the screen, regardless of where the mouse is.
+							</span>
+						</div>
+					</div>
+				</div>
+
+				<SettingRow
+					icon={Monitor}
+					label="Target Monitor"
+					desc="Which display the radial wheel opens on"
 					divider={false}
 				>
 					<select
 						className="settings-select"
-						value={mouseTriggerMode}
+						value={mouseMonitor}
 						onChange={(e) =>
-							handleMouseTriggerModeChange(e.target.value as "hold" | "click")
+							handleMouseMonitorChange(e.target.value as "cursor" | "primary")
 						}
 					>
-						<option value="hold">Hold & Release</option>
-						<option value="click">Click to Toggle</option>
+						<option value="cursor">Pointer's Display (Follow Mouse)</option>
+						<option value="primary">Primary Display Only</option>
 					</select>
 				</SettingRow>
 			</div>
 
-			{/* Radial Items & Shortcuts */}
-			<div className="setting-group-label">Radial Items & Shortcuts</div>
+			{/* 6. Workspaces & Shortcuts Manager */}
+			<div className="setting-group-label">Workspaces & Shortcuts Manager</div>
 			<div className="setting-group">
 				<div className="radial-manager-container">
 					{/* Workspace tabs & reset */}
@@ -445,89 +765,13 @@ export function MouseTab({
 				</div>
 			</div>
 
-			{/* Placement & Display */}
-			<div className="setting-group-label">Placement & Display</div>
-			<div className="setting-group">
-				<SettingRow
-					icon={Compass}
-					label="Wheel Placement"
-					desc="Open wheel directly under pointer or centered on screen"
-				>
-					<select
-						className="settings-select"
-						value={mousePlacement}
-						onChange={(e) =>
-							handleMousePlacementChange(e.target.value as "cursor" | "center")
-						}
-					>
-						<option value="cursor">Under Pointer</option>
-						<option value="center">Screen Center</option>
-					</select>
-				</SettingRow>
-
-				<SettingRow
-					icon={Monitor}
-					label="Target Monitor"
-					desc="Which monitor the radial launcher appears on"
-					divider={false}
-				>
-					<select
-						className="settings-select"
-						value={mouseMonitor}
-						onChange={(e) =>
-							handleMouseMonitorChange(e.target.value as "cursor" | "primary")
-						}
-					>
-						<option value="cursor">Pointer's Display</option>
-						<option value="primary">Primary Display</option>
-					</select>
-				</SettingRow>
-			</div>
-
-			{/* Aiming & Visuals */}
-			<div className="setting-group-label">Aiming & Visuals</div>
-			<div className="setting-group">
-				<SettingRow
-					icon={Compass}
-					label="Aiming Mode"
-					desc="Area direction selects by angle; Cursor mode requires direct hover"
-				>
-					<select
-						className="settings-select"
-						value={mouseSelectionMode}
-						onChange={(e) =>
-							handleMouseSelectionModeChange(e.target.value as "area" | "cursor")
-						}
-					>
-						<option value="area">Directional / Sector</option>
-						<option value="cursor">Direct Hover</option>
-					</select>
-				</SettingRow>
-
-				<SettingRow
-					icon={Layers}
-					label="Wedge Dividers"
-					desc="Draw radial divider lines between slices"
-					divider={false}
-				>
-					<label className="toggle-switch">
-						<input
-							type="checkbox"
-							checked={mouseAreaWedges}
-							onChange={toggleMouseAreaWedges}
-						/>
-						<span className="slider"></span>
-					</label>
-				</SettingRow>
-			</div>
-
-			{/* Hands-Free (Dwell) */}
-			<div className="setting-group-label">Hands-Free (Instant Activate)</div>
+			{/* 7. Hands-Free (Dwell) & Fullscreen Protection */}
+			<div className="setting-group-label">Hands-Free & Fullscreen Protection</div>
 			<div className="setting-group">
 				<SettingRow
 					icon={Play}
 					label="Launch Without Clicking"
-					desc="Holding aim in a slice's direction auto-launches it"
+					desc="Holding aim in a slice's direction auto-launches it via dwell timer"
 				>
 					<select
 						className="settings-select"
@@ -564,8 +808,7 @@ export function MouseTab({
 						<SettingRow
 							icon={Compass}
 							label="Direction Sensitivity"
-							desc="How easily small pointer movement changes selection"
-							divider={false}
+							desc="Responsiveness to small pointer movements during dwell"
 						>
 							<select
 								className="settings-select"
@@ -583,108 +826,12 @@ export function MouseTab({
 						</SettingRow>
 					</>
 				)}
-			</div>
 
-			{/* Shortcuts & Numbers */}
-			<div className="setting-group-label">Shortcuts & Numbers</div>
-			<div className="setting-group">
-				<SettingRow
-					icon={Hash}
-					label="Number Key Launch"
-					desc="Press 1-9 to launch matching slice when wheel is open"
-				>
-					<label className="toggle-switch">
-						<input
-							type="checkbox"
-							checked={mouseNumberLaunch}
-							onChange={toggleMouseNumberLaunch}
-						/>
-						<span className="slider"></span>
-					</label>
-				</SettingRow>
-
-				<SettingRow
-					icon={Layers}
-					label="Number Badges"
-					desc="Show 1-9 numeric badges on radial slices"
-				>
-					<label className="toggle-switch">
-						<input
-							type="checkbox"
-							checked={mouseNumberLabels}
-							onChange={toggleMouseNumberLabels}
-						/>
-						<span className="slider"></span>
-					</label>
-				</SettingRow>
-
-				<SettingRow
-					icon={Layers}
-					label="Workspace Peek"
-					desc="Hovering a workspace fans out its shortcuts without entering"
-				>
-					<label className="toggle-switch">
-						<input
-							type="checkbox"
-							checked={mouseWorkspacePeek}
-							onChange={toggleMouseWorkspacePeek}
-						/>
-						<span className="slider"></span>
-					</label>
-				</SettingRow>
-
-				{mouseWorkspacePeek && (
-					<>
-						<SettingRow
-							icon={Compass}
-							label="Peek Layout Style"
-							desc="Fan arc outward or full outer ring"
-						>
-							<select
-								className="settings-select"
-								value={mouseWorkspacePeekStyle}
-								onChange={(e) =>
-									handleMouseWorkspacePeekStyleChange(
-										e.target.value as "fan" | "ring"
-									)
-								}
-							>
-								<option value="fan">Fan Arc</option>
-								<option value="ring">Outer Ring</option>
-							</select>
-						</SettingRow>
-
-						<SettingRow
-							icon={Hand}
-							label="Peek Delay"
-							desc={`Reveal shortcuts after ${mouseWorkspacePeekDelayMs} ms`}
-							divider={false}
-						>
-							<input
-								type="range"
-								min="100"
-								max="800"
-								step="50"
-								value={mouseWorkspacePeekDelayMs}
-								onChange={(e) =>
-									handleMouseWorkspacePeekDelayMsChange(
-										parseInt(e.target.value, 10)
-									)
-								}
-								className="settings-slider"
-							/>
-						</SettingRow>
-					</>
-				)}
-			</div>
-
-			{/* Protection & Game Mode */}
-			<div className="setting-group-label">Fullscreen Protection</div>
-			<div className="setting-group">
 				<SettingRow
 					icon={Shield}
 					label="Game Mode Protection"
 					desc="Prevent accidental opening during fullscreen games & videos"
+					divider={!mouseGameModeEnabled}
 				>
 					<label className="toggle-switch">
 						<input
@@ -722,7 +869,7 @@ export function MouseTab({
 								<SettingRow
 									icon={Shield}
 									label="Auto-detect Games"
-									desc="Automatically protect Steam, Epic, and Xbox game folders"
+									desc="Automatically protect Steam, Epic, and Xbox games"
 								>
 									<label className="toggle-switch">
 										<input
@@ -742,13 +889,13 @@ export function MouseTab({
 								>
 									<input
 										type="text"
-										className="settings-input"
+										className="settings-text-input"
 										value={mouseGameModeBlockedApps}
 										onChange={(e) =>
 											handleMouseGameModeBlockedAppsChange(e.target.value)
 										}
 										placeholder="csgo.exe, valorant.exe"
-										style={{ width: "240px" }}
+										style={{ width: "220px" }}
 									/>
 								</SettingRow>
 							</>
@@ -757,8 +904,8 @@ export function MouseTab({
 				)}
 			</div>
 
-			{/* Audio Feedback */}
-			<div className="setting-group-label">Audio & Feedback</div>
+			{/* 8. Audio & Feedback */}
+			<div className="setting-group-label">Audio Feedback</div>
 			<div className="setting-group">
 				<SettingRow
 					icon={Volume2}
@@ -797,18 +944,109 @@ export function MouseTab({
 				)}
 			</div>
 
-			{/* Test Radial Menu */}
-			<div className="setting-group-label">Quick Test</div>
+			{/* 9. Original Rovyl GitHub Gallery & Screenshots */}
+			<div className="setting-group-label">Original Rovyl Reference Gallery</div>
 			<div className="setting-group">
-				<SettingRow
-					icon={Play}
-					label="Preview Radial Launcher"
-					desc="Open the radial menu now to preview layout and animation"
-					action
-					onClick={testRadialMenu}
-					divider={false}
-				/>
+				<div style={{ padding: "14px 16px" }}>
+					<div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+						<div>
+							<div style={{ fontSize: "12px", fontWeight: 600, color: "var(--bloom-text, #fff)" }}>
+								Original Screenshots & Architecture
+							</div>
+							<div style={{ fontSize: "11px", color: "var(--bloom-text-muted, rgba(255, 255, 255, 0.5))" }}>
+								Fetched directly from arshit09/rovyl on GitHub. Click any preview to inspect in full resolution.
+							</div>
+						</div>
+						<a
+							href="https://github.com/arshit09/rovyl"
+							target="_blank"
+							rel="noreferrer"
+							className="settings-btn"
+							style={{ textDecoration: "none", display: "inline-flex", gap: "5px" }}
+						>
+							<span>GitHub Repo</span>
+							<ExternalLink size={11} />
+						</a>
+					</div>
+
+					<div className="rovyl-gallery-grid">
+						<div
+							className="rovyl-gallery-card"
+							onClick={() => setLightboxImage("/images/rovyl/wheel.png")}
+						>
+							<img
+								src="/images/rovyl/wheel.png"
+								alt="Rovyl Radial Wheel"
+								className="rovyl-gallery-img"
+								loading="lazy"
+							/>
+							<div className="rovyl-gallery-meta">
+								<span className="rovyl-gallery-title">Radial Wheel UI</span>
+								<span className="rovyl-gallery-desc">Original 360° hold-aim-release wheel</span>
+							</div>
+						</div>
+
+						<div
+							className="rovyl-gallery-card"
+							onClick={() => setLightboxImage("/images/rovyl/settings.png")}
+						>
+							<img
+								src="/images/rovyl/settings.png"
+								alt="Rovyl Precision Settings"
+								className="rovyl-gallery-img"
+								loading="lazy"
+							/>
+							<div className="rovyl-gallery-meta">
+								<span className="rovyl-gallery-title">Precision Settings</span>
+								<span className="rovyl-gallery-desc">Complete original configuration UI</span>
+							</div>
+						</div>
+
+						<div
+							className="rovyl-gallery-card"
+							onClick={() => setLightboxImage("/images/rovyl/workspaces.png")}
+						>
+							<img
+								src="/images/rovyl/workspaces.png"
+								alt="Rovyl Workspaces Manager"
+								className="rovyl-gallery-img"
+								loading="lazy"
+							/>
+							<div className="rovyl-gallery-meta">
+								<span className="rovyl-gallery-title">Workspaces & Slices</span>
+								<span className="rovyl-gallery-desc">App shortcuts & multi-workspace manager</span>
+							</div>
+						</div>
+					</div>
+				</div>
 			</div>
+
+			{/* Lightbox Modal */}
+			{lightboxImage && (
+				<div
+					className="rovyl-modal-backdrop"
+					onClick={() => setLightboxImage(null)}
+				>
+					<div
+						className="rovyl-modal-content"
+						onClick={(e) => e.stopPropagation()}
+					>
+						<button
+							type="button"
+							className="rovyl-modal-close"
+							onClick={() => setLightboxImage(null)}
+							title="Close"
+						>
+							<X size={18} />
+						</button>
+						<img
+							src={lightboxImage}
+							alt="Rovyl Original Screenshot"
+							className="rovyl-modal-img"
+						/>
+					</div>
+				</div>
+			)}
 		</>
 	);
 }

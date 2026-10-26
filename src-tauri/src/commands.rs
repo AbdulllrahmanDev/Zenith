@@ -2566,8 +2566,16 @@ pub fn show_overlay_for_radial(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
                         && cursor_y >= pos.y
                         && cursor_y < pos.y + size.height as i32
                     {
-                        let _ = ov_win.set_position(tauri::PhysicalPosition::new(pos.x, pos.y));
-                        let _ = ov_win.set_size(tauri::PhysicalSize::new(size.width, size.height));
+                        if let Ok(curr_pos) = ov_win.outer_position() {
+                            if curr_pos.x != pos.x || curr_pos.y != pos.y {
+                                let _ = ov_win.set_position(tauri::PhysicalPosition::new(pos.x, pos.y));
+                            }
+                        }
+                        if let Ok(curr_size) = ov_win.outer_size() {
+                            if curr_size.width != size.width || curr_size.height != size.height {
+                                let _ = ov_win.set_size(tauri::PhysicalSize::new(size.width, size.height));
+                            }
+                        }
                         target_monitor = Some(m);
                         break;
                     }
@@ -2578,8 +2586,16 @@ pub fn show_overlay_for_radial(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
             if let Ok(Some(m)) = ov_win.primary_monitor() {
                 let pos = m.position();
                 let size = m.size();
-                let _ = ov_win.set_position(tauri::PhysicalPosition::new(pos.x, pos.y));
-                let _ = ov_win.set_size(tauri::PhysicalSize::new(size.width, size.height));
+                if let Ok(curr_pos) = ov_win.outer_position() {
+                    if curr_pos.x != pos.x || curr_pos.y != pos.y {
+                        let _ = ov_win.set_position(tauri::PhysicalPosition::new(pos.x, pos.y));
+                    }
+                }
+                if let Ok(curr_size) = ov_win.outer_size() {
+                    if curr_size.width != size.width || curr_size.height != size.height {
+                        let _ = ov_win.set_size(tauri::PhysicalSize::new(size.width, size.height));
+                    }
+                }
                 target_monitor = Some(m);
             }
         }
@@ -2594,6 +2610,14 @@ pub fn show_overlay_for_radial(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
         } else {
             (cursor_x, cursor_y)
         };
+
+        // Immediately clear any window clipping region so the full screen receives mouse events with 0 delay
+        if let Ok(hwnd) = ov_win.hwnd() {
+            unsafe {
+                use windows::Win32::Graphics::Gdi::SetWindowRgn;
+                let _ = SetWindowRgn(hwnd, None, true);
+            }
+        }
 
         let _ = ov_win.show();
         let _ = ov_win.set_focus();

@@ -1378,3 +1378,314 @@ input:checked + .slider:before {
 	border-radius: 8px;
 	padding: 10px;
 }
+
+/* ── Rovyl Reference & Visual Cards ── */
+.rovyl-hero-banner {
+	position: relative;
+	width: 100%;
+	border-radius: 12px;
+	overflow: hidden;
+	background: linear-gradient(135deg, rgba(20, 20, 28, 0.95), rgba(12, 12, 16, 0.95));
+	border: 1px solid var(--bloom-border, rgba(255, 255, 255, 0.12));
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+	margin-bottom: 16px;
+	display: flex;
+	flex-direction: column;
+}
+
+.rovyl-hero-top {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 14px 18px;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+	background: rgba(255, 255, 255, 0.02);
+}
+
+.rovyl-hero-brand {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+.rovyl-hero-icon {
+	width: 36px;
+	height: 36px;
+	border-radius: 10px;
+	background: radial-gradient(circle, rgba(0, 122, 255, 0.35) 0%, rgba(0, 122, 255, 0.1) 100%);
+	border: 1px solid rgba(0, 122, 255, 0.4);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: #60a5fa;
+	box-shadow: 0 0 12px rgba(0, 122, 255, 0.25);
+}
+
+.rovyl-hero-title {
+	font-size: 14px;
+	font-weight: 600;
+	color: var(--bloom-text, #ffffff);
+	letter-spacing: 0.3px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.rovyl-hero-badge {
+	font-size: 9px;
+	font-weight: 700;
+	padding: 2px 6px;
+	border-radius: 4px;
+	background: rgba(0, 122, 255, 0.2);
+	color: #93c5fd;
+	border: 1px solid rgba(0, 122, 255, 0.3);
+	text-transform: uppercase;
+}
+
+.rovyl-hero-sub {
+	font-size: 11px;
+	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.5));
+	margin-top: 2px;
+}
+
+.rovyl-hero-body {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 12px 18px;
+	gap: 14px;
+}
+
+.rovyl-hero-desc {
+	font-size: 12px;
+	line-height: 1.5;
+	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.7));
+	flex: 1;
+}
+
+.rovyl-visual-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+	gap: 10px;
+	margin: 8px 0 16px 0;
+}
+
+.rovyl-visual-card {
+	background: var(--bloom-group-bg, rgba(255, 255, 255, 0.03));
+	border: 1px solid var(--bloom-border, rgba(255, 255, 255, 0.08));
+	border-radius: 10px;
+	padding: 12px;
+	cursor: pointer;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+	position: relative;
+	text-align: left;
+}
+
+.rovyl-visual-card:hover {
+	background: rgba(255, 255, 255, 0.06);
+	border-color: rgba(255, 255, 255, 0.2);
+	transform: translateY(-1px);
+}
+
+.rovyl-visual-card.active {
+	background: rgba(0, 122, 255, 0.12);
+	border-color: var(--bloom-accent, #007aff);
+	box-shadow: 0 4px 14px rgba(0, 122, 255, 0.2), inset 0 0 0 1px var(--bloom-accent, #007aff);
+}
+
+.rovyl-visual-card-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.rovyl-visual-card-icon {
+	color: var(--bloom-accent, #007aff);
+}
+
+.rovyl-visual-card-title {
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--bloom-text, #ffffff);
+}
+
+.rovyl-visual-card-desc {
+	font-size: 10px;
+	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.5));
+	line-height: 1.4;
+}
+
+/* Interactive Wheel Preview in Settings */
+.rovyl-preview-box {
+	position: relative;
+	width: 100%;
+	height: 220px;
+	background: radial-gradient(circle at center, rgba(30, 30, 42, 0.5) 0%, rgba(10, 10, 14, 0.8) 100%);
+	border-radius: 12px;
+	border: 1px solid var(--bloom-border, rgba(255, 255, 255, 0.1));
+	overflow: hidden;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	margin: 10px 0 16px 0;
+}
+
+.rovyl-preview-center-hub {
+	width: 58px;
+	height: 58px;
+	border-radius: 50%;
+	background: var(--bloom-bg, rgba(20, 20, 26, 0.9));
+	border: 1px solid var(--bloom-border, rgba(255, 255, 255, 0.18));
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	color: var(--bloom-text, #ffffff);
+	box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+	z-index: 5;
+	font-size: 8px;
+	font-weight: 600;
+}
+
+.rovyl-preview-item {
+	position: absolute;
+	width: 44px;
+	height: 38px;
+	border-radius: 8px;
+	background: var(--bloom-bg, rgba(25, 25, 34, 0.85));
+	border: 1px solid var(--bloom-border, rgba(255, 255, 255, 0.12));
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	color: var(--bloom-text, #ffffff);
+	transform: translate(-50%, -50%);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+	font-size: 7px;
+	font-weight: 500;
+	cursor: pointer;
+	transition: all 0.15s ease;
+}
+
+.rovyl-preview-item.active {
+	border-color: var(--bloom-accent, #007aff);
+	background: rgba(0, 122, 255, 0.25);
+	box-shadow: 0 0 12px rgba(0, 122, 255, 0.4);
+	transform: translate(-50%, -50%) scale(1.12);
+}
+
+/* Original Screenshots Gallery */
+.rovyl-gallery-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+	gap: 12px;
+	margin-top: 10px;
+}
+
+.rovyl-gallery-card {
+	background: var(--bloom-group-bg, rgba(255, 255, 255, 0.02));
+	border: 1px solid var(--bloom-border, rgba(255, 255, 255, 0.08));
+	border-radius: 10px;
+	overflow: hidden;
+	cursor: pointer;
+	transition: all 0.2s ease;
+	display: flex;
+	flex-direction: column;
+}
+
+.rovyl-gallery-card:hover {
+	border-color: var(--bloom-accent, #007aff);
+	transform: translateY(-2px);
+	box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
+}
+
+.rovyl-gallery-img {
+	width: 100%;
+	height: 125px;
+	object-fit: cover;
+	object-position: top center;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+	background: #000;
+	transition: transform 0.25s ease;
+}
+
+.rovyl-gallery-card:hover .rovyl-gallery-img {
+	transform: scale(1.02);
+}
+
+.rovyl-gallery-meta {
+	padding: 8px 10px;
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.rovyl-gallery-title {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--bloom-text, #ffffff);
+}
+
+.rovyl-gallery-desc {
+	font-size: 9px;
+	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.45));
+}
+
+.rovyl-modal-backdrop {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100vw;
+	height: 100vh;
+	background: rgba(0, 0, 0, 0.75);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	z-index: 999999;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+	box-sizing: border-box;
+}
+
+.rovyl-modal-content {
+	max-width: 90vw;
+	max-height: 88vh;
+	border-radius: 12px;
+	overflow: hidden;
+	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+	border: 1px solid rgba(255, 255, 255, 0.15);
+	position: relative;
+	background: #0d0d12;
+}
+
+.rovyl-modal-img {
+	max-width: 100%;
+	max-height: 82vh;
+	display: block;
+	object-fit: contain;
+}
+
+.rovyl-modal-close {
+	position: absolute;
+	top: 12px;
+	right: 12px;
+	background: rgba(0, 0, 0, 0.6);
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	color: #fff;
+	width: 32px;
+	height: 32px;
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	transition: background 0.15s ease;
+}
+
+.rovyl-modal-close:hover {
+	background: rgba(255, 59, 48, 0.8);
+}

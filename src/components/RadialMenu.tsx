@@ -124,38 +124,47 @@ export function RadialMenu({
 		[soundEnabled, soundVolume]
 	);
 
-	// Directional angle tracking (area selection mode)
+	// Directional angle tracking & cursor hit-testing (matching Rovyl math)
 	useEffect(() => {
-		if (!isOpen) return;
+		if (!isOpen || numItems === 0) return;
 
 		const handleMouseMove = (e: MouseEvent) => {
-			if (selectionMode !== "area" || numItems === 0) return;
-
 			const dx = e.clientX - wheelCenter.x;
 			const dy = e.clientY - wheelCenter.y;
-			const dist = Math.sqrt(dx * dx + dy * dy);
+			const dist = Math.hypot(dx, dy);
 
-			// Deadzone in the center (radius 48px)
-			if (dist < 48) {
+			// Center deadzone
+			if (dist < 46) {
 				selectSlice(null);
 				return;
 			}
 
-			// Angle in radians [-PI, PI], convert to [0, 2*PI]
-			// Start at top (-PI/2) and rotate clockwise
-			let angle = Math.atan2(dy, dx) + Math.PI / 2;
-			if (angle < 0) angle += 2 * Math.PI;
+			// Mathematical sector calculation matching Rovyl's sectorIndexForDelta
+			let angleDeg = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
+			if (angleDeg < 0) angleDeg += 360;
+			const sliceAngleDeg = 360 / numItems;
+			let sectorIdx = Math.floor(((angleDeg + sliceAngleDeg / 2) % 360) / sliceAngleDeg);
+			if (sectorIdx < 0) sectorIdx += numItems;
+			sectorIdx = sectorIdx % numItems;
 
-			const sliceAngle = (2 * Math.PI) / numItems;
-			// Center each slice around its mid-angle
-			const halfSlice = sliceAngle / 2;
-			let idx = Math.floor((angle + halfSlice) / sliceAngle) % numItems;
-			if (idx < 0) idx += numItems;
-
-			selectSlice(idx);
+			if (selectionMode === "cursor") {
+				// In cursor mode, check proximity to the candidate item's coordinate
+				const targetAngleRad = (sectorIdx * sliceAngleDeg - 90) * (Math.PI / 180);
+				const itemX = wheelCenter.x + RADIUS * Math.cos(targetAngleRad);
+				const itemY = wheelCenter.y + RADIUS * Math.sin(targetAngleRad);
+				const distToItem = Math.hypot(e.clientX - itemX, e.clientY - itemY);
+				if (distToItem <= 54) {
+					selectSlice(sectorIdx);
+				} else {
+					selectSlice(null);
+				}
+			} else {
+				// Area mode: instant sector lock
+				selectSlice(sectorIdx);
+			}
 		};
 
-		window.addEventListener("mousemove", handleMouseMove);
+		window.addEventListener("mousemove", handleMouseMove, { passive: true });
 		return () => window.removeEventListener("mousemove", handleMouseMove);
 	}, [isOpen, selectionMode, numItems, wheelCenter.x, wheelCenter.y, selectSlice]);
 
