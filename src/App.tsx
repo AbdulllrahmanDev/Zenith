@@ -1552,13 +1552,13 @@ function App() {
 		}
 		setIsHovered(false);
 		setIsNotchHovered(false);
-		if (showAthanBanner) {
-			return;
-		}
 		if (isOpenRef.current) {
 			const panel = asNotchPanel(bloomModeRef.current);
 			if (panel && rememberPanelEnabledRef.current) rememberPanelRef.current(panel);
 			setIsOpen(false);
+		}
+		if (showAthanBanner) {
+			return;
 		}
 		setBloomMode((prev) =>
 			prev === "music" ||
@@ -3051,7 +3051,6 @@ function App() {
 											<AthanNotchBanner
 												isExpanded={isOpen}
 												onExpand={() => setIsOpen(true)}
-												onCollapse={() => setIsOpen(false)}
 												prayerKey={prayerTimes.athanPrayerKey || prayerTimes.activePrayer || "Asr"}
 												prayerNameAr={prayerTimes.athanPrayerName || "الصلاة"}
 												variant={prayerTimes.athanVariant}

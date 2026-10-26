@@ -1,5 +1,4 @@
 import React from "react";
-import { Volume2, VolumeX, X, Minimize2 } from "lucide-react";
 import { motion } from "framer-motion";
 import type { BannerVariant } from "../hooks/usePrayerTimes";
 import { PRE_ALERT_MINUTES, type PrayerKey } from "../utils/prayerSchedule";
@@ -32,8 +31,7 @@ export const AthanNotchBanner: React.FC<AthanNotchBannerProps> = ({
 	onStopAthan,
 	onClose,
 	isExpanded,
-	onExpand,
-	onCollapse
+	onExpand
 }) => {
 	const isReminder = variant === "reminder";
 	const waving = isPlaying && !isReminder;
@@ -85,29 +83,6 @@ export const AthanNotchBanner: React.FC<AthanNotchBannerProps> = ({
 			exit={{ opacity: 0, y: -4 }}
 			transition={{ type: "spring", stiffness: 450, damping: 30 }}
 		>
-			{/* Top Action buttons: Minimize + Close */}
-			<div className="athan-top-actions">
-				{onCollapse && (
-					<button
-						className="athan-action-circle-btn"
-						onClick={onCollapse}
-						title="تصغير إلى النوتش"
-						aria-label="تصغير إلى النوتش"
-					>
-						<Minimize2 size={12} strokeWidth={2.2} />
-					</button>
-				)}
-
-				<button
-					className="athan-action-circle-btn"
-					onClick={onClose}
-					title="إغلاق التنبيه"
-					aria-label="إغلاق التنبيه"
-				>
-					<X size={13} strokeWidth={2.4} />
-				</button>
-			</div>
-
 			<div className="athan-banner-content">
 				{/* Info column */}
 				<div className="athan-side-info">
@@ -119,30 +94,36 @@ export const AthanNotchBanner: React.FC<AthanNotchBannerProps> = ({
 						<span className="athan-meta-sep">·</span>
 
 						{isReminder ? (
-							<span className="athan-reminder-text">
-								متبقي {PRE_ALERT_MINUTES} دقيقة
-							</span>
+							<div className="athan-reminder-action">
+								<span className="athan-reminder-text">
+									متبقي {PRE_ALERT_MINUTES} دقيقة
+								</span>
+								<span className="athan-meta-sep">·</span>
+								<button
+									className="athan-text-action-btn"
+									onClick={onClose}
+									title="إغلاق التنبيه"
+									aria-label="إغلاق التنبيه"
+								>
+									إغلاق
+								</button>
+							</div>
 						) : (
-							<button
-								className={`athan-audio-pill ${waving ? "is-playing" : "is-muted"}`}
-								onClick={onStopAthan}
-								title={isPlaying ? "كتم صوت الأذان" : "الصوت مكتوم"}
-								aria-label={isPlaying ? "كتم صوت الأذان" : "الصوت مكتوم"}
-							>
-								<div className="athan-waves">
+							<div className="athan-audio-action">
+								<div className={`athan-waves ${waving ? "is-playing" : "is-paused"}`}>
 									{Array.from({ length: WAVE_BARS }, (_, i) => (
 										<span key={i} className={`wave-bar bar-${i + 1}`} />
 									))}
 								</div>
-								{isPlaying ? (
-									<Volume2 size={13} strokeWidth={2.4} className="athan-vol-icon" />
-								) : (
-									<VolumeX size={13} strokeWidth={2.2} className="athan-vol-icon" />
-								)}
-								<span className="athan-audio-status-label">
-									{isPlaying ? "كتم" : "مكتوم"}
-								</span>
-							</button>
+								<button
+									className="athan-text-action-btn"
+									onClick={isPlaying ? onStopAthan : onClose}
+									title={isPlaying ? "كتم صوت الأذان" : "إغلاق التنبيه"}
+									aria-label={isPlaying ? "كتم صوت الأذان" : "إغلاق التنبيه"}
+								>
+									{isPlaying ? "كتم" : "إغلاق"}
+								</button>
+							</div>
 						)}
 					</div>
 				</div>
