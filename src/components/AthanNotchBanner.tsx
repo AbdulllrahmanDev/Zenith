@@ -1,5 +1,5 @@
 import React from "react";
-import { Clock, Volume2, VolumeX, X } from "lucide-react";
+import { Volume2, VolumeX, X } from "lucide-react";
 import type { BannerVariant } from "../hooks/usePrayerTimes";
 import { PRE_ALERT_MINUTES, type PrayerKey } from "../utils/prayerSchedule";
 import { MosqueScene } from "./prayer/PrayerArt";
@@ -35,72 +35,55 @@ export const AthanNotchBanner: React.FC<AthanNotchBannerProps> = ({
 
 	return (
 		<div className="athan-banner-container" onClick={(e) => e.stopPropagation()}>
-			{/* Top bar: live indicator + dismiss button */}
-			<div className="athan-banner-topbar">
-				<div className="athan-status-badge">
-					<span className={`athan-pulse-dot ${waving ? "is-active" : ""}`} />
-					<span className="athan-status-title">
-						{isReminder ? "اقترب موعد الأذان" : "موعد الأذان"}
-					</span>
-					<span className="athan-meta-dot">·</span>
-					<div className="athan-time-tag">
-						<Clock size={11} strokeWidth={2} />
-						<span>{formattedTime}</span>
-					</div>
-				</div>
+			{/* Dismiss button */}
+			<button
+				className="athan-close-btn"
+				onClick={onClose}
+				title="إغلاق"
+				aria-label="إغلاق"
+			>
+				<X size={14} strokeWidth={2.2} />
+			</button>
 
-				<button
-					className="athan-close-btn"
-					onClick={onClose}
-					title="إغلاق"
-					aria-label="إغلاق"
-				>
-					<X size={13} strokeWidth={2.4} />
-				</button>
-			</div>
-
-			{/* Main body: info + audio controls + mosque art */}
-			<div className="athan-banner-body">
+			<div className="athan-banner-content">
+				{/* Info column */}
 				<div className="athan-side-info">
 					<h2 className="athan-prayer-name">صلاة {prayerNameAr}</h2>
 
-					<div className="athan-footer-row">
+					<div className="athan-meta-line">
+						<span className="athan-time-tag">{formattedTime}</span>
+
+						<span className="athan-meta-sep">·</span>
+
 						{isReminder ? (
-							<div className="athan-reminder-tag">
-								<span>متبقي {PRE_ALERT_MINUTES} دقيقة على الأذان</span>
-							</div>
+							<span className="athan-reminder-text">
+								متبقي {PRE_ALERT_MINUTES} دقيقة
+							</span>
 						) : (
-							<div className="athan-audio-controls">
-								<div className={`athan-wave-visualizer ${waving ? "is-playing" : "is-paused"}`}>
+							<button
+								className={`athan-audio-pill ${isPlaying ? "is-playing" : "is-muted"}`}
+								onClick={onStopAthan}
+								title={isPlaying ? "كتم صوت الأذان" : "تشغيل الصوت"}
+								aria-label={isPlaying ? "كتم صوت الأذان" : "تشغيل الصوت"}
+							>
+								<div className="athan-waves">
 									{Array.from({ length: WAVE_BARS }, (_, i) => (
 										<span key={i} className={`wave-bar bar-${i + 1}`} />
 									))}
 								</div>
-
-								<button
-									className="athan-audio-btn"
-									onClick={onStopAthan}
-									title={isPlaying ? "كتم صوت الأذان" : "الصوت مكتوم"}
-									aria-label={isPlaying ? "كتم صوت الأذان" : "الصوت مكتوم"}
-								>
-									{isPlaying ? (
-										<Volume2 size={13} strokeWidth={2.2} className="athan-icon-playing" />
-									) : (
-										<VolumeX size={13} strokeWidth={2.2} opacity={0.6} />
-									)}
-									<span className="athan-btn-label">
-										{isPlaying ? "كتم الصوت" : "تم الكتم"}
-									</span>
-								</button>
-							</div>
+								{isPlaying ? (
+									<Volume2 size={13} strokeWidth={2.4} className="athan-vol-icon" />
+								) : (
+									<VolumeX size={13} strokeWidth={2.2} className="athan-vol-icon" />
+								)}
+							</button>
 						)}
 					</div>
 				</div>
 
+				{/* Unboxed architectural art */}
 				<div className="athan-side-media">
-					<div className="athan-mosque-card">
-						<MosqueScene prayer={prayerKey} className="athan-mosque-art" />
-					</div>
+					<MosqueScene prayer={prayerKey} className="athan-mosque-art" />
 				</div>
 			</div>
 		</div>

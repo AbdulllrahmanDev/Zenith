@@ -2801,7 +2801,7 @@ function App() {
 
 	// Calculate width dynamically based on enabled features
 	const getDynamicWidth = () => {
-		if (showAthanBanner) return 440;
+		if (showAthanBanner) return 420;
 		if (bloomMode === "announcement" && announcement && !announcementDismissed) return 380;
 		if (isCalendarMode) return 480;
 		if (bloomMode === "prayer" && isOpen) return 480;
@@ -2828,7 +2828,7 @@ function App() {
 	};
 
 	const getDynamicHeight = () => {
-		if (showAthanBanner) return 130;
+		if (showAthanBanner) return 116;
 		if (!isExpanded || !isVisible || isHidden) {
 			return isImpacted ? 28.9 : 44.2;
 		}
