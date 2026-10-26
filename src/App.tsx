@@ -2801,7 +2801,7 @@ function App() {
 
 	// Calculate width dynamically based on enabled features
 	const getDynamicWidth = () => {
-		if (showAthanBanner) return 420;
+		if (showAthanBanner) return isOpen ? 420 : 260;
 		if (bloomMode === "announcement" && announcement && !announcementDismissed) return 380;
 		if (isCalendarMode) return 480;
 		if (bloomMode === "prayer" && isOpen) return 480;
@@ -2828,7 +2828,7 @@ function App() {
 	};
 
 	const getDynamicHeight = () => {
-		if (showAthanBanner) return 116;
+		if (showAthanBanner) return isOpen ? 116 : 36;
 		if (!isExpanded || !isVisible || isHidden) {
 			return isImpacted ? 28.9 : 44.2;
 		}
@@ -3042,13 +3042,16 @@ function App() {
 									{showAthanBanner && (
 										<motion.div
 											key="athan-notch-banner"
-											className="athan-banner-wrapper"
+											className={`athan-banner-wrapper ${isOpen ? "is-expanded" : "is-collapsed"}`}
 											initial={{ opacity: 0, scale: 0.96 }}
 											animate={{ opacity: 1, scale: 1 }}
 											exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.15 } }}
 											transition={{ type: "spring", stiffness: 450, damping: 32 }}
 										>
 											<AthanNotchBanner
+												isExpanded={isOpen}
+												onExpand={() => setIsOpen(true)}
+												onCollapse={() => setIsOpen(false)}
 												prayerKey={prayerTimes.athanPrayerKey || prayerTimes.activePrayer || "Asr"}
 												prayerNameAr={prayerTimes.athanPrayerName || "الصلاة"}
 												variant={prayerTimes.athanVariant}

@@ -1,4 +1,4 @@
-/* Athan notification: Distilled, pure Dynamic Island notification */
+/* Athan notification: Precision Animated & Delighted Dynamic Island UI */
 
 .athan-banner-wrapper {
 	position: absolute;
@@ -15,6 +15,144 @@
 	-webkit-font-smoothing: antialiased;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+   COLLAPSED NOTCH PILL (Authentic 36px Notch Bar with Delight)
+   ══════════════════════════════════════════════════════════════════════════ */
+.athan-compact-pill {
+	width: 100%;
+	height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 0 12px;
+	box-sizing: border-box;
+	direction: rtl;
+	cursor: pointer;
+	user-select: none;
+	border-radius: inherit;
+	background: transparent;
+	transition: background 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.15s ease;
+}
+
+.athan-compact-pill:hover {
+	background: rgba(255, 255, 255, 0.04);
+}
+
+.athan-compact-pill:active {
+	transform: scale(0.98);
+}
+
+/* Collapsed dancing sound waves */
+.athan-compact-waves {
+	display: flex;
+	align-items: center;
+	gap: 2.5px;
+	height: 16px;
+	width: 22px;
+	justify-content: flex-start;
+	direction: ltr;
+}
+
+.compact-wave-bar {
+	width: 2.5px;
+	height: 4px;
+	border-radius: 999px;
+	background: #34d399;
+	box-shadow: 0 0 6px rgba(52, 211, 153, 0.5);
+	transition: height 0.2s ease, opacity 0.2s ease, background 0.2s ease;
+}
+
+.athan-compact-waves.is-playing .compact-wave-bar {
+	animation: athanCompactWave 0.7s ease-in-out infinite alternate;
+}
+
+.athan-compact-waves.is-paused .compact-wave-bar {
+	height: 3px !important;
+	opacity: 0.35;
+	background: var(--p-muted);
+	box-shadow: none;
+}
+
+.compact-wave-bar.bar-1 { animation-delay: 0s; }
+.compact-wave-bar.bar-2 { animation-delay: 0.18s; }
+.compact-wave-bar.bar-3 { animation-delay: 0.36s; }
+.compact-wave-bar.bar-4 { animation-delay: 0.12s; }
+
+@keyframes athanCompactWave {
+	0% { height: 4px; opacity: 0.6; }
+	100% { height: 15px; opacity: 1; }
+}
+
+/* Collapsed center text: prayer name + dot + time */
+.athan-compact-center {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	flex: 1;
+	min-width: 0;
+	text-align: center;
+	line-height: 1;
+}
+
+.athan-compact-title {
+	font-family: var(--p-display);
+	font-size: 13px;
+	font-weight: 700;
+	color: var(--p-text);
+	white-space: nowrap;
+	letter-spacing: 0;
+}
+
+.athan-compact-dot {
+	color: var(--p-muted);
+	opacity: 0.4;
+	font-size: 10px;
+}
+
+.athan-compact-time {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", "Inter", sans-serif;
+	font-size: 11px;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	letter-spacing: 0.02em;
+	color: var(--p-muted);
+	direction: ltr;
+}
+
+/* Jewel prayer mark with breathing aura */
+.athan-compact-mark {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	flex-shrink: 0;
+}
+
+.athan-emblem-svg {
+	position: relative;
+	z-index: 1;
+	color: var(--p-text);
+	filter: drop-shadow(0 0 4px rgba(52, 211, 153, 0.45));
+	animation: emblemBreathe 3.5s ease-in-out infinite;
+}
+
+@keyframes emblemBreathe {
+	0%, 100% {
+		transform: scale(1);
+		filter: drop-shadow(0 0 3px rgba(52, 211, 153, 0.35));
+	}
+	50% {
+		transform: scale(1.08);
+		filter: drop-shadow(0 0 8px rgba(52, 211, 153, 0.75));
+	}
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   EXPANDED DYNAMIC ISLAND CARD
+   ══════════════════════════════════════════════════════════════════════════ */
 .athan-banner-container {
 	position: relative;
 	width: 100%;
@@ -31,11 +169,18 @@
 	user-select: none;
 }
 
-/* Close button - tucked neatly at the top left corner */
-.athan-close-btn {
+/* Top action buttons (minimize + close) */
+.athan-top-actions {
 	position: absolute;
-	top: 12px;
-	left: 14px;
+	top: 10px;
+	left: 12px;
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	z-index: 5;
+}
+
+.athan-action-circle-btn {
 	width: 22px;
 	height: 22px;
 	display: inline-flex;
@@ -47,21 +192,20 @@
 	color: var(--p-muted);
 	cursor: pointer;
 	padding: 0;
-	z-index: 5;
-	transition: background 0.15s ease, color 0.15s ease, transform 0.1s ease;
+	transition: background 0.15s ease, color 0.15s ease, transform 0.12s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.athan-close-btn:hover {
+.athan-action-circle-btn:hover {
 	background: rgba(255, 255, 255, 0.18);
 	color: var(--p-text);
 	transform: scale(1.08);
 }
 
-.athan-close-btn:active {
+.athan-action-circle-btn:active {
 	transform: scale(0.92);
 }
 
-/* Unified horizontal content layout */
+/* Main horizontal content layout */
 .athan-banner-content {
 	display: flex;
 	flex-direction: row;
@@ -139,6 +283,7 @@
 .athan-audio-pill:hover {
 	background: rgba(255, 255, 255, 0.1);
 	border-color: rgba(255, 255, 255, 0.14);
+	transform: translateY(-0.5px);
 }
 
 .athan-audio-pill:active {
@@ -157,28 +302,29 @@
 	height: 3px;
 	border-radius: 999px;
 	background: #34d399;
-	opacity: 0.9;
+	box-shadow: 0 0 5px rgba(52, 211, 153, 0.4);
 	transition: height 0.2s ease, opacity 0.2s ease;
 }
 
 .athan-audio-pill.is-playing .wave-bar {
-	animation: athanWaveBounce ease-in-out infinite alternate;
+	animation: athanExpandedWave 0.7s ease-in-out infinite alternate;
 }
 
 .athan-audio-pill.is-muted .wave-bar {
 	height: 3px !important;
 	opacity: 0.3;
 	background: var(--p-muted);
+	box-shadow: none;
 }
 
-.wave-bar.bar-1 { animation-duration: 0.4s; height: 5px; }
-.wave-bar.bar-2 { animation-duration: 0.65s; height: 12px; }
-.wave-bar.bar-3 { animation-duration: 0.35s; height: 10px; }
-.wave-bar.bar-4 { animation-duration: 0.55s; height: 6px; }
+.wave-bar.bar-1 { animation-delay: 0s; }
+.wave-bar.bar-2 { animation-delay: 0.2s; }
+.wave-bar.bar-3 { animation-delay: 0.38s; }
+.wave-bar.bar-4 { animation-delay: 0.12s; }
 
-@keyframes athanWaveBounce {
-	0% { height: 3px; opacity: 0.4; }
-	100% { height: 12px; opacity: 1; }
+@keyframes athanExpandedWave {
+	0% { height: 3px; opacity: 0.5; }
+	100% { height: 13px; opacity: 1; }
 }
 
 .athan-vol-icon {
@@ -191,6 +337,14 @@
 	opacity: 0.7;
 }
 
+.athan-audio-status-label {
+	font-family: var(--p-display);
+	font-size: 11px;
+	font-weight: 500;
+	color: var(--p-muted);
+	line-height: 1;
+}
+
 /* Unboxed mosque artwork */
 .athan-side-media {
 	width: 120px;
@@ -199,19 +353,21 @@
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	opacity: 0.78;
-	filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.3));
+	opacity: 0.85;
+	filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.35));
 }
 
 .athan-mosque-art {
 	display: block;
 	width: 100%;
 	height: 100%;
-	color: rgba(255, 255, 255, 0.85);
+	color: rgba(255, 255, 255, 0.88);
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.wave-bar {
+	.compact-wave-bar,
+	.wave-bar,
+	.athan-emblem-svg {
 		animation: none !important;
 	}
 }
