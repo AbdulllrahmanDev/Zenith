@@ -3,9 +3,17 @@ import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getRadialIcon } from "../radial/iconMap";
-import { playRadialBloom, playRadialHover } from "../radial/sound";
+import { playRadialBloom, playRadialHover, setRadialSoundVolume } from "../radial/radialSound";
 import { DEFAULT_WORKSPACES } from "../radial/types";
 import type { RadialItem, RadialWorkspace } from "../radial/types";
+import {
+	sectorBoundsDeg,
+	sectorIndexForDelta,
+	annularSectorPath,
+	polarPoint,
+	sectorCentreDeg,
+} from "../radial/radialSectors";
+import { clampWheelCenter } from "../radial/radialDrag";
 import "./RadialMenu.css";
 
 interface RadialMenuProps {
@@ -35,7 +43,7 @@ export function RadialMenu({
 	areaWedges = false,
 	instantActivate = "off",
 	instantDwellMs = 350,
-	numberLaunch = false,
+	numberLaunch = true,
 	numberLabels = true,
 	soundEnabled = true,
 	soundVolume = 70,
@@ -66,23 +74,29 @@ export function RadialMenu({
 	const items = currentWorkspace.items || [];
 	const numItems = items.length;
 
+	// Orbit geometry constants
+	const RADIUS_INNER = 54;
+	const RADIUS_OUTER = 250;
+	const ORBIT_RADIUS = 168;
+
 	// Center coordinates of the wheel in window viewport
 	const [wheelCenter, setWheelCenter] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
 	useEffect(() => {
 		if (!isOpen) return;
 
+		const w = window.innerWidth || 1920;
+		const h = window.innerHeight || 1080;
 		let cx = position.x;
 		let cy = position.y;
 
 		if (placement === "center") {
-			cx = window.innerWidth / 2;
-			cy = window.innerHeight / 2;
+			cx = w / 2;
+			cy = h / 2;
 		} else {
-			// Clamp to ensure the 520px wheel stays inside viewport
-			const half = 260;
-			cx = Math.max(half, Math.min(window.innerWidth - half, cx));
-			cy = Math.max(half, Math.min(window.innerHeight - half, cy));
+			const clamped = clampWheelCenter({ x: cx, y: cy }, { width: w, height: h }, RADIUS_OUTER);
+			cx = clamped.x;
+			cy = clamped.y;
 		}
 
 		setWheelCenter({ x: cx, y: cy });
@@ -90,6 +104,7 @@ export function RadialMenu({
 		setDwellProgress(0);
 
 		if (soundEnabled) {
+			setRadialSoundVolume(soundVolume);
 			playRadialBloom(soundVolume);
 		}
 	}, [isOpen, position.x, position.y, placement, soundEnabled, soundVolume]);
@@ -134,24 +149,25 @@ export function RadialMenu({
 			const dist = Math.hypot(dx, dy);
 
 			// Center deadzone
-			if (dist < 46) {
+			if (dist < RADIUS_INNER) {
 				selectSlice(null);
 				return;
 			}
 
 			// Mathematical sector calculation matching Rovyl's sectorIndexForDelta
-			let angleDeg = Math.atan2(dy, dx) * (180 / Math.PI) + 90;
-			if (angleDeg < 0) angleDeg += 360;
-			const sliceAngleDeg = 360 / numItems;
-			let sectorIdx = Math.floor(((angleDeg + sliceAngleDeg / 2) % 360) / sliceAngleDeg);
-			if (sectorIdx < 0) sectorIdx += numItems;
-			sectorIdx = sectorIdx % numItems;
+			const sectorIdx = sectorIndexForDelta(dx, dy, numItems);
+
+			if (sectorIdx === null) {
+				selectSlice(null);
+				return;
+			}
 
 			if (selectionMode === "cursor") {
 				// In cursor mode, check proximity to the candidate item's coordinate
+				const sliceAngleDeg = 360 / numItems;
 				const targetAngleRad = (sectorIdx * sliceAngleDeg - 90) * (Math.PI / 180);
-				const itemX = wheelCenter.x + RADIUS * Math.cos(targetAngleRad);
-				const itemY = wheelCenter.y + RADIUS * Math.sin(targetAngleRad);
+				const itemX = wheelCenter.x + ORBIT_RADIUS * Math.cos(targetAngleRad);
+				const itemY = wheelCenter.y + ORBIT_RADIUS * Math.sin(targetAngleRad);
 				const distToItem = Math.hypot(e.clientX - itemX, e.clientY - itemY);
 				if (distToItem <= 54) {
 					selectSlice(sectorIdx);
@@ -255,8 +271,6 @@ export function RadialMenu({
 
 	if (!isOpen) return null;
 
-	const RADIUS = 170; // Orbit distance of slices from center
-
 	return (
 		<AnimatePresence>
 			<motion.div
@@ -264,7 +278,7 @@ export function RadialMenu({
 				initial={{ opacity: 0 }}
 				animate={{ opacity: 1 }}
 				exit={{ opacity: 0 }}
-				transition={{ duration: 0.16 }}
+				transition={{ duration: 0.14 }}
 				onClick={(e) => {
 					if (e.target === e.currentTarget) onClose();
 				}}
@@ -273,23 +287,73 @@ export function RadialMenu({
 					ref={containerRef}
 					className="radial-wheel-container"
 					style={{ left: wheelCenter.x, top: wheelCenter.y }}
-					initial={{ scale: 0.75, opacity: 0 }}
+					initial={{ scale: 0.78, opacity: 0 }}
 					animate={{ scale: 1, opacity: 1 }}
-					exit={{ scale: 0.8, opacity: 0 }}
-					transition={{ type: "spring", stiffness: 420, damping: 28 }}
+					exit={{ scale: 0.82, opacity: 0 }}
+					transition={{ type: "spring", stiffness: 440, damping: 29 }}
 				>
 					{/* Ambient glow behind wheel */}
 					<div className="radial-ambient-glow" />
 
-					{/* Optional wedge divider lines */}
-					{areaWedges && numItems > 1 && (
-						<svg className="radial-wedges-svg" viewBox="0 0 520 520">
-							{items.map((_: RadialItem, i: number) => {
-								const sliceAngle = (2 * Math.PI) / numItems;
-								const angle = i * sliceAngle - Math.PI / 2 + sliceAngle / 2;
-								const x2 = 260 + 240 * Math.cos(angle);
-								const y2 = 260 + 240 * Math.sin(angle);
-								return <line key={i} x1="260" y1="260" x2={x2} y2={y2} />;
+					{/* SVG Sectors & Divider Seams Layer */}
+					{numItems > 0 && (
+						<svg
+							className="radial-wedges-svg"
+							viewBox={`0 0 ${RADIUS_OUTER * 2} ${RADIUS_OUTER * 2}`}
+						>
+							<defs>
+								{items.map((_: RadialItem, i: number) => {
+									const angle = sectorCentreDeg(i, numItems);
+									const p1 = polarPoint(RADIUS_OUTER, RADIUS_INNER, angle);
+									const p2 = polarPoint(RADIUS_OUTER, RADIUS_OUTER, angle);
+									return (
+										<linearGradient
+											key={i}
+											id={`sector-grad-${i}`}
+											x1={p1.x}
+											y1={p1.y}
+											x2={p2.x}
+											y2={p2.y}
+											gradientUnits="userSpaceOnUse"
+										>
+											<stop offset="0%" stopColor="var(--bloom-accent, #007aff)" stopOpacity="0.45" />
+											<stop offset="40%" stopColor="var(--bloom-accent, #007aff)" stopOpacity="0.25" />
+											<stop offset="100%" stopColor="var(--bloom-accent, #007aff)" stopOpacity="0" />
+										</linearGradient>
+									);
+								})}
+							</defs>
+
+							{/* Active Sector Wedge Highlight */}
+							{activeSliceIndex !== null && items[activeSliceIndex] && (
+								<path
+									d={annularSectorPath(
+										RADIUS_INNER,
+										RADIUS_OUTER,
+										sectorBoundsDeg(activeSliceIndex, numItems).startDeg,
+										sectorBoundsDeg(activeSliceIndex, numItems).endDeg
+									)}
+									fill={`url(#sector-grad-${activeSliceIndex})`}
+								/>
+							)}
+
+							{/* Wedge divider seam lines */}
+							{areaWedges && numItems > 1 && items.map((_: RadialItem, i: number) => {
+								const bounds = sectorBoundsDeg(i, numItems);
+								const p1 = polarPoint(RADIUS_OUTER, RADIUS_INNER + 4, bounds.startDeg);
+								const p2 = polarPoint(RADIUS_OUTER, RADIUS_OUTER - 20, bounds.startDeg);
+								return (
+									<line
+										key={i}
+										x1={p1.x}
+										y1={p1.y}
+										x2={p2.x}
+										y2={p2.y}
+										stroke="var(--bloom-border, rgba(255, 255, 255, 0.15))"
+										strokeWidth="1"
+										strokeDasharray="4 4"
+									/>
+								);
 							})}
 						</svg>
 					)}
@@ -303,7 +367,7 @@ export function RadialMenu({
 						<div className="radial-hub-icon">
 							{(() => {
 								const HubIcon = getRadialIcon(currentWorkspace.icon);
-								return <HubIcon size={22} strokeWidth={1.8} />;
+								return <HubIcon size={22} strokeWidth={2} />;
 							})()}
 						</div>
 						<div className="radial-hub-title">{currentWorkspace.name}</div>
@@ -314,8 +378,8 @@ export function RadialMenu({
 					{items.map((item: RadialItem, index: number) => {
 						const sliceAngle = (2 * Math.PI) / numItems;
 						const angle = index * sliceAngle - Math.PI / 2;
-						const posX = 260 + RADIUS * Math.cos(angle);
-						const posY = 260 + RADIUS * Math.sin(angle);
+						const posX = 260 + ORBIT_RADIUS * Math.cos(angle);
+						const posY = 260 + ORBIT_RADIUS * Math.sin(angle);
 
 						const isActive = activeSliceIndex === index;
 						const ItemIcon = getRadialIcon(item.icon);
@@ -325,16 +389,6 @@ export function RadialMenu({
 								key={item.id || index}
 								className={`radial-slice-item ${isActive ? "active" : ""}`}
 								style={{ left: posX, top: posY }}
-								onMouseEnter={() => {
-									if (selectionMode === "cursor") {
-										selectSlice(index);
-									}
-								}}
-								onMouseLeave={() => {
-									if (selectionMode === "cursor" && activeSliceIndex === index) {
-										selectSlice(null);
-									}
-								}}
 								onClick={() => executeItem(item)}
 							>
 								{/* Number badge */}
@@ -345,12 +399,12 @@ export function RadialMenu({
 								{/* Dwell ring progress */}
 								{isActive && instantActivate === "dwell" && dwellProgress > 0 && (
 									<div className="radial-dwell-ring">
-										<svg viewBox="0 0 90 76">
+										<svg viewBox="0 0 92 74">
 											<rect
 												x="2"
 												y="2"
-												width="86"
-												height="72"
+												width="88"
+												height="70"
 												rx="16"
 												style={{
 													strokeDashoffset: 300 - 300 * dwellProgress
@@ -361,7 +415,7 @@ export function RadialMenu({
 								)}
 
 								<div className="radial-slice-icon-wrap">
-									<ItemIcon size={24} strokeWidth={1.7} />
+									<ItemIcon size={24} strokeWidth={1.8} />
 								</div>
 								<div className="radial-slice-label">{item.label}</div>
 							</div>

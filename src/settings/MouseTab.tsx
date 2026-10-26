@@ -22,6 +22,7 @@ import { emit } from "@tauri-apps/api/event";
 import { DEFAULT_WORKSPACES } from "../radial/types";
 import type { RadialItem, RadialWorkspace, RadialItemType } from "../radial/types";
 import { getRadialIcon } from "../radial/iconMap";
+import { WheelPreview } from "../radial/WheelPreview";
 
 interface MouseTabProps {
 	mouseRadialEnabled: boolean;
@@ -138,7 +139,6 @@ export function MouseTab({
 		}
 	});
 	const [selectedWsIndex, setSelectedWsIndex] = useState(0);
-	const [previewHoverIndex, setPreviewHoverIndex] = useState<number | null>(null);
 	const [showAddForm, setShowAddForm] = useState(false);
 	const [newItemLabel, setNewItemLabel] = useState("");
 	const [newItemTarget, setNewItemTarget] = useState("");
@@ -271,74 +271,17 @@ export function MouseTab({
 			{/* 2. Interactive Wheel Live Preview */}
 			<div className="setting-group-label">Wheel Preview ({currentWs.name})</div>
 			<div className="setting-group">
-				<div className="rovyl-preview-box">
-					{/* Wedge dividers preview */}
-					{mouseAreaWedges && currentWs.items.length > 1 && (
-						<svg style={{ position: "absolute", width: "100%", height: "100%", pointerEvents: "none", opacity: 0.25 }}>
-							{currentWs.items.map((_, i) => {
-								const sliceAngle = (2 * Math.PI) / currentWs.items.length;
-								const angle = i * sliceAngle - Math.PI / 2 + sliceAngle / 2;
-								const x2 = 50 + 40 * Math.cos(angle);
-								const y2 = 50 + 40 * Math.sin(angle);
-								return (
-									<line
-										key={i}
-										x1="50%"
-										y1="50%"
-										x2={`${x2}%`}
-										y2={`${y2}%`}
-										stroke="currentColor"
-										strokeDasharray="3 3"
-									/>
-								);
-							})}
-						</svg>
-					)}
-
-					{/* Center Hub */}
-					<div className="rovyl-preview-center-hub">
-						{(() => {
-							const HubIcon = getRadialIcon(currentWs.icon);
-							return <HubIcon size={18} strokeWidth={2} style={{ color: "var(--bloom-accent, #007aff)" }} />;
-						})()}
-						<span style={{ marginTop: "2px" }}>{currentWs.name}</span>
-					</div>
-
-					{/* Slices */}
-					{currentWs.items.map((item, idx) => {
-						const count = currentWs.items.length;
-						const angle = (idx * (360 / count) - 90) * (Math.PI / 180);
-						const radius = 78;
-						const posX = `calc(50% + ${Math.round(radius * Math.cos(angle))}px)`;
-						const posY = `calc(50% + ${Math.round(radius * Math.sin(angle))}px)`;
-						const isActive = previewHoverIndex === idx;
-						const ItemIcon = getRadialIcon(item.icon);
-
-						return (
-							<div
-								key={item.id || idx}
-								className={`rovyl-preview-item ${isActive ? "active" : ""}`}
-								style={{ left: posX, top: posY }}
-								onMouseEnter={() => setPreviewHoverIndex(idx)}
-								onMouseLeave={() => setPreviewHoverIndex(null)}
-								onClick={() => {
-									setPreviewHoverIndex(idx);
-									emit("radial-open", { x: window.screen.width / 2, y: window.screen.height / 2 });
-								}}
-								title={`${item.label} (${item.target})`}
-							>
-								{mouseNumberLabels && (
-									<span style={{ position: "absolute", top: "1px", left: "3px", fontSize: "7px", opacity: 0.6 }}>
-										{idx + 1}
-									</span>
-								)}
-								<ItemIcon size={14} strokeWidth={1.8} />
-								<span style={{ maxWidth: "38px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-									{item.label}
-								</span>
-							</div>
-						);
-					})}
+				<div style={{ padding: "8px" }}>
+					<WheelPreview
+						items={currentWs.items}
+						workspaceName={currentWs.name}
+						workspaceIcon={currentWs.icon}
+						areaWedges={mouseAreaWedges}
+						numberLabels={mouseNumberLabels}
+						onSliceClick={() => {
+							emit("radial-open", { x: window.screen.width / 2, y: window.screen.height / 2 });
+						}}
+					/>
 				</div>
 			</div>
 
