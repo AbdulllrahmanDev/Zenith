@@ -632,6 +632,10 @@ function App() {
 		setWindowLabel(getCurrentWebviewWindow().label);
 	}, []);
 
+	// Only the main notch schedules alerts and plays the athan; the other notches follow it.
+	const prayerTimes = usePrayerTimes({ owner: windowLabel === "main" || windowLabel === "" });
+	const showAthanBanner = prayerTimes.athanBannerVisible;
+
 	// Update state
 	const [updateAvailable, setUpdateAvailable] = useState(false);
 	const [showUpdateIndicator, setShowUpdateIndicator] = useState(
@@ -756,6 +760,7 @@ function App() {
 	const isAnyInteraction = isHovered || isNotchHovered || isEdgeHovered;
 	const isHidden =
 		!startupAnimating &&
+		!showAthanBanner &&
 		((notchMode === "smart" && isOverlapped && interactionState === "none") ||
 			(notchMode === "peek" && interactionState === "none" && !eventPeek));
 
@@ -927,10 +932,6 @@ function App() {
 	const [settingsPrayerEnabled, setSettingsPrayerEnabled] = useState(
 		() => localStorage.getItem("bloom-prayer-enabled") !== "false"
 	);
-	// Only the main notch schedules alerts and plays the athan; the other notches follow it.
-	const prayerTimes = usePrayerTimes({ owner: windowLabel === "main" || windowLabel === "" });
-	const showAthanBanner = prayerTimes.athanBannerVisible;
-
 
 	const [notificationsEnabled, setNotificationsEnabled] = useState(
 		() => localStorage.getItem("bloom-notifications-enabled") !== "false"
@@ -2043,13 +2044,14 @@ function App() {
 	useEffect(() => {
 		if (!wasAthanBannerVisibleRef.current && showAthanBanner) {
 			setIsOpen(true);
+			triggerEventPeek(15000);
 		}
 		if (wasAthanBannerVisibleRef.current && !showAthanBanner) {
 			setIsOpen(false);
 			setBloomMode(collapsedMode);
 		}
 		wasAthanBannerVisibleRef.current = showAthanBanner;
-	}, [showAthanBanner, collapsedMode]);
+	}, [showAthanBanner, collapsedMode, triggerEventPeek]);
 
 	// A click opens the last-used panel when memory is enabled, otherwise the
 	// selected default. The controls panel is always available as a fallback.
@@ -2887,7 +2889,7 @@ function App() {
 	const pillTargetY = !isReady ? 250 : isVisible ? (isHidden ? -100 : 0) : -150;
 	const pillTargetWidth = !isReady
 		? 34
-		: isExpanded && isVisible && !isHidden
+		: (isExpanded && isVisible && !isHidden) || showAthanBanner
 			? getDynamicWidth()
 			: isImpacted
 				? 39.1
