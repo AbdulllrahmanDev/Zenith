@@ -1,4 +1,4 @@
-/* Athan banner: collapsed pill and expanded card. Colours come from ./prayer/prayer.css. */
+/* Athan banner: Precision-typeset Apple-style Dynamic Island Alert */
 
 .athan-banner-wrapper {
 	position: absolute;
@@ -12,299 +12,273 @@
 	overflow: hidden;
 	z-index: 10;
 	color: var(--p-text);
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
 }
 
-/* ---- collapsed pill ---------------------------------------------------- */
-.athan-compact-pill {
-	width: 100%;
-	height: 100%;
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	padding: 0 4px;
-	box-sizing: border-box;
-	direction: ltr; /* waves on the left, mark on the right */
-	cursor: pointer;
-	user-select: none;
-}
-
-.athan-compact-waves {
-	display: flex;
-	align-items: center;
-	gap: 2px;
-	height: 16px;
-	width: 24px;
-	justify-content: flex-start;
-}
-
-.compact-wave-bar {
-	width: 2.5px;
-	height: 4px;
-	border-radius: 999px;
-	background: var(--p-text);
-	opacity: 0.85;
-	transition: height 0.2s ease, opacity 0.2s ease;
-}
-
-.athan-compact-waves.is-playing .compact-wave-bar {
-	animation: athanCompactWaveBounce ease-in-out infinite alternate;
-}
-
-.athan-compact-waves.is-paused .compact-wave-bar {
-	height: 3px !important;
-	opacity: 0.35;
-}
-
-.compact-wave-bar.bar-1 { animation-duration: 0.4s; height: 6px; }
-.compact-wave-bar.bar-2 { animation-duration: 0.65s; height: 13px; }
-.compact-wave-bar.bar-3 { animation-duration: 0.35s; height: 16px; }
-.compact-wave-bar.bar-4 { animation-duration: 0.55s; height: 10px; }
-.compact-wave-bar.bar-5 { animation-duration: 0.45s; height: 7px; }
-
-@keyframes athanCompactWaveBounce {
-	0% { height: 3px; opacity: 0.4; }
-	100% { height: 16px; opacity: 1; }
-}
-
-.athan-compact-center {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	gap: 7px;
-	flex: 1;
-	min-width: 0;
-	direction: rtl;
-	text-align: center;
-}
-
-.athan-compact-title {
-	font-family: var(--p-display);
-	font-size: 13.5px;
-	font-weight: 700;
-	color: var(--p-text);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-
-.athan-compact-time {
-	font-size: 11px;
-	font-weight: 500;
-	font-variant-numeric: tabular-nums;
-	color: var(--p-muted);
-	direction: ltr;
-}
-
-.athan-compact-mark {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 22px;
-	height: 22px;
-	flex-shrink: 0;
-	color: var(--p-text);
-	opacity: 0.85;
-}
-
-/* ---- expanded card ----------------------------------------------------- */
 .athan-banner-container {
 	position: relative;
 	width: 100%;
 	height: 100%;
 	box-sizing: border-box;
-	padding: 14px 18px;
+	padding: 12px 18px 14px;
 	display: flex;
 	flex-direction: column;
-	justify-content: center;
+	justify-content: space-between;
 	direction: rtl;
 	text-align: right;
 	color: var(--p-text);
-	font-family: inherit;
+	font-family: var(--p-display);
 	overflow: hidden;
 	user-select: none;
+	text-rendering: optimizeLegibility;
 }
 
+/* ---- Top bar: Live status badge + Dismiss button ----------------------- */
+.athan-banner-topbar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	width: 100%;
+	margin-bottom: 2px;
+}
+
+.athan-status-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 11.5px;
+	font-weight: 500;
+	line-height: 1;
+	color: var(--p-muted);
+}
+
+.athan-pulse-dot {
+	width: 6px;
+	height: 6px;
+	border-radius: 50%;
+	background: #34d399;
+	box-shadow: 0 0 8px rgba(52, 211, 153, 0.7);
+	flex-shrink: 0;
+}
+
+.athan-pulse-dot.is-active {
+	animation: athanPulseGlow 1.8s ease-in-out infinite;
+}
+
+@keyframes athanPulseGlow {
+	0%, 100% {
+		transform: scale(0.9);
+		opacity: 0.7;
+		box-shadow: 0 0 4px rgba(52, 211, 153, 0.4);
+	}
+	50% {
+		transform: scale(1.2);
+		opacity: 1;
+		box-shadow: 0 0 10px rgba(52, 211, 153, 0.9);
+	}
+}
+
+.athan-status-title {
+	font-family: var(--p-display);
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--p-text);
+	letter-spacing: 0;
+	line-height: 1;
+}
+
+.athan-meta-dot {
+	opacity: 0.35;
+	font-size: 10px;
+	line-height: 1;
+}
+
+.athan-time-tag {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	direction: ltr;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", "Inter", sans-serif;
+	font-size: 11px;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	letter-spacing: 0.03em;
+	color: var(--p-muted);
+	line-height: 1;
+}
+
+.athan-close-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	border-radius: 50%;
+	border: none;
+	background: rgba(255, 255, 255, 0.08);
+	color: var(--p-muted);
+	cursor: pointer;
+	padding: 0;
+	transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.athan-close-btn:hover {
+	background: rgba(255, 255, 255, 0.18);
+	color: var(--p-text);
+	transform: scale(1.06);
+}
+
+.athan-close-btn:active {
+	transform: scale(0.94);
+}
+
+/* ---- Main body: Info on right, Artwork on left ------------------------- */
 .athan-banner-body {
 	display: flex;
 	flex-direction: row;
-	align-items: stretch;
+	align-items: center;
 	justify-content: space-between;
 	width: 100%;
-	height: 100%;
-	gap: 16px;
+	flex: 1;
+	gap: 14px;
 	box-sizing: border-box;
 }
 
 .athan-side-info {
-	flex: 1.25;
+	flex: 1;
 	min-width: 0;
 	display: flex;
 	flex-direction: column;
-	justify-content: space-between;
-	padding: 2px 0;
-	box-sizing: border-box;
-}
-
-.athan-header-meta {
-	display: inline-flex;
-	align-items: center;
+	justify-content: center;
 	gap: 7px;
-	font-family: var(--p-display);
-	font-size: 12px;
-	font-weight: 500;
-	color: var(--p-muted);
-}
-
-.athan-meta-divider {
-	opacity: 0.45;
-	font-weight: 400;
-}
-
-.athan-time-inline {
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-	font-size: 12px;
-	font-weight: 500;
-	font-variant-numeric: tabular-nums;
-	color: var(--p-muted);
-	direction: ltr;
-}
-
-.athan-time-icon {
-	opacity: 0.75;
 }
 
 .athan-prayer-name {
 	margin: 0;
 	font-family: var(--p-display);
-	font-size: 26px;
+	font-size: 24px;
 	font-weight: 700;
-	line-height: 1.15;
+	line-height: 1.2;
 	color: var(--p-text);
-	letter-spacing: -0.2px;
+	letter-spacing: 0;
+	font-feature-settings: "liga" 1, "clig" 1;
 }
 
-/* Control capsule: audio waves + status + action button */
-.athan-control-capsule {
+.athan-footer-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.athan-audio-controls {
 	display: inline-flex;
 	align-items: center;
 	gap: 8px;
-	padding: 3px 6px 3px 10px;
-	border-radius: 10px;
-	background: var(--p-group);
-	border: 1px solid var(--p-line);
-	box-sizing: border-box;
-	align-self: flex-start;
-	max-width: 100%;
+	padding: 4px 10px 4px 8px;
+	border-radius: 8px;
+	background: rgba(255, 255, 255, 0.05);
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
-.athan-audio-pill,
-.athan-state-pill {
-	display: inline-flex;
-	align-items: center;
-	gap: 7px;
-}
-
-.athan-audio-text,
-.athan-state-pill span {
-	font-family: var(--p-display);
-	font-size: 11.5px;
-	font-weight: 500;
-	color: var(--p-muted);
-	white-space: nowrap;
-}
-
-.athan-capsule-divider {
-	width: 1px;
-	height: 14px;
-	background: var(--p-line);
-	flex-shrink: 0;
-}
-
-/* Audio waves in capsule */
-.athan-audio-waves {
+/* Audio waves visualizer */
+.athan-wave-visualizer {
 	display: flex;
 	align-items: center;
-	gap: 2px;
+	gap: 2.5px;
 	height: 14px;
 	padding: 0 1px;
 }
 
 .wave-bar {
-	width: 2px;
+	width: 2.5px;
 	height: 4px;
 	border-radius: 999px;
-	background: var(--p-text);
+	background: #34d399;
 	opacity: 0.85;
 	transition: height 0.2s ease, opacity 0.2s ease;
 }
 
-.athan-audio-waves.is-playing .wave-bar {
-	animation: athanExpandedWaveBounce ease-in-out infinite alternate;
+.athan-wave-visualizer.is-playing .wave-bar {
+	animation: athanWaveBounce ease-in-out infinite alternate;
 }
 
-.athan-audio-waves.is-paused .wave-bar {
+.athan-wave-visualizer.is-paused .wave-bar {
 	height: 3px !important;
 	opacity: 0.35;
+	background: var(--p-muted);
 }
 
-.wave-bar.bar-1 { animation-duration: 0.42s; height: 5px; }
-.wave-bar.bar-2 { animation-duration: 0.65s; height: 12px; }
-.wave-bar.bar-3 { animation-duration: 0.35s; height: 14px; }
-.wave-bar.bar-4 { animation-duration: 0.58s; height: 8px; }
-.wave-bar.bar-5 { animation-duration: 0.48s; height: 11px; }
+.wave-bar.bar-1 { animation-duration: 0.4s; height: 5px; }
+.wave-bar.bar-2 { animation-duration: 0.65s; height: 13px; }
+.wave-bar.bar-3 { animation-duration: 0.35s; height: 11px; }
+.wave-bar.bar-4 { animation-duration: 0.55s; height: 7px; }
 
-@keyframes athanExpandedWaveBounce {
+@keyframes athanWaveBounce {
 	0% { height: 3px; opacity: 0.4; }
 	100% { height: 14px; opacity: 1; }
 }
 
-.athan-action-btn {
+.athan-audio-btn {
 	display: inline-flex;
 	align-items: center;
-	justify-content: center;
-	width: 24px;
-	height: 24px;
-	border-radius: 6px;
+	gap: 5px;
 	border: none;
 	background: transparent;
-	color: var(--p-muted);
+	color: var(--p-text);
 	cursor: pointer;
 	padding: 0;
-	transition: color 0.15s ease, background 0.15s ease, transform 0.1s ease;
+	transition: opacity 0.15s ease;
 }
 
-.athan-action-btn:hover {
-	color: var(--p-text);
-	background: var(--p-tint);
+.athan-audio-btn:hover {
+	opacity: 0.85;
 }
 
-.athan-action-btn:active {
-	transform: scale(0.92);
+.athan-icon-playing {
+	color: #34d399;
 }
 
-/* ---- media side: full-height mosque scene ------------------------------- */
+.athan-btn-label {
+	font-family: var(--p-display);
+	color: var(--p-muted);
+	font-size: 11.5px;
+	font-weight: 500;
+	letter-spacing: 0;
+	line-height: 1;
+	white-space: nowrap;
+}
+
+.athan-reminder-tag {
+	font-family: var(--p-display);
+	font-size: 12px;
+	font-weight: 500;
+	letter-spacing: 0;
+	color: var(--p-muted);
+	line-height: 1;
+}
+
+/* ---- Mosque artwork card ----------------------------------------------- */
 .athan-side-media {
-	flex: 0.95;
-	min-width: 150px;
-	max-width: 185px;
-	height: 100%;
+	width: 124px;
+	height: 72px;
+	flex-shrink: 0;
 	display: flex;
-	align-items: stretch;
-	box-sizing: border-box;
+	align-items: center;
+	justify-content: center;
 }
 
 .athan-mosque-card {
 	position: relative;
 	width: 100%;
 	height: 100%;
-	min-height: 96px;
-	border-radius: 14px;
+	border-radius: 12px;
 	overflow: hidden;
-	color: var(--p-text);
-	background: var(--p-group);
-	border: 1px solid var(--p-line);
+	color: rgba(255, 255, 255, 0.72);
+	background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
+	border: 1px solid rgba(255, 255, 255, 0.08);
+	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 	box-sizing: border-box;
 }
 
@@ -315,8 +289,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.compact-wave-bar,
 	.wave-bar {
+		animation: none !important;
+	}
+	.athan-pulse-dot {
 		animation: none !important;
 	}
 }

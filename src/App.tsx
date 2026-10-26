@@ -1552,6 +1552,9 @@ function App() {
 		}
 		setIsHovered(false);
 		setIsNotchHovered(false);
+		if (showAthanBanner) {
+			return;
+		}
 		if (isOpenRef.current) {
 			const panel = asNotchPanel(bloomModeRef.current);
 			if (panel && rememberPanelEnabledRef.current) rememberPanelRef.current(panel);
@@ -2038,6 +2041,9 @@ function App() {
 
 	const wasAthanBannerVisibleRef = useRef(false);
 	useEffect(() => {
+		if (!wasAthanBannerVisibleRef.current && showAthanBanner) {
+			setIsOpen(true);
+		}
 		if (wasAthanBannerVisibleRef.current && !showAthanBanner) {
 			setIsOpen(false);
 			setBloomMode(collapsedMode);
@@ -2795,7 +2801,7 @@ function App() {
 
 	// Calculate width dynamically based on enabled features
 	const getDynamicWidth = () => {
-		if (showAthanBanner) return isOpen ? 480 : 255;
+		if (showAthanBanner) return 440;
 		if (bloomMode === "announcement" && announcement && !announcementDismissed) return 380;
 		if (isCalendarMode) return 480;
 		if (bloomMode === "prayer" && isOpen) return 480;
@@ -2822,7 +2828,7 @@ function App() {
 	};
 
 	const getDynamicHeight = () => {
-		if (showAthanBanner) return isOpen ? 148 : 36;
+		if (showAthanBanner) return 130;
 		if (!isExpanded || !isVisible || isHidden) {
 			return isImpacted ? 28.9 : 44.2;
 		}
@@ -2963,7 +2969,7 @@ function App() {
 					onClick={(e) => {
 						e.stopPropagation();
 						if (showAthanBanner) {
-							setIsOpen((prev) => !prev);
+							if (!isOpen) setIsOpen(true);
 							return;
 						}
 						if (!isOpen) openNotch(openingPanel());
@@ -3036,17 +3042,13 @@ function App() {
 									{showAthanBanner && (
 										<motion.div
 											key="athan-notch-banner"
-											className={`athan-banner-wrapper ${isOpen ? "is-expanded" : "is-collapsed"}`}
+											className="athan-banner-wrapper"
 											initial={{ opacity: 0, scale: 0.96 }}
 											animate={{ opacity: 1, scale: 1 }}
 											exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.15 } }}
 											transition={{ type: "spring", stiffness: 450, damping: 32 }}
 										>
 											<AthanNotchBanner
-												isExpanded={isOpen}
-												onExpand={() => {
-													setIsOpen(true);
-												}}
 												prayerKey={prayerTimes.athanPrayerKey || prayerTimes.activePrayer || "Asr"}
 												prayerNameAr={prayerTimes.athanPrayerName || "الصلاة"}
 												variant={prayerTimes.athanVariant}
@@ -3064,8 +3066,9 @@ function App() {
 												isPlaying={prayerTimes.isPlayingAthan}
 												onStopAthan={prayerTimes.stopAthan}
 												onClose={() => {
-													setIsOpen(false);
+													prayerTimes.stopAthan();
 													prayerTimes.setAthanBannerVisible(false);
+													setIsOpen(false);
 												}}
 											/>
 										</motion.div>
