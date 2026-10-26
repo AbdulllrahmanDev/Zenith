@@ -2340,6 +2340,13 @@ function App() {
 			const info = event.payload;
 			if (!info) return;
 
+			// Ignore Zenith's internal sounds (e.g. Athan audio from webview)
+			const titleLower = (info.title || "").toLowerCase();
+			const artistLower = (info.artist || "").toLowerCase();
+			if (titleLower.includes("zenith") || titleLower.includes("athan") || artistLower.includes("zenith")) {
+				return;
+			}
+
 			setMediaInfo((prev) => {
 				// Find if artwork changed by checking the first element
 				const prevArt = prev.artwork?.[0];

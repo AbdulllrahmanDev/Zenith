@@ -1121,6 +1121,12 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                         if let Ok(sessions) = mgr.GetSessions() {
                             for i in 0..sessions.Size().unwrap_or(0) {
                                 if let Ok(session) = sessions.GetAt(i) {
+                                    if let Ok(app_id) = session.SourceAppUserModelId() {
+                                        let app_id_str = app_id.to_string().to_lowercase();
+                                        if app_id_str.contains("zenith") {
+                                            continue;
+                                        }
+                                    }
                                     let is_playing = session
 										.GetPlaybackInfo()
 										.ok()
@@ -1130,9 +1136,16 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                                         session.TryGetMediaPropertiesAsync().and_then(|op| op.get())
                                     {
                                         let title = props.Title().unwrap_or_default().to_string();
+                                        let title_lower = title.to_lowercase();
+                                        if title_lower.contains("zenith") || title_lower.contains("athan") {
+                                            continue;
+                                        }
                                         if !title.is_empty() {
                                             let artist =
                                                 props.Artist().unwrap_or_default().to_string();
+                                            if artist.to_lowercase().contains("zenith") {
+                                                continue;
+                                            }
                                             let mut artwork = None;
                                             let mut got_art_from_cache = false;
                                             if let Some((

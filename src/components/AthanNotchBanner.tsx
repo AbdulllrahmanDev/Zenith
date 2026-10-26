@@ -45,7 +45,6 @@ export const AthanNotchBanner: React.FC<AthanNotchBannerProps> = ({
 					e.stopPropagation();
 					onExpand();
 				}}
-				title="اضغط لتوسيع تنبيه الأذان"
 				initial={{ opacity: 0, scale: 0.95 }}
 				animate={{ opacity: 1, scale: 1 }}
 				exit={{ opacity: 0, scale: 0.95 }}
