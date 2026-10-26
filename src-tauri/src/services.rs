@@ -2359,11 +2359,66 @@ fn apply_capture_ui_state(app: &AppHandle, active: bool) {
     MH_DOCK_EDGE_ARMED.store(false, Ordering::Relaxed);
 }
 
+const PASSTHROUGH_MAX_MS: i64 = 250;
+const PASSTHROUGH_SLOP_PX: i32 = 6;
+const CLICK_HOLD_MS: i64 = 400;
+const CLICK_DRAG_PX: i32 = 30;
+const SYNTHETIC_TAG: usize = 0x524F_5659;
+
 static MOUSE_HOOK_APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 static MOUSE_RADIAL_RECORDING: AtomicBool = AtomicBool::new(false);
-static MOUSE_RADIAL_MENU_OPEN: AtomicBool = AtomicBool::new(false);
+pub static MOUSE_RADIAL_MENU_OPEN: AtomicBool = AtomicBool::new(false);
 static MOUSE_RADIAL_DOWN_TIME: AtomicI64 = AtomicI64::new(0);
 static MOUSE_RADIAL_DOWN_POINT: AtomicI64 = AtomicI64::new(0);
+static MOUSE_RADIAL_CLICK_ARMED: AtomicBool = AtomicBool::new(false);
+static MOUSE_RADIAL_CLICK_INJECTED: AtomicU32 = AtomicU32::new(0);
+static MOUSE_RADIAL_ARMED_BTN: AtomicU32 = AtomicU32::new(0);
+
+fn inject_synthetic_mouse(button: u32, want_down: bool, want_up: bool) {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        SendInput, INPUT, INPUT_0, INPUT_MOUSE, MOUSEINPUT,
+        MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
+        MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP,
+        MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP,
+        MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP,
+    };
+
+    let (down_flag, up_flag, data) = match button {
+        1 => (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, 0),
+        2 => (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, 0),
+        3 => (MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, 0),
+        4 => (MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP, 1),
+        5 => (MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP, 2),
+        _ => return,
+    };
+
+    let make = |flags| INPUT {
+        r#type: INPUT_MOUSE,
+        Anonymous: INPUT_0 {
+            mi: MOUSEINPUT {
+                dx: 0,
+                dy: 0,
+                mouseData: data,
+                dwFlags: flags,
+                time: 0,
+                dwExtraInfo: SYNTHETIC_TAG,
+            },
+        },
+    };
+
+    let mut inputs: Vec<INPUT> = Vec::with_capacity(2);
+    if want_down {
+        inputs.push(make(down_flag));
+    }
+    if want_up {
+        inputs.push(make(up_flag));
+    }
+    if !inputs.is_empty() {
+        unsafe {
+            let _ = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+        }
+    }
+}
 
 pub fn set_mouse_recording(enabled: bool) {
     MOUSE_RADIAL_RECORDING.store(enabled, Ordering::Relaxed);
@@ -2446,9 +2501,9 @@ fn run_mouse_hook_thread() {
     unsafe {
         let mut message = MSG::default();
         let _ = PeekMessageW(&mut message, None, 0, 0, PM_NOREMOVE);
-        // A timer wakes GetMessageW even when the mouse is idle, so the thread
-        // can shut down and detect a hook Windows silently removed on timeout.
-        let timer = SetTimer(None, 1, 500, None);
+        // A 20 ms timer handles click-mode drag/hold thresholds (Rovyl state machine),
+        // wakes GetMessageW when the mouse is idle, and detects when Windows removes the hook.
+        let timer = SetTimer(None, 1, 20, None);
         if timer == 0 {
             eprintln!("Zenith mouse hook: timer creation failed; retrying");
             return;
@@ -2472,6 +2527,32 @@ fn run_mouse_hook_thread() {
                 if SHUTTING_DOWN.load(Ordering::Relaxed) {
                     break;
                 }
+
+                // Click-mode tick: if DOWN was swallowed, check if user is holding or dragging
+                // so we can hand the button back to the underlying app (autoscroll, CAD pan, terminal paste)
+                if MOUSE_RADIAL_CLICK_ARMED.load(Ordering::Acquire)
+                    && MOUSE_RADIAL_CLICK_INJECTED.load(Ordering::Acquire) == 0
+                {
+                    let down_time = MOUSE_RADIAL_DOWN_TIME.load(Ordering::Relaxed);
+                    let held_ms = hook_tick_ms() - down_time;
+                    let mut overdue = held_ms >= CLICK_HOLD_MS;
+                    if !overdue {
+                        let cur_packed = MOUSE_HOOK_CURSOR.load(Ordering::Relaxed);
+                        let cur_pt = unpack_cursor(cur_packed);
+                        let down_pt = unpack_cursor(MOUSE_RADIAL_DOWN_POINT.load(Ordering::Relaxed));
+                        let dx = cur_pt.x - down_pt.x;
+                        let dy = cur_pt.y - down_pt.y;
+                        overdue = (dx * dx + dy * dy) >= (CLICK_DRAG_PX * CLICK_DRAG_PX);
+                    }
+                    if overdue {
+                        let btn_ordinal = MOUSE_RADIAL_ARMED_BTN.load(Ordering::Acquire);
+                        if btn_ordinal != 0 {
+                            MOUSE_RADIAL_CLICK_INJECTED.store(btn_ordinal, Ordering::Release);
+                            inject_synthetic_mouse(btn_ordinal, true, false);
+                        }
+                    }
+                }
+
                 let mut current = windows::Win32::Foundation::POINT::default();
                 let cursor_moved_without_hook = GetCursorPos(&mut current).is_ok()
                     && pack_cursor(current) != MOUSE_HOOK_CURSOR.load(Ordering::Relaxed)
@@ -2977,21 +3058,35 @@ enum MouseBtn {
     X2,
 }
 
+fn mouse_btn_ordinal(btn: MouseBtn) -> u32 {
+    match btn {
+        MouseBtn::Left => 1,
+        MouseBtn::Right => 2,
+        MouseBtn::Middle => 3,
+        MouseBtn::X1 => 4,
+        MouseBtn::X2 => 5,
+    }
+}
+
 fn classify_mouse_msg(msg: u32, mouse_data: u32) -> Option<(MouseBtn, bool)> {
     const WM_LBUTTONDOWN: u32 = 0x0201;
     const WM_LBUTTONUP: u32 = 0x0202;
+    const WM_LBUTTONDBLCLK: u32 = 0x0203;
     const WM_RBUTTONDOWN: u32 = 0x0204;
     const WM_RBUTTONUP: u32 = 0x0205;
+    const WM_RBUTTONDBLCLK: u32 = 0x0206;
     const WM_MBUTTONDOWN: u32 = 0x0207;
     const WM_MBUTTONUP: u32 = 0x0208;
+    const WM_MBUTTONDBLCLK: u32 = 0x0209;
     const WM_XBUTTONDOWN: u32 = 0x020B;
     const WM_XBUTTONUP: u32 = 0x020C;
+    const WM_XBUTTONDBLCLK: u32 = 0x020D;
     const XBUTTON2: u16 = 0x0002;
 
     match msg {
-        WM_MBUTTONDOWN => Some((MouseBtn::Middle, true)),
+        WM_MBUTTONDOWN | WM_MBUTTONDBLCLK => Some((MouseBtn::Middle, true)),
         WM_MBUTTONUP => Some((MouseBtn::Middle, false)),
-        WM_XBUTTONDOWN => {
+        WM_XBUTTONDOWN | WM_XBUTTONDBLCLK => {
             let btn = if (mouse_data >> 16) as u16 == XBUTTON2 {
                 MouseBtn::X2
             } else {
@@ -3007,9 +3102,9 @@ fn classify_mouse_msg(msg: u32, mouse_data: u32) -> Option<(MouseBtn, bool)> {
             };
             Some((btn, false))
         }
-        WM_LBUTTONDOWN => Some((MouseBtn::Left, true)),
+        WM_LBUTTONDOWN | WM_LBUTTONDBLCLK => Some((MouseBtn::Left, true)),
         WM_LBUTTONUP => Some((MouseBtn::Left, false)),
-        WM_RBUTTONDOWN => Some((MouseBtn::Right, true)),
+        WM_RBUTTONDOWN | WM_RBUTTONDBLCLK => Some((MouseBtn::Right, true)),
         WM_RBUTTONUP => Some((MouseBtn::Right, false)),
         _ => None,
     }
@@ -3096,10 +3191,20 @@ unsafe extern "system" fn mouse_hook_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> windows::Win32::Foundation::LRESULT {
+    let chain = || CallNextHookEx(None, code, wparam, lparam);
+    if code < 0 {
+        return chain();
+    }
+
     let message = wparam.0 as u32;
     let data = &*(lparam.0 as *const MSLLHOOKSTRUCT);
 
-    if code >= 0 && message == WM_MOUSEMOVE && !SHUTTING_DOWN.load(Ordering::Relaxed) {
+    // Rovyl safeguard: our own handed-back synthetic clicks go through without being swallowed or reinterpreted
+    if data.dwExtraInfo == SYNTHETIC_TAG {
+        return chain();
+    }
+
+    if message == WM_MOUSEMOVE && !SHUTTING_DOWN.load(Ordering::Relaxed) {
         let cursor = data.pt;
         queue_cursor(cursor);
         MOUSE_HOOK_LAST_EVENT_MS.store(hook_tick_ms(), Ordering::Relaxed);
@@ -3108,7 +3213,7 @@ unsafe extern "system" fn mouse_hook_proc(
     let app_opt = MOUSE_HOOK_APP_HANDLE.get().or_else(|| WINDOW_CHANGE_APP_HANDLE.get()).cloned();
 
     // 1. Mouse Button Recording (when user clicks Record in Settings)
-    if code >= 0 && MOUSE_RADIAL_RECORDING.load(Ordering::Relaxed) {
+    if MOUSE_RADIAL_RECORDING.load(Ordering::Relaxed) {
         if let Some((btn, true)) = classify_mouse_msg(message, data.mouseData) {
             let (ctrl, alt, shift, win) = get_modifier_keys();
             let is_bare_left_or_right = matches!(btn, MouseBtn::Left | MouseBtn::Right) && !ctrl && !alt && !shift && !win;
@@ -3127,63 +3232,103 @@ unsafe extern "system" fn mouse_hook_proc(
         }
     }
 
-    // 2. Mouse Radial Menu Trigger
-    if code >= 0 {
-        if let Some(ref app) = app_opt {
-            let radial_enabled = crate::utils::get_setting_str(app, "zenith-mouse-radial-enabled").as_deref() != Some("false");
-            if radial_enabled {
-                if let Some((btn, is_down)) = classify_mouse_msg(message, data.mouseData) {
-                    let trigger_btn = crate::utils::get_setting_str(app, "zenith-mouse-trigger-button").unwrap_or_else(|| "middle".into());
-                    if matches_mouse_trigger(btn, &trigger_btn) {
-                        // Game mode protection
-                        let game_mode_enabled = crate::utils::get_setting_str(app, "zenith-mouse-game-mode-enabled").as_deref() != Some("false");
-                        let fg_fs = CURRENT_FOREGROUND_FULLSCREEN.load(Ordering::Relaxed);
-                        let blocked = if game_mode_enabled && fg_fs {
-                            let scope = crate::utils::get_setting_str(app, "zenith-mouse-game-mode-scope").unwrap_or_else(|| "all".into());
-                            if scope == "all" {
-                                true
-                            } else {
-                                let blocked_apps = crate::utils::get_setting_str(app, "zenith-mouse-game-mode-blocked-apps").unwrap_or_default();
-                                let fg_exe = get_foreground_process_name().unwrap_or_default().to_ascii_lowercase();
-                                blocked_apps.to_ascii_lowercase().split(',').any(|b| b.trim() == fg_exe)
-                            }
+    // 2. Mouse Radial Menu Trigger (Rovyl state machine)
+    if let Some(ref app) = app_opt {
+        let radial_enabled = crate::utils::get_setting_str(app, "zenith-mouse-radial-enabled").as_deref() != Some("false");
+        if radial_enabled {
+            if let Some((btn, is_down)) = classify_mouse_msg(message, data.mouseData) {
+                let trigger_btn = crate::utils::get_setting_str(app, "zenith-mouse-trigger-button").unwrap_or_else(|| "middle".into());
+                if matches_mouse_trigger(btn, &trigger_btn) {
+                    // Game mode protection
+                    let game_mode_enabled = crate::utils::get_setting_str(app, "zenith-mouse-game-mode-enabled").as_deref() != Some("false");
+                    let fg_fs = CURRENT_FOREGROUND_FULLSCREEN.load(Ordering::Relaxed);
+                    let blocked = if game_mode_enabled && fg_fs {
+                        let scope = crate::utils::get_setting_str(app, "zenith-mouse-game-mode-scope").unwrap_or_else(|| "all".into());
+                        if scope == "all" {
+                            true
                         } else {
-                            false
-                        };
+                            let blocked_apps = crate::utils::get_setting_str(app, "zenith-mouse-game-mode-blocked-apps").unwrap_or_default();
+                            let fg_exe = get_foreground_process_name().unwrap_or_default().to_ascii_lowercase();
+                            blocked_apps.to_ascii_lowercase().split(',').any(|b| b.trim() == fg_exe)
+                        }
+                    } else {
+                        false
+                    };
 
-                        if !blocked {
-                            let trigger_mode = crate::utils::get_setting_str(app, "zenith-mouse-trigger-mode").unwrap_or_else(|| "hold".into());
-                            let cursor_pt = data.pt;
+                    if !blocked {
+                        let trigger_mode = crate::utils::get_setting_str(app, "zenith-mouse-trigger-mode").unwrap_or_else(|| "hold".into());
+                        let cursor_pt = data.pt;
+                        let btn_ordinal = mouse_btn_ordinal(btn);
 
-                            if trigger_mode == "hold" {
-                                if is_down {
-                                    MOUSE_RADIAL_MENU_OPEN.store(true, Ordering::Relaxed);
+                        if trigger_mode == "hold" {
+                            if is_down {
+                                MOUSE_RADIAL_DOWN_TIME.store(hook_tick_ms(), Ordering::Relaxed);
+                                MOUSE_RADIAL_DOWN_POINT.store(pack_cursor(cursor_pt), Ordering::Relaxed);
+                                MOUSE_RADIAL_ARMED_BTN.store(btn_ordinal, Ordering::Relaxed);
+                                MOUSE_RADIAL_MENU_OPEN.store(true, Ordering::Relaxed);
+                                let app_clone = app.clone();
+                                std::thread::spawn(move || {
+                                    crate::commands::show_overlay_for_radial(&app_clone, cursor_pt.x, cursor_pt.y);
+                                });
+                                return windows::Win32::Foundation::LRESULT(1);
+                            } else if MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed) {
+                                let down_time = MOUSE_RADIAL_DOWN_TIME.load(Ordering::Relaxed);
+                                let elapsed = hook_tick_ms() - down_time;
+                                let down_pt = unpack_cursor(MOUSE_RADIAL_DOWN_POINT.load(Ordering::Relaxed));
+                                let dx = cursor_pt.x - down_pt.x;
+                                let dy = cursor_pt.y - down_pt.y;
+                                let dist_sq = dx * dx + dy * dy;
+
+                                MOUSE_RADIAL_MENU_OPEN.store(false, Ordering::Relaxed);
+
+                                // Short stationary tap: user wanted a native click (e.g. middle-click link/tab)
+                                if elapsed <= PASSTHROUGH_MAX_MS && dist_sq <= PASSTHROUGH_SLOP_PX * PASSTHROUGH_SLOP_PX {
                                     let app_clone = app.clone();
                                     std::thread::spawn(move || {
-                                        crate::commands::show_overlay_for_radial(&app_clone, cursor_pt.x, cursor_pt.y);
+                                        let _ = app_clone.emit("radial-close", ());
                                     });
-                                    return windows::Win32::Foundation::LRESULT(1);
-                                } else if MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed) {
-                                    MOUSE_RADIAL_MENU_OPEN.store(false, Ordering::Relaxed);
+                                    inject_synthetic_mouse(btn_ordinal, true, true);
+                                } else {
+                                    // Gesture confirmed: execute aimed item
                                     let app_clone = app.clone();
                                     std::thread::spawn(move || {
                                         let _ = app_clone.emit("radial-release", ());
                                     });
-                                    return windows::Win32::Foundation::LRESULT(1);
                                 }
+                                return windows::Win32::Foundation::LRESULT(1);
+                            }
+                        } else {
+                            // Click mode
+                            if is_down {
+                                MOUSE_RADIAL_DOWN_TIME.store(hook_tick_ms(), Ordering::Relaxed);
+                                MOUSE_RADIAL_DOWN_POINT.store(pack_cursor(cursor_pt), Ordering::Relaxed);
+                                MOUSE_RADIAL_ARMED_BTN.store(btn_ordinal, Ordering::Relaxed);
+                                MOUSE_RADIAL_CLICK_ARMED.store(true, Ordering::Release);
+                                MOUSE_RADIAL_CLICK_INJECTED.store(0, Ordering::Release);
+                                return windows::Win32::Foundation::LRESULT(1);
                             } else {
-                                // Click mode
-                                if is_down {
-                                    MOUSE_RADIAL_DOWN_TIME.store(hook_tick_ms(), Ordering::Relaxed);
-                                    MOUSE_RADIAL_DOWN_POINT.store(pack_cursor(cursor_pt), Ordering::Relaxed);
-                                } else {
+                                let was_armed = MOUSE_RADIAL_CLICK_ARMED.swap(false, Ordering::AcqRel);
+                                let injected = MOUSE_RADIAL_CLICK_INJECTED.swap(0, Ordering::AcqRel);
+
+                                if injected != 0 {
+                                    // The DOWN was already injected mid-press: release the UP owed
+                                    inject_synthetic_mouse(injected, false, true);
+                                    if MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed) {
+                                        MOUSE_RADIAL_MENU_OPEN.store(false, Ordering::Relaxed);
+                                        let app_clone = app.clone();
+                                        std::thread::spawn(move || {
+                                            let _ = app_clone.emit("radial-close", ());
+                                        });
+                                    }
+                                } else if was_armed {
                                     let down_time = MOUSE_RADIAL_DOWN_TIME.load(Ordering::Relaxed);
                                     let elapsed = hook_tick_ms() - down_time;
                                     let down_pt = unpack_cursor(MOUSE_RADIAL_DOWN_POINT.load(Ordering::Relaxed));
-                                    let dx = (cursor_pt.x - down_pt.x).abs();
-                                    let dy = (cursor_pt.y - down_pt.y).abs();
+                                    let dx = cursor_pt.x - down_pt.x;
+                                    let dy = cursor_pt.y - down_pt.y;
+                                    let dist_sq = dx * dx + dy * dy;
 
-                                    if down_time > 0 && elapsed < 350 && dx < 15 && dy < 15 {
+                                    if elapsed < CLICK_HOLD_MS && dist_sq < CLICK_DRAG_PX * CLICK_DRAG_PX {
                                         let currently_open = MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed);
                                         MOUSE_RADIAL_MENU_OPEN.store(!currently_open, Ordering::Relaxed);
                                         let app_clone = app.clone();
@@ -3194,9 +3339,9 @@ unsafe extern "system" fn mouse_hook_proc(
                                                 let _ = app_clone.emit("radial-close", ());
                                             }
                                         });
-                                        return windows::Win32::Foundation::LRESULT(1);
                                     }
                                 }
+                                return windows::Win32::Foundation::LRESULT(1);
                             }
                         }
                     }
@@ -3414,7 +3559,18 @@ fn process_mouse_position(app_handle: &AppHandle, cursor: windows::Win32::Founda
 
         // --- Overlay cursor passthrough ---
         if let Some(ov_win) = app_handle.get_webview_window("overlay") {
-            if fg_fs {
+            let radial_open = MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed);
+            if radial_open {
+                // When Radial Menu is open, overlay must capture clicks and hovers (NEVER click-through!)
+                let prev = MH_LAST_OV_IGNORE.load(Ordering::Relaxed);
+                if prev != 0 {
+                    if let Ok(hwnd) = ov_win.hwnd() {
+                        re_assert_topmost(hwnd);
+                        set_click_through(hwnd, false);
+                    }
+                    MH_LAST_OV_IGNORE.store(0, Ordering::Relaxed);
+                }
+            } else if fg_fs {
                 let prev = MH_LAST_OV_IGNORE.load(Ordering::Relaxed);
                 if let Ok(hwnd) = ov_win.hwnd() {
                     if prev != 1 {

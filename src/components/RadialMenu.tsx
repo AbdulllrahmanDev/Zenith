@@ -12,8 +12,9 @@ import {
 	annularSectorPath,
 	polarPoint,
 	sectorCentreDeg,
+	sectorGradientStops,
 } from "../radial/radialSectors";
-import { clampWheelCenter } from "../radial/radialDrag";
+import { radialScrimGradient } from "../radial/radialScrim";
 import "./RadialMenu.css";
 
 interface RadialMenuProps {
@@ -37,7 +38,6 @@ export function RadialMenu({
 	isOpen,
 	position,
 	onClose,
-	triggerMode = "hold",
 	placement = "cursor",
 	selectionMode = "area",
 	areaWedges = false,
@@ -75,9 +75,9 @@ export function RadialMenu({
 	const numItems = items.length;
 
 	// Orbit geometry constants
-	const RADIUS_INNER = 54;
-	const RADIUS_OUTER = 250;
-	const ORBIT_RADIUS = 168;
+	const RADIUS_INNER = 46;
+	const RADIUS_OUTER = 240;
+	const ORBIT_RADIUS = 156;
 
 	// Center coordinates of the wheel in window viewport
 	const [wheelCenter, setWheelCenter] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -94,9 +94,10 @@ export function RadialMenu({
 			cx = w / 2;
 			cy = h / 2;
 		} else {
-			const clamped = clampWheelCenter({ x: cx, y: cy }, { width: w, height: h }, RADIUS_OUTER);
-			cx = clamped.x;
-			cy = clamped.y;
+			// Center directly at the cursor, keeping a minimal margin so it stays visible
+			const minMargin = 64;
+			cx = Math.max(minMargin, Math.min(w - minMargin, cx));
+			cy = Math.max(minMargin, Math.min(h - minMargin, cy));
 		}
 
 		setWheelCenter({ x: cx, y: cy });
@@ -139,7 +140,7 @@ export function RadialMenu({
 		[soundEnabled, soundVolume]
 	);
 
-	// Directional angle tracking & cursor hit-testing (matching Rovyl math)
+	// Directional angle tracking & cursor hit-testing
 	useEffect(() => {
 		if (!isOpen || numItems === 0) return;
 
@@ -148,34 +149,33 @@ export function RadialMenu({
 			const dy = e.clientY - wheelCenter.y;
 			const dist = Math.hypot(dx, dy);
 
-			// Center deadzone
+			// Center deadzone: cancel selection if cursor is inside the central hub
 			if (dist < RADIUS_INNER) {
 				selectSlice(null);
 				return;
 			}
 
-			// Mathematical sector calculation matching Rovyl's sectorIndexForDelta
+			// In direction/area mode, any movement outwards aims at that wedge
 			const sectorIdx = sectorIndexForDelta(dx, dy, numItems);
-
 			if (sectorIdx === null) {
 				selectSlice(null);
 				return;
 			}
 
 			if (selectionMode === "cursor") {
-				// In cursor mode, check proximity to the candidate item's coordinate
+				// Proximity check in cursor mode: allow generous 74px radius
 				const sliceAngleDeg = 360 / numItems;
 				const targetAngleRad = (sectorIdx * sliceAngleDeg - 90) * (Math.PI / 180);
 				const itemX = wheelCenter.x + ORBIT_RADIUS * Math.cos(targetAngleRad);
 				const itemY = wheelCenter.y + ORBIT_RADIUS * Math.sin(targetAngleRad);
 				const distToItem = Math.hypot(e.clientX - itemX, e.clientY - itemY);
-				if (distToItem <= 54) {
+				if (distToItem <= 74) {
 					selectSlice(sectorIdx);
 				} else {
 					selectSlice(null);
 				}
 			} else {
-				// Area mode: instant sector lock
+				// Instant area directional lock
 				selectSlice(sectorIdx);
 			}
 		};
@@ -184,29 +184,33 @@ export function RadialMenu({
 		return () => window.removeEventListener("mousemove", handleMouseMove);
 	}, [isOpen, selectionMode, numItems, wheelCenter.x, wheelCenter.y, selectSlice]);
 
-	// Hands-free Dwell timer
+	// Hands-free Dwell timer with requestAnimationFrame for smooth 60-144Hz updates
 	useEffect(() => {
 		if (!isOpen || instantActivate !== "dwell" || activeSliceIndex === null) {
 			setDwellProgress(0);
 			return;
 		}
 
+		let frameId: number;
 		const startTime = performance.now();
-		const interval = setInterval(() => {
-			const elapsed = performance.now() - startTime;
+
+		const step = (now: number) => {
+			const elapsed = now - startTime;
 			const progress = Math.min(1, elapsed / instantDwellMs);
 			setDwellProgress(progress);
 
 			if (progress >= 1) {
-				clearInterval(interval);
 				const targetItem = items[activeSliceIndex];
 				if (targetItem) {
 					executeItem(targetItem);
 				}
+			} else {
+				frameId = requestAnimationFrame(step);
 			}
-		}, 16);
+		};
 
-		return () => clearInterval(interval);
+		frameId = requestAnimationFrame(step);
+		return () => cancelAnimationFrame(frameId);
 	}, [isOpen, instantActivate, activeSliceIndex, instantDwellMs, items, executeItem]);
 
 	// Keyboard listeners (1-9 quick launch, Escape to cancel)
@@ -236,7 +240,7 @@ export function RadialMenu({
 		return () => window.removeEventListener("keydown", handleKeyDown);
 	}, [isOpen, onClose, numberLaunch, numItems, items, executeItem]);
 
-	// Hold-mode release support: listen to "radial-release" event from Rust hook or mouseup
+	// Hold-mode release support: listen to "radial-release" event from Rust hook
 	useEffect(() => {
 		if (!isOpen) return;
 
@@ -245,29 +249,21 @@ export function RadialMenu({
 			if (!active) return;
 			const currentIdx = activeSliceRef.current;
 			if (currentIdx !== null && items[currentIdx]) {
+				// An item was aimed: execute!
 				executeItem(items[currentIdx]);
-			} else {
-				onClose();
 			}
+			// If nothing was aimed: DO NOT close! Keep the wheel open so the user can click to choose or press Escape!
 		});
 
-		const handleMouseUp = () => {
-			if (triggerMode !== "hold") return;
-			const currentIdx = activeSliceRef.current;
-			if (currentIdx !== null && items[currentIdx]) {
-				executeItem(items[currentIdx]);
-			} else {
-				onClose();
-			}
-		};
-
-		window.addEventListener("mouseup", handleMouseUp);
 		return () => {
 			active = false;
 			unlistenPromise.then((fn) => fn());
-			window.removeEventListener("mouseup", handleMouseUp);
 		};
-	}, [isOpen, triggerMode, items, executeItem, onClose]);
+	}, [isOpen, items, executeItem]);
+
+	const backdropBg = useMemo(() => {
+		return radialScrimGradient(wheelCenter, 0.82, RADIUS_OUTER);
+	}, [wheelCenter.x, wheelCenter.y]);
 
 	if (!isOpen) return null;
 
@@ -275,6 +271,7 @@ export function RadialMenu({
 		<AnimatePresence>
 			<motion.div
 				className="radial-menu-backdrop"
+				style={{ background: backdropBg }}
 				initial={{ opacity: 0 }}
 				animate={{ opacity: 1 }}
 				exit={{ opacity: 0 }}
@@ -286,13 +283,18 @@ export function RadialMenu({
 				<motion.div
 					ref={containerRef}
 					className="radial-wheel-container"
-					style={{ left: wheelCenter.x, top: wheelCenter.y }}
-					initial={{ scale: 0.78, opacity: 0 }}
+					style={{
+						left: wheelCenter.x,
+						top: wheelCenter.y,
+						width: RADIUS_OUTER * 2,
+						height: RADIUS_OUTER * 2,
+					}}
+					initial={{ scale: 0.82, opacity: 0 }}
 					animate={{ scale: 1, opacity: 1 }}
-					exit={{ scale: 0.82, opacity: 0 }}
-					transition={{ type: "spring", stiffness: 440, damping: 29 }}
+					exit={{ scale: 0.85, opacity: 0 }}
+					transition={{ type: "spring", stiffness: 480, damping: 28 }}
 				>
-					{/* Ambient glow behind wheel */}
+					{/* Ambient neon glow behind wheel */}
 					<div className="radial-ambient-glow" />
 
 					{/* SVG Sectors & Divider Seams Layer */}
@@ -306,6 +308,7 @@ export function RadialMenu({
 									const angle = sectorCentreDeg(i, numItems);
 									const p1 = polarPoint(RADIUS_OUTER, RADIUS_INNER, angle);
 									const p2 = polarPoint(RADIUS_OUTER, RADIUS_OUTER, angle);
+									const stops = sectorGradientStops(0.18, 0.88, 0.55, 0.22);
 									return (
 										<linearGradient
 											key={i}
@@ -316,15 +319,31 @@ export function RadialMenu({
 											y2={p2.y}
 											gradientUnits="userSpaceOnUse"
 										>
-											<stop offset="0%" stopColor="var(--bloom-accent, #007aff)" stopOpacity="0.45" />
-											<stop offset="40%" stopColor="var(--bloom-accent, #007aff)" stopOpacity="0.25" />
-											<stop offset="100%" stopColor="var(--bloom-accent, #007aff)" stopOpacity="0" />
+											{stops.map((s, idx) => (
+												<stop
+													key={idx}
+													offset={`${(s.offset * 100).toFixed(1)}%`}
+													stopColor="var(--bloom-accent, #007aff)"
+													stopOpacity={s.opacity}
+												/>
+											))}
 										</linearGradient>
 									);
 								})}
 							</defs>
 
-							{/* Active Sector Wedge Highlight */}
+							{/* Orbital guide ring */}
+							<circle
+								cx={RADIUS_OUTER}
+								cy={RADIUS_OUTER}
+								r={ORBIT_RADIUS}
+								fill="none"
+								stroke="rgba(255, 255, 255, 0.08)"
+								strokeWidth="1.5"
+								strokeDasharray="4 6"
+							/>
+
+							{/* Active Sector Wedge Highlight Beam */}
 							{activeSliceIndex !== null && items[activeSliceIndex] && (
 								<path
 									d={annularSectorPath(
@@ -334,6 +353,10 @@ export function RadialMenu({
 										sectorBoundsDeg(activeSliceIndex, numItems).endDeg
 									)}
 									fill={`url(#sector-grad-${activeSliceIndex})`}
+									style={{
+										filter: "drop-shadow(0 0 20px rgba(0, 122, 255, 0.45))",
+										transition: "all 0.12s ease"
+									}}
 								/>
 							)}
 
@@ -349,80 +372,99 @@ export function RadialMenu({
 										y1={p1.y}
 										x2={p2.x}
 										y2={p2.y}
-										stroke="var(--bloom-border, rgba(255, 255, 255, 0.15))"
-										strokeWidth="1"
-										strokeDasharray="4 4"
 									/>
 								);
 							})}
 						</svg>
 					)}
 
-					{/* Center Hub */}
+					{/* Center Hub (Cancel / Workspace info) */}
 					<div
 						className="radial-center-hub"
 						onClick={onClose}
-						title="Cancel / Close"
+						title="Click to Cancel (Esc)"
 					>
-						<div className="radial-hub-icon">
+						<div className="radial-hub-icon-wrap">
 							{(() => {
 								const HubIcon = getRadialIcon(currentWorkspace.icon);
-								return <HubIcon size={22} strokeWidth={2} />;
+								return <HubIcon size={20} strokeWidth={2} />;
 							})()}
 						</div>
 						<div className="radial-hub-title">{currentWorkspace.name}</div>
 						<div className="radial-hub-cancel-hint">Cancel</div>
 					</div>
 
-					{/* Radial Slices */}
+					{/* Radial Slices (Squircle icon tiles) */}
 					{items.map((item: RadialItem, index: number) => {
 						const sliceAngle = (2 * Math.PI) / numItems;
 						const angle = index * sliceAngle - Math.PI / 2;
-						const posX = 260 + ORBIT_RADIUS * Math.cos(angle);
-						const posY = 260 + ORBIT_RADIUS * Math.sin(angle);
+						const posX = RADIUS_OUTER + ORBIT_RADIUS * Math.cos(angle);
+						const posY = RADIUS_OUTER + ORBIT_RADIUS * Math.sin(angle);
+
+						// Floating label placement ray
+						const labelOffset = 48;
+						const labelX = RADIUS_OUTER + (ORBIT_RADIUS + labelOffset) * Math.cos(angle);
+						const labelY = RADIUS_OUTER + (ORBIT_RADIUS + labelOffset) * Math.sin(angle);
 
 						const isActive = activeSliceIndex === index;
 						const ItemIcon = getRadialIcon(item.icon);
 
 						return (
-							<div
-								key={item.id || index}
-								className={`radial-slice-item ${isActive ? "active" : ""}`}
-								style={{ left: posX, top: posY }}
-								onClick={() => executeItem(item)}
-							>
-								{/* Number badge */}
-								{numberLabels && (
-									<div className="radial-number-badge">{index + 1}</div>
-								)}
+							<div key={item.id || index}>
+								<div
+									className={`radial-slice-item ${isActive ? "active" : ""}`}
+									style={{ left: posX, top: posY }}
+									onClick={(e) => {
+										e.stopPropagation();
+										executeItem(item);
+									}}
+								>
+									{/* Key Number Chip Badge */}
+									{numberLabels && (
+										<div className="radial-number-badge">{index + 1}</div>
+									)}
 
-								{/* Dwell ring progress */}
-								{isActive && instantActivate === "dwell" && dwellProgress > 0 && (
-									<div className="radial-dwell-ring">
-										<svg viewBox="0 0 92 74">
-											<rect
-												x="2"
-												y="2"
-												width="88"
-												height="70"
-												rx="16"
-												style={{
-													strokeDashoffset: 300 - 300 * dwellProgress
-												}}
-											/>
-										</svg>
+									{/* Hands-free Dwell Indicator */}
+									{isActive && instantActivate === "dwell" && dwellProgress > 0 && (
+										<div className="radial-dwell-ring">
+											<svg viewBox="0 0 58 58">
+												<rect
+													x="2"
+													y="2"
+													width="54"
+													height="54"
+													rx="17"
+													style={{
+														strokeDashoffset: 216 - 216 * dwellProgress
+													}}
+												/>
+											</svg>
+										</div>
+									)}
+
+									<div className="radial-slice-icon-wrap">
+										<ItemIcon size={25} strokeWidth={1.8} />
 									</div>
-								)}
-
-								<div className="radial-slice-icon-wrap">
-									<ItemIcon size={24} strokeWidth={1.8} />
 								</div>
-								<div className="radial-slice-label">{item.label}</div>
+
+								{/* Floating Label Pill (Visible when active or on hover) */}
+								{isActive && (
+									<motion.div
+										className="radial-floating-label"
+										style={{ left: labelX, top: labelY }}
+										initial={{ opacity: 0, scale: 0.9 }}
+										animate={{ opacity: 1, scale: 1 }}
+										exit={{ opacity: 0, scale: 0.9 }}
+										transition={{ duration: 0.12 }}
+									>
+										<span>{item.label}</span>
+									</motion.div>
+								)}
 							</div>
 						);
 					})}
 
-					{/* Workspaces navigation pill */}
+					{/* Workspaces Navigation Bar */}
 					{effectiveWorkspaces.length > 1 && (
 						<div className="radial-workspaces-bar">
 							{effectiveWorkspaces.map((ws: RadialWorkspace, idx: number) => {
@@ -438,7 +480,7 @@ export function RadialMenu({
 											selectSlice(null);
 										}}
 									>
-										<WsIcon size={12} strokeWidth={1.8} />
+										<WsIcon size={13} strokeWidth={1.8} />
 										<span>{ws.name}</span>
 									</button>
 								);
