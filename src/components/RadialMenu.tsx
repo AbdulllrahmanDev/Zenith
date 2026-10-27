@@ -1103,12 +1103,44 @@ export default function RadialMenu({
 		const onWheel = (e: WheelEvent) => {
 			if (workspaces.length <= 1 || closingRef.current) return;
 			e.preventDefault();
-			const idx = workspaces.findIndex((w) => w.id === currentWsId);
-			const nextIdx =
+			const isAtRoot = stateRef.current.folderStack.length === 0;
+			// Cycle order: [Root (Workspaces Overview), Workspace 0, Workspace 1, Workspace 2, ...]
+			// Total positions = 1 + workspaces.length
+			// Position 0 = Root (Workspaces Overview)
+			// Position 1..N = Workspace[0..N-1]
+			const currentPos = isAtRoot
+				? 0
+				: Math.max(
+						1,
+						workspaces.findIndex((w) => w.id === currentWsId) + 1
+					);
+
+			const totalPositions = 1 + workspaces.length;
+			const nextPos =
 				e.deltaY > 0
-					? (idx + 1) % workspaces.length
-					: (idx - 1 + workspaces.length) % workspaces.length;
-			switchWorkspace(workspaces[nextIdx].id);
+					? (currentPos + 1) % totalPositions
+					: (currentPos - 1 + totalPositions) % totalPositions;
+
+			levelGenRef.current += 1;
+			disarmDwell();
+			gestureConsumedRef.current = false;
+			setTypeAhead("");
+			setActiveIndex(null);
+
+			if (nextPos === 0) {
+				// Go to Root Workspaces screen
+				setFolderStack([]);
+			} else {
+				// Go directly to Workspace at nextPos - 1
+				const targetWs = workspaces[nextPos - 1];
+				setCurrentWsId(targetWs.id);
+				setFolderStack([{ label: targetWs.name, items: targetWs.items }]);
+				localStorage.setItem("zenith-mouse-active-workspace", targetWs.id);
+				invoke("save_setting", {
+					key: "zenith-mouse-active-workspace",
+					value: targetWs.id
+				}).catch(() => {});
+			}
 		};
 
 		window.addEventListener("mousemove", onMouseMove, { passive: true });
