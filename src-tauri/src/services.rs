@@ -1394,6 +1394,10 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                 std::thread::sleep(std::time::Duration::from_millis(150));
                 continue;
             }
+            if MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed) {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                continue;
+            }
             unsafe {
                 let now = Instant::now();
                 if now.duration_since(last_monitor_update) > Duration::from_millis(1000) {
@@ -3557,8 +3561,10 @@ fn process_mouse_position(app_handle: &AppHandle, cursor: windows::Win32::Founda
             cursor.x >= rx && cursor.x <= rx + rw && cursor.y >= ry && cursor.y <= ry + rh
         });
 
+        let radial_menu_open = MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed);
+
         // --- Left Edge (Volume) ---
-        if !fg_fs {
+        if !fg_fs && !radial_menu_open {
             let at_left_edge =
                 cursor.x <= (mon_x + 8) && cursor.y >= mon_y && cursor.y <= (mon_y + mon_h);
 
@@ -3608,7 +3614,7 @@ fn process_mouse_position(app_handle: &AppHandle, cursor: windows::Win32::Founda
         }
 
         // --- Right Edge (Brightness) ---
-        if !fg_fs {
+        if !fg_fs && !radial_menu_open {
             let at_right_edge =
                 cursor.x >= (mon_x + mon_w - 8) && cursor.y >= mon_y && cursor.y <= (mon_y + mon_h);
 
