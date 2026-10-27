@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { X, Settings, Palette, PanelTop, Monitor, Layers, MousePointer, Info, Megaphone } from "lucide-react";
+import { X, Minus, Maximize2, Minimize2, Settings, Palette, PanelTop, Monitor, Layers, MousePointer, Info, Megaphone } from "lucide-react";
 import {
 	useSettings,
 	GeneralTab,
@@ -33,6 +33,7 @@ const TABS: { id: SettingsTab; label: string; icon: typeof Settings }[] = [
 
 function SettingsApp() {
 	const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+	const [isMaximized, setIsMaximized] = useState(false);
 	const settings = useSettings();
 	const { announcement, dismissed, dismiss } = useAnnouncement();
 
@@ -50,11 +51,55 @@ function SettingsApp() {
 	}, []);
 
 	useEffect(() => {
-		invoke("resize_settings_window", {
-			width: 620 * settings.scale,
-			height: 480 * settings.scale
-		}).catch(console.error);
-	}, [settings.scale]);
+		let unlisten: (() => void) | undefined;
+		appWindow.isMaximized().then(setIsMaximized).catch(() => {});
+		appWindow
+			.onResized(() => {
+				appWindow.isMaximized().then(setIsMaximized).catch(() => {});
+			})
+			.then((fn) => {
+				unlisten = fn;
+			})
+			.catch(() => {});
+
+		return () => {
+			unlisten?.();
+		};
+	}, []);
+
+	useEffect(() => {
+		if (!isMaximized) {
+			invoke("resize_settings_window", {
+				width: 620 * settings.scale,
+				height: 480 * settings.scale
+			}).catch(console.error);
+		}
+	}, [settings.scale, isMaximized]);
+
+	const handleMinimize = async (e: React.MouseEvent) => {
+		e.preventDefault();
+		e.stopPropagation();
+		try {
+			await appWindow.minimize();
+		} catch {
+			invoke("minimize_settings_window").catch(() => {});
+		}
+	};
+
+	const handleToggleMaximize = async (e?: React.MouseEvent) => {
+		e?.preventDefault();
+		e?.stopPropagation();
+		try {
+			const next = await invoke<boolean>("toggle_maximize_settings_window");
+			setIsMaximized(next);
+		} catch {
+			try {
+				await appWindow.toggleMaximize();
+				const max = await appWindow.isMaximized();
+				setIsMaximized(max);
+			} catch {}
+		}
+	};
 
 	const handleClose = async (e: React.MouseEvent) => {
 		e.preventDefault();
@@ -65,14 +110,47 @@ function SettingsApp() {
 	};
 
 	return (
-		<div className="settings-container" style={{ zoom: settings.scale }}>
-			<div className="title-bar" data-tauri-drag-region>
+		<div
+			className={`settings-container ${isMaximized ? "maximized" : ""}`}
+			style={{ zoom: settings.scale }}
+		>
+			<div className="title-bar" data-tauri-drag-region onDoubleClick={handleToggleMaximize}>
 				<span className="title-text" data-tauri-drag-region>
 					Settings
 				</span>
-				<button className="close-btn" onClick={handleClose} title="Close Settings">
-					<X size={12} strokeWidth={1.5} className="close-btn-icon" />
-				</button>
+				<div className="window-controls">
+					<button
+						type="button"
+						className="win-control-btn"
+						onClick={handleMinimize}
+						title="Minimize"
+						aria-label="Minimize"
+					>
+						<Minus size={11} strokeWidth={2} />
+					</button>
+					<button
+						type="button"
+						className="win-control-btn"
+						onClick={handleToggleMaximize}
+						title={isMaximized ? "Restore Window" : "Maximize Window"}
+						aria-label={isMaximized ? "Restore Window" : "Maximize Window"}
+					>
+						{isMaximized ? (
+							<Minimize2 size={11} strokeWidth={2} />
+						) : (
+							<Maximize2 size={11} strokeWidth={2} />
+						)}
+					</button>
+					<button
+						type="button"
+						className="win-control-btn close-btn"
+						onClick={handleClose}
+						title="Close Settings"
+						aria-label="Close Settings"
+					>
+						<X size={12} strokeWidth={2} className="close-btn-icon" />
+					</button>
+				</div>
 			</div>
 
 			<div className="settings-body">

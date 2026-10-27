@@ -153,6 +153,29 @@ pub fn resize_settings_window(app: AppHandle, width: f64, height: f64) {
 }
 
 #[tauri::command]
+pub fn minimize_settings_window(app: AppHandle) {
+    if let Some(win) = app.get_webview_window("settings") {
+        let _ = win.minimize();
+    }
+}
+
+#[tauri::command]
+pub fn toggle_maximize_settings_window(app: AppHandle) -> bool {
+    if let Some(win) = app.get_webview_window("settings") {
+        if let Ok(is_max) = win.is_maximized() {
+            if is_max {
+                let _ = win.unmaximize();
+                return false;
+            } else {
+                let _ = win.maximize();
+                return true;
+            }
+        }
+    }
+    false
+}
+
+#[tauri::command]
 pub fn set_ignore_cursor_events(window: Window, ignore: bool) {
     let _ = window.set_ignore_cursor_events(ignore);
 }
@@ -456,10 +479,10 @@ pub async fn change_dock_mode(app: AppHandle, mode: String) {
 #[tauri::command]
 pub async fn change_notch_mode(app: AppHandle, mode: String) {
     if let Some(main_win) = app.get_webview_window("main") {
+        let _ = main_win.show();
         if mode == "fixed" {
             crate::services::apply_main_appbar_mode(&app, true);
         } else {
-            let _ = main_win.show();
             // Locked helper so a concurrent display/power event cannot
             // interleave between the mode decision and the AppBar call.
             crate::services::apply_main_appbar_mode(&app, false);
@@ -3580,9 +3603,13 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
         serde_json::json!({ "key": &key, "value": &settings[&key] }),
     );
 
-    if key == "zenith-scale" {
+    if key == "zenith-scale" || key == "bloom-scale" {
         re_register_appbars(&app, &settings);
-    } else if key == "zenith-notch-display" || key == "zenith-dock-display" {
+    } else if key == "zenith-notch-display"
+        || key == "bloom-notch-display"
+        || key == "zenith-dock-display"
+        || key == "bloom-dock-display"
+    {
         reposition_displays(app.clone());
         re_register_appbars(&app, &settings);
     }
@@ -3595,7 +3622,17 @@ pub fn load_settings(app: AppHandle) -> Result<HashMap<String, serde_json::Value
         Ok(p) => p.join("settings.json"),
         Err(_) => return Ok(HashMap::new()),
     };
-    crate::utils::read_settings_file(&path)
+    let mut map = crate::utils::read_settings_file(&path)?;
+    let entries: Vec<(String, serde_json::Value)> =
+        map.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    for (k, v) in entries {
+        if let Some(rest) = k.strip_prefix("zenith-") {
+            map.entry(format!("bloom-{rest}")).or_insert(v);
+        } else if let Some(rest) = k.strip_prefix("bloom-") {
+            map.entry(format!("zenith-{rest}")).or_insert(v);
+        }
+    }
+    Ok(map)
 }
 
 /// Whether settings.json exists and parses, which load_settings can't tell

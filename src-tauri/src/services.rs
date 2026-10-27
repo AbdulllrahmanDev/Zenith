@@ -4046,9 +4046,9 @@ pub fn register_appbar(window: tauri::WebviewWindow) {
                 );
                 if registered == 0 {
                     eprintln!("Zenith: notch AppBar registration failed");
-                    return;
+                } else {
+                    MAIN_APPBAR_REGISTERED.store(true, Ordering::Relaxed);
                 }
-                MAIN_APPBAR_REGISTERED.store(true, Ordering::Relaxed);
             }
 
             abd.uEdge = ABE_TOP;
@@ -4059,8 +4059,10 @@ pub fn register_appbar(window: tauri::WebviewWindow) {
                 bottom: m_pos.y + pr,
             };
 
-            SHAppBarMessage(ABM_QUERYPOS, &mut abd);
-            SHAppBarMessage(ABM_SETPOS, &mut abd);
+            if MAIN_APPBAR_REGISTERED.load(Ordering::Relaxed) {
+                SHAppBarMessage(ABM_QUERYPOS, &mut abd);
+                SHAppBarMessage(ABM_SETPOS, &mut abd);
+            }
 
             // Use the shell-approved rect for the final position, but keep our ph height for the window
             let final_width = abd.rc.right - abd.rc.left;
@@ -4266,9 +4268,9 @@ fn register_dock_appbar_inner(window: tauri::WebviewWindow, attempt: i32) {
                 );
                 if registered == 0 {
                     eprintln!("Zenith: dock AppBar registration failed");
-                    return;
+                } else {
+                    DOCK_APPBAR_REGISTERED.store(true, Ordering::Relaxed);
                 }
-                DOCK_APPBAR_REGISTERED.store(true, Ordering::Relaxed);
             }
 
             abd.uEdge = ABE_BOTTOM;
@@ -4279,8 +4281,10 @@ fn register_dock_appbar_inner(window: tauri::WebviewWindow, attempt: i32) {
                 bottom: m_pos.y + m_size.height as i32,
             };
 
-            SHAppBarMessage(ABM_QUERYPOS, &mut abd);
-            SHAppBarMessage(ABM_SETPOS, &mut abd);
+            if DOCK_APPBAR_REGISTERED.load(Ordering::Relaxed) {
+                SHAppBarMessage(ABM_QUERYPOS, &mut abd);
+                SHAppBarMessage(ABM_SETPOS, &mut abd);
+            }
 
             // Critical: Force the window to the actual bottom of the screen,
             // ignoring what ABM_SETPOS might have tried to "correct" (like stacking on invisible taskbar)

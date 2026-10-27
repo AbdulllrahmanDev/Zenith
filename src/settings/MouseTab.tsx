@@ -120,7 +120,7 @@ export interface MouseTabProps {
 	handleMouseHoverSoundChange: (val: string) => void;
 }
 
-type MouseSubTab = "workspaces" | "appearance" | "trigger" | "sound" | "dwell";
+type MouseSubTab = "workspaces" | "trigger" | "appearance" | "sound";
 type AddSourceKind = "app" | "system" | "folder" | "url" | "submenu";
 
 export function MouseTab({
@@ -586,14 +586,6 @@ export function MouseTab({
 				</button>
 				<button
 					type="button"
-					className={`zn-mouse-subnav-btn ${subTab === "appearance" ? "active" : ""}`}
-					onClick={() => setSubTab("appearance")}
-				>
-					<Palette size={13} />
-					<span>Appearance</span>
-				</button>
-				<button
-					type="button"
 					className={`zn-mouse-subnav-btn ${subTab === "trigger" ? "active" : ""}`}
 					onClick={() => setSubTab("trigger")}
 				>
@@ -602,19 +594,19 @@ export function MouseTab({
 				</button>
 				<button
 					type="button"
+					className={`zn-mouse-subnav-btn ${subTab === "appearance" ? "active" : ""}`}
+					onClick={() => setSubTab("appearance")}
+				>
+					<Palette size={13} />
+					<span>Appearance</span>
+				</button>
+				<button
+					type="button"
 					className={`zn-mouse-subnav-btn ${subTab === "sound" ? "active" : ""}`}
 					onClick={() => setSubTab("sound")}
 				>
 					<Volume2 size={13} />
 					<span>Sound</span>
-				</button>
-				<button
-					type="button"
-					className={`zn-mouse-subnav-btn ${subTab === "dwell" ? "active" : ""}`}
-					onClick={() => setSubTab("dwell")}
-				>
-					<Shield size={13} />
-					<span>Dwell & Game</span>
 				</button>
 			</div>
 
@@ -1130,92 +1122,94 @@ export function MouseTab({
 								</div>
 							</div>
 
-							{/* Geometry Sliders */}
-							<div className="zn-control-block">
-								<div className="zn-control-block-header">
-									<span>Wheel Radius</span>
-									<span className="zn-control-val">{mouseMenuRadius} px</span>
+							{/* Geometry Sliders in Responsive Grid */}
+							<div className="zn-controls-grid-2">
+								<div className="zn-control-block">
+									<div className="zn-control-block-header">
+										<span>Wheel Radius</span>
+										<span className="zn-control-val">{mouseMenuRadius} px</span>
+									</div>
+									<input
+										type="range"
+										min="80"
+										max="210"
+										step="2"
+										value={mouseMenuRadius}
+										onChange={(e) => handleMouseMenuRadiusChange(parseInt(e.target.value, 10))}
+										className="settings-slider"
+										style={{ width: "100%" }}
+									/>
 								</div>
-								<input
-									type="range"
-									min="80"
-									max="210"
-									step="2"
-									value={mouseMenuRadius}
-									onChange={(e) => handleMouseMenuRadiusChange(parseInt(e.target.value, 10))}
-									className="settings-slider"
-									style={{ width: "100%" }}
-								/>
-							</div>
 
-							<div className="zn-control-block">
-								<div className="zn-control-block-header">
-									<span>Tile Size</span>
-									<span className="zn-control-val">{mouseIconSize} px</span>
+								<div className="zn-control-block">
+									<div className="zn-control-block-header">
+										<span>Tile Size</span>
+										<span className="zn-control-val">{mouseIconSize} px</span>
+									</div>
+									<input
+										type="range"
+										min="40"
+										max="76"
+										step="2"
+										value={mouseIconSize}
+										onChange={(e) => handleMouseIconSizeChange(parseInt(e.target.value, 10))}
+										className="settings-slider"
+										style={{ width: "100%" }}
+									/>
 								</div>
-								<input
-									type="range"
-									min="40"
-									max="76"
-									step="2"
-									value={mouseIconSize}
-									onChange={(e) => handleMouseIconSizeChange(parseInt(e.target.value, 10))}
-									className="settings-slider"
-									style={{ width: "100%" }}
-								/>
-							</div>
 
-							<div className="zn-control-block">
-								<div className="zn-control-block-header">
-									<span>Tile Spacing</span>
-									<span className="zn-control-val">{mouseAppSpacing} px</span>
+								<div className="zn-control-block">
+									<div className="zn-control-block-header">
+										<span>Tile Spacing</span>
+										<span className="zn-control-val">{mouseAppSpacing} px</span>
+									</div>
+									<input
+										type="range"
+										min="4"
+										max="28"
+										step="2"
+										value={mouseAppSpacing}
+										onChange={(e) => handleMouseAppSpacingChange(parseInt(e.target.value, 10))}
+										className="settings-slider"
+										style={{ width: "100%" }}
+									/>
 								</div>
-								<input
-									type="range"
-									min="4"
-									max="28"
-									step="2"
-									value={mouseAppSpacing}
-									onChange={(e) => handleMouseAppSpacingChange(parseInt(e.target.value, 10))}
-									className="settings-slider"
-									style={{ width: "100%" }}
-								/>
-							</div>
 
-							<div className="zn-control-block">
-								<div className="zn-control-block-header">
-									<span>Scrim Backdrop Darkness</span>
-									<span className="zn-control-val">{Math.round(mouseBackdropOpacity * 100)}%</span>
+								<div className="zn-control-block">
+									<div className="zn-control-block-header">
+										<span>Center Dead-Zone</span>
+										<span className="zn-control-val">{mouseActivationThreshold} px</span>
+									</div>
+									<input
+										type="range"
+										min="36"
+										max="96"
+										step="2"
+										value={mouseActivationThreshold}
+										onChange={(e) =>
+											handleMouseActivationThresholdChange(parseInt(e.target.value, 10))
+										}
+										className="settings-slider"
+										style={{ width: "100%" }}
+									/>
 								</div>
-								<input
-									type="range"
-									min="0"
-									max="1"
-									step="0.05"
-									value={mouseBackdropOpacity}
-									onChange={(e) => handleMouseBackdropOpacityChange(parseFloat(e.target.value))}
-									className="settings-slider"
-									style={{ width: "100%" }}
-								/>
-							</div>
 
-							<div className="zn-control-block">
-								<div className="zn-control-block-header">
-									<span>Center Hub Dead-Zone</span>
-									<span className="zn-control-val">{mouseActivationThreshold} px</span>
+								<div className="zn-control-block" style={{ gridColumn: "1 / -1" }}>
+									<div className="zn-control-block-header">
+										<span>Scrim Backdrop Darkness</span>
+										<span className="zn-control-val">{Math.round(mouseBackdropOpacity * 100)}%</span>
+									</div>
+									<input
+										type="range"
+										min="0"
+										max="1"
+										step="0.05"
+										value={mouseBackdropOpacity}
+										onChange={(e) => handleMouseBackdropOpacityChange(parseFloat(e.target.value))}
+										className="settings-slider"
+										style={{ width: "100%" }}
+									/>
 								</div>
-								<input
-									type="range"
-									min="36"
-									max="96"
-									step="2"
-									value={mouseActivationThreshold}
-									onChange={(e) =>
-										handleMouseActivationThresholdChange(parseInt(e.target.value, 10))
-									}
-									className="settings-slider"
-									style={{ width: "100%" }}
-								/>
 							</div>
 						</div>
 					</div>
@@ -1509,6 +1503,147 @@ export function MouseTab({
 							</>
 						)}
 					</div>
+
+					{/* Hands-Free Dwell Launch */}
+					<div className="setting-group">
+						<SettingRow
+							icon={Play}
+							label="Hands-Free Dwell Launch"
+							desc="Auto-trigger the aimed slice when holding still, without releasing or clicking"
+							divider={mouseInstantActivate === "dwell"}
+						>
+							<select
+								className="settings-select"
+								value={mouseInstantActivate}
+								onChange={(e) =>
+									handleMouseInstantActivateChange(e.target.value as "off" | "dwell")
+								}
+							>
+								<option value="off">Disabled</option>
+								<option value="dwell">Enabled (Dwell Ring)</option>
+							</select>
+						</SettingRow>
+
+						{mouseInstantActivate === "dwell" && (
+							<>
+								<SettingRow
+									icon={Hand}
+									label="Dwell Hold Time"
+									desc={`Trigger after holding aim for ${mouseInstantDwellMs} ms`}
+								>
+									<input
+										type="range"
+										min="160"
+										max="900"
+										step="20"
+										value={mouseInstantDwellMs}
+										onChange={(e) =>
+											handleMouseInstantDwellMsChange(parseInt(e.target.value, 10))
+										}
+										className="settings-slider"
+									/>
+								</SettingRow>
+
+								<SettingRow
+									icon={Compass}
+									label="Settle Sensitivity"
+									desc="How still the cursor must be before the dwell progress ring starts"
+									divider={false}
+								>
+									<select
+										className="settings-select"
+										value={mouseInstantSensitivity}
+										onChange={(e) =>
+											handleMouseInstantSensitivityChange(
+												e.target.value as "low" | "medium" | "high"
+											)
+										}
+									>
+										<option value="low">Strict (Low Jitter)</option>
+										<option value="medium">Balanced (Medium)</option>
+										<option value="high">Fast (High Tolerance)</option>
+									</select>
+								</SettingRow>
+							</>
+						)}
+					</div>
+
+					{/* Fullscreen Gaming Protection */}
+					<div className="setting-group">
+						<SettingRow
+							icon={Shield}
+							label="Fullscreen Game Mode Protection"
+							desc="Automatically suppress the radial wheel while playing fullscreen games"
+							divider={!mouseGameModeEnabled}
+						>
+							<label className="toggle-switch">
+								<input
+									type="checkbox"
+									checked={mouseGameModeEnabled}
+									onChange={toggleMouseGameMode}
+								/>
+								<span className="slider"></span>
+							</label>
+						</SettingRow>
+
+						{mouseGameModeEnabled && (
+							<>
+								<SettingRow
+									icon={Monitor}
+									label="Protection Scope"
+									desc="Suppress in all fullscreen apps or only specific games"
+								>
+									<select
+										className="settings-select"
+										value={mouseGameModeScope}
+										onChange={(e) =>
+											handleMouseGameModeScopeChange(e.target.value as "all" | "list")
+										}
+									>
+										<option value="all">All Fullscreen Applications</option>
+										<option value="list">Blocked Executables List Only</option>
+									</select>
+								</SettingRow>
+
+								{mouseGameModeScope === "list" && (
+									<>
+										<SettingRow
+											icon={Shield}
+											label="Auto-Detect Game Launchers"
+											desc="Automatically suppress in Steam, Epic Games, Riot, and Xbox games"
+										>
+											<label className="toggle-switch">
+												<input
+													type="checkbox"
+													checked={mouseGameModeAutoDetect}
+													onChange={toggleMouseGameModeAutoDetect}
+												/>
+												<span className="slider"></span>
+											</label>
+										</SettingRow>
+
+										<SettingRow
+											icon={Shield}
+											label="Blocked Executables"
+											desc="Comma-separated process names (e.g. csgo.exe, valorant.exe)"
+											divider={false}
+										>
+											<input
+												type="text"
+												className="settings-text-input"
+												value={mouseGameModeBlockedApps}
+												onChange={(e) =>
+													handleMouseGameModeBlockedAppsChange(e.target.value)
+												}
+												placeholder="csgo.exe, valorant.exe"
+												style={{ width: 210 }}
+											/>
+										</SettingRow>
+									</>
+								)}
+							</>
+						)}
+					</div>
 				</>
 			)}
 
@@ -1614,144 +1749,6 @@ export function MouseTab({
 									hoverColor={mouseHoverColor}
 								/>
 							</div>
-						</>
-					)}
-				</div>
-			)}
-
-			{/* ───────────────── SUB-TAB 5: DWELL & GAME MODE ───────────────── */}
-			{subTab === "dwell" && (
-				<div className="setting-group">
-					<SettingRow
-						icon={Play}
-						label="Hands-Free Dwell Launch"
-						desc="Auto-trigger the aimed slice when holding still, without releasing or clicking"
-					>
-						<select
-							className="settings-select"
-							value={mouseInstantActivate}
-							onChange={(e) =>
-								handleMouseInstantActivateChange(e.target.value as "off" | "dwell")
-							}
-						>
-							<option value="off">Disabled</option>
-							<option value="dwell">Enabled (Dwell Ring)</option>
-						</select>
-					</SettingRow>
-
-					{mouseInstantActivate === "dwell" && (
-						<>
-							<SettingRow
-								icon={Hand}
-								label="Dwell Hold Time"
-								desc={`Trigger after holding aim for ${mouseInstantDwellMs} ms`}
-							>
-								<input
-									type="range"
-									min="160"
-									max="900"
-									step="20"
-									value={mouseInstantDwellMs}
-									onChange={(e) =>
-										handleMouseInstantDwellMsChange(parseInt(e.target.value, 10))
-									}
-									className="settings-slider"
-								/>
-							</SettingRow>
-
-							<SettingRow
-								icon={Compass}
-								label="Settle Sensitivity"
-								desc="How still the cursor must be before the dwell progress ring starts"
-							>
-								<select
-									className="settings-select"
-									value={mouseInstantSensitivity}
-									onChange={(e) =>
-										handleMouseInstantSensitivityChange(
-											e.target.value as "low" | "medium" | "high"
-										)
-									}
-								>
-									<option value="low">Strict (Low Jitter)</option>
-									<option value="medium">Balanced (Medium)</option>
-									<option value="high">Fast (High Tolerance)</option>
-								</select>
-							</SettingRow>
-						</>
-					)}
-
-					<SettingRow
-						icon={Shield}
-						label="Fullscreen Game Mode Protection"
-						desc="Automatically suppress the radial wheel while playing fullscreen games"
-						divider={!mouseGameModeEnabled}
-					>
-						<label className="toggle-switch">
-							<input
-								type="checkbox"
-								checked={mouseGameModeEnabled}
-								onChange={toggleMouseGameMode}
-							/>
-							<span className="slider"></span>
-						</label>
-					</SettingRow>
-
-					{mouseGameModeEnabled && (
-						<>
-							<SettingRow
-								icon={Monitor}
-								label="Protection Scope"
-								desc="Suppress in all fullscreen apps or only specific games"
-							>
-								<select
-									className="settings-select"
-									value={mouseGameModeScope}
-									onChange={(e) =>
-										handleMouseGameModeScopeChange(e.target.value as "all" | "list")
-									}
-								>
-									<option value="all">All Fullscreen Applications</option>
-									<option value="list">Blocked Executables List Only</option>
-								</select>
-							</SettingRow>
-
-							{mouseGameModeScope === "list" && (
-								<>
-									<SettingRow
-										icon={Shield}
-										label="Auto-Detect Game Launchers"
-										desc="Automatically suppress in Steam, Epic Games, Riot, and Xbox games"
-									>
-										<label className="toggle-switch">
-											<input
-												type="checkbox"
-												checked={mouseGameModeAutoDetect}
-												onChange={toggleMouseGameModeAutoDetect}
-											/>
-											<span className="slider"></span>
-										</label>
-									</SettingRow>
-
-									<SettingRow
-										icon={Shield}
-										label="Blocked Executables"
-										desc="Comma-separated process names (e.g. csgo.exe, valorant.exe)"
-										divider={false}
-									>
-										<input
-											type="text"
-											className="settings-text-input"
-											value={mouseGameModeBlockedApps}
-											onChange={(e) =>
-												handleMouseGameModeBlockedAppsChange(e.target.value)
-											}
-											placeholder="csgo.exe, valorant.exe"
-											style={{ width: 210 }}
-										/>
-									</SettingRow>
-								</>
-							)}
 						</>
 					)}
 				</div>

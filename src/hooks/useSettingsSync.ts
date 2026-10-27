@@ -24,6 +24,12 @@ function convertSettingValue(value: any): any {
  * @param handlers - Map of bloom-prefixed key → setter
  * @param deps - Optional additional dependency array
  */
+function getAlternateKey(key: string): string | null {
+	if (key.startsWith("zenith-")) return "bloom-" + key.slice("zenith-".length);
+	if (key.startsWith("bloom-")) return "zenith-" + key.slice("bloom-".length);
+	return null;
+}
+
 export function useSettingsSync(
 	handlers: Record<string, (value: any) => void>,
 	deps?: React.DependencyList
@@ -32,9 +38,15 @@ export function useSettingsSync(
 	handlersRef.current = handlers;
 
 	useEffect(() => {
+		const resolveHandler = (key: string) => {
+			if (handlersRef.current[key]) return handlersRef.current[key];
+			const alt = getAlternateKey(key);
+			return alt ? handlersRef.current[alt] : undefined;
+		};
+
 		const unlistenSC = listen<{ key: string; value: any }>("settings-changed", (event) => {
 			const { key, value } = event.payload;
-			const handler = handlersRef.current[key];
+			const handler = resolveHandler(key);
 			if (handler && value !== null && value !== undefined) {
 				handler(convertSettingValue(value));
 			}
@@ -44,16 +56,25 @@ export function useSettingsSync(
 			"settings-external-changed",
 			(event) => {
 				const { key, value } = event.payload;
+				const alt = getAlternateKey(key);
 
-				if (key === "bloom-weather-lat" || key === "bloom-weather-lon") {
+				if (
+					key === "bloom-weather-lat" ||
+					key === "bloom-weather-lon" ||
+					key === "zenith-weather-lat" ||
+					key === "zenith-weather-lon"
+				) {
 					localStorage.removeItem(key);
+					if (alt) localStorage.removeItem(alt);
 				} else if (value !== null) {
 					localStorage.setItem(key, String(value));
+					if (alt) localStorage.setItem(alt, String(value));
 				} else {
 					localStorage.removeItem(key);
+					if (alt) localStorage.removeItem(alt);
 				}
 
-				const handler = handlersRef.current[key];
+				const handler = resolveHandler(key);
 				if (handler && value !== null && value !== undefined) {
 					handler(convertSettingValue(value));
 				}

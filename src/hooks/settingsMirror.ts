@@ -31,7 +31,18 @@ const mirroredAtStartup = Object.keys(localStorage).filter((key) => key.startsWi
  * true when a reload was triggered.
  */
 export async function reloadIfMirrorWasStale(settings: Record<string, unknown> | null | undefined) {
-	const fileKeys = Object.keys(settings ?? {}).filter((key) => key.startsWith("bloom-"));
+	if (settings) {
+		for (const [k, v] of Object.entries(settings)) {
+			if (!LOCAL_ONLY_KEYS.has(k) && v !== null && v !== undefined) {
+				try {
+					localStorage.setItem(k, String(v));
+				} catch {}
+			}
+		}
+	}
+	const fileKeys = Object.keys(settings ?? {}).filter(
+		(key) => key.startsWith("bloom-") || key.startsWith("zenith-")
+	);
 	const stale = mirroredAtStartup.filter(
 		(key) => !fileKeys.includes(key) && !LOCAL_ONLY_KEYS.has(key)
 	);

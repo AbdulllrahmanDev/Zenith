@@ -1389,7 +1389,17 @@ pub fn get_zenith_scale(_app: &tauri::AppHandle) -> f64 {
 pub fn get_setting_str(_app: &tauri::AppHandle, key: &str) -> Option<String> {
     let cache = crate::state::SETTINGS_CACHE.get()?;
     let guard = cache.lock().ok()?;
-    guard.get(key)?.as_str().map(|s| s.to_string())
+    if let Some(s) = guard.get(key).and_then(|v| v.as_str()) {
+        return Some(s.to_string());
+    }
+    let alt_key = if let Some(rest) = key.strip_prefix("zenith-") {
+        format!("bloom-{rest}")
+    } else if let Some(rest) = key.strip_prefix("bloom-") {
+        format!("zenith-{rest}")
+    } else {
+        return None;
+    };
+    guard.get(&alt_key).and_then(|v| v.as_str()).map(|s| s.to_string())
 }
 
 fn dock_setting_enabled(value: Option<&serde_json::Value>) -> bool {
