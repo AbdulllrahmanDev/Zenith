@@ -1435,7 +1435,8 @@ pub fn dock_enabled() -> bool {
 /// whether it changed anything.
 pub fn set_click_through(hwnd: HWND, ignore: bool) -> bool {
     use windows::Win32::UI::WindowsAndMessaging::{
-        GetWindowLongPtrW, SetWindowLongPtrW, GWL_EXSTYLE,
+        GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE,
+        SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
     };
     unsafe {
         let current = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
@@ -1444,6 +1445,15 @@ pub fn set_click_through(hwnd: HWND, ignore: bool) -> bool {
             return false;
         }
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, wanted as isize);
+        let _ = SetWindowPos(
+            hwnd,
+            None,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+        );
         true
     }
 }

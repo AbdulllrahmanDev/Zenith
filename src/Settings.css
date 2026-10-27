@@ -1296,8 +1296,8 @@ input:checked + .slider:before {
 }
 
 .radial-ws-tab-btn.active {
-	background: var(--bloom-accent, #007aff);
-	border-color: var(--bloom-accent, #007aff);
+	background: rgba(255, 255, 255, 0.15);
+	border-color: rgba(255, 255, 255, 0.3);
 	color: #ffffff;
 }
 
@@ -1348,7 +1348,7 @@ input:checked + .slider:before {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	color: var(--bloom-accent, #007aff);
+	color: #ffffff;
 	flex-shrink: 0;
 }
 
@@ -1532,9 +1532,9 @@ input:checked + .slider:before {
 }
 
 .rovyl-visual-card.active {
-	background: rgba(0, 122, 255, 0.12);
-	border-color: var(--bloom-accent, #007aff);
-	box-shadow: 0 4px 14px rgba(0, 122, 255, 0.2), inset 0 0 0 1px var(--bloom-accent, #007aff);
+	background: rgba(255, 255, 255, 0.08);
+	border-color: rgba(255, 255, 255, 0.35);
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
 }
 
 .rovyl-visual-card-header {
@@ -1544,7 +1544,7 @@ input:checked + .slider:before {
 }
 
 .rovyl-visual-card-icon {
-	color: var(--bloom-accent, #007aff);
+	color: #ffffff;
 }
 
 .rovyl-visual-card-title {
@@ -1612,9 +1612,9 @@ input:checked + .slider:before {
 }
 
 .rovyl-preview-item.active {
-	border-color: var(--bloom-accent, #007aff);
-	background: rgba(0, 122, 255, 0.25);
-	box-shadow: 0 0 12px rgba(0, 122, 255, 0.4);
+	border-color: rgba(255, 255, 255, 0.5);
+	background: rgba(255, 255, 255, 0.15);
+	box-shadow: 0 0 12px rgba(255, 255, 255, 0.25);
 	transform: translate(-50%, -50%) scale(1.12);
 }
 
@@ -1638,7 +1638,7 @@ input:checked + .slider:before {
 }
 
 .rovyl-gallery-card:hover {
-	border-color: var(--bloom-accent, #007aff);
+	border-color: rgba(255, 255, 255, 0.35);
 	transform: translateY(-2px);
 	box-shadow: 0 8px 20px rgba(0, 0, 0, 0.4);
 }

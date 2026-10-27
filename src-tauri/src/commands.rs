@@ -2522,6 +2522,7 @@ pub fn close_radial_menu(app: AppHandle) {
     crate::services::set_radial_menu_open(false);
     let _ = app.emit("radial-close", ());
     if let Some(win) = app.get_webview_window("overlay") {
+        let _ = win.set_ignore_cursor_events(true);
         if let Ok(hwnd) = win.hwnd() {
             crate::utils::set_click_through(hwnd, true);
             crate::services::MH_LAST_OV_IGNORE.store(1, Ordering::Relaxed);
@@ -2552,6 +2553,7 @@ pub async fn launch_radial_item(
 ) -> Result<(), String> {
     crate::services::set_radial_menu_open(false);
     if let Some(win) = app.get_webview_window("overlay") {
+        let _ = win.set_ignore_cursor_events(true);
         if let Ok(hwnd) = win.hwnd() {
             crate::utils::set_click_through(hwnd, true);
             crate::services::MH_LAST_OV_IGNORE.store(1, Ordering::Relaxed);
@@ -2669,13 +2671,29 @@ pub fn show_overlay_for_radial(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
         };
 
         // Immediately clear any window clipping region and make interactive so the full screen receives mouse events with 0 delay
+        let _ = ov_win.set_ignore_cursor_events(false);
         if let Ok(hwnd) = ov_win.hwnd() {
             unsafe {
                 use windows::Win32::Graphics::Gdi::SetWindowRgn;
+                use windows::Win32::UI::WindowsAndMessaging::{
+                    GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, HWND_TOPMOST,
+                    SWP_NOMOVE, SWP_NOSIZE, WS_EX_NOACTIVATE, WS_EX_TRANSPARENT,
+                };
                 let _ = SetWindowRgn(hwnd, None, true);
+                let current_ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+                // Clear WS_EX_TRANSPARENT and WS_EX_NOACTIVATE so overlay window receives all clicks and hovers
+                let new_ex = (current_ex & !WS_EX_TRANSPARENT.0) & !WS_EX_NOACTIVATE.0;
+                SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_ex as isize);
+                let _ = SetWindowPos(
+                    hwnd,
+                    Some(HWND_TOPMOST),
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE,
+                );
             }
-            crate::utils::re_assert_topmost(hwnd);
-            crate::utils::set_click_through(hwnd, false);
             crate::services::MH_LAST_OV_IGNORE.store(0, Ordering::Relaxed);
         }
 

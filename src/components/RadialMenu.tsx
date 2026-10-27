@@ -489,8 +489,19 @@ export default function RadialMenu({
 		if (folderStack.length > 0) {
 			return folderStack[folderStack.length - 1].items;
 		}
+		// When multiple workspaces exist, the root menu shows the workspaces as main icons
+		if (workspaces.length > 1) {
+			return workspaces.map((ws) => ({
+				id: `ws_${ws.id}`,
+				label: ws.name,
+				icon: ws.icon || "Sparkles",
+				type: "submenu" as const,
+				target: ws.id,
+				children: ws.items
+			}));
+		}
 		return currentWorkspace?.items || [];
-	}, [folderStack, currentWorkspace]);
+	}, [folderStack, workspaces, currentWorkspace]);
 
 	const currentLevelItems = useMemo(() => {
 		const q = typeAhead.trim().toLowerCase();
@@ -1563,7 +1574,7 @@ export default function RadialMenu({
 								}}
 							>
 								{(isRoot
-									? [currentWorkspace?.name || "Rovyl"]
+									? [workspaces.length > 1 ? "Workspaces" : (currentWorkspace?.name || "Zenith")]
 									: folderStack.map((level) => level.label)
 								).map((label, i) => (
 									<React.Fragment key={`${label}-${i}`}>

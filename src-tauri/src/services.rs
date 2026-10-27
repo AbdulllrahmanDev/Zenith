@@ -3406,11 +3406,18 @@ unsafe extern "system" fn mouse_hook_proc(
         }
     }
 
-    // Freeze background clicks: when Radial Menu is open, prevent any click from reaching background apps
+    // When Radial Menu is open, prevent background clicks from right/middle/x-buttons.
+    // WM_LBUTTONDOWN is allowed through so it reaches the fullscreen overlay window and clicks radial items/scrim.
     if code >= 0 && MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed) {
-        if wparam.0 == WM_LBUTTONDOWN as usize
-            || wparam.0 == WM_RBUTTONDOWN as usize
-            || wparam.0 == 0x0207 /* WM_MBUTTONDOWN */
+        if wparam.0 == WM_RBUTTONDOWN as usize {
+            if let Some(app) = MOUSE_HOOK_APP_HANDLE.get() {
+                let app_clone = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    let _ = app_clone.emit("radial-cancel", ());
+                });
+            }
+            return windows::Win32::Foundation::LRESULT(1);
+        } else if wparam.0 == 0x0207 /* WM_MBUTTONDOWN */
             || wparam.0 == 0x020B /* WM_XBUTTONDOWN */
         {
             return windows::Win32::Foundation::LRESULT(1);
