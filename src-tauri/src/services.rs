@@ -2706,7 +2706,10 @@ fn top_edge_armed_for(
         return true;
     }
     let dwell_ms = top_edge_dwell_ms(app_handle);
-    if dwell_ms <= 0 {
+    // Instant reveal when slammed against the top ceiling (within 2px of screen top)
+    let monitors = get_active_notch_monitors(app_handle);
+    let is_at_ceiling = monitors.iter().any(|(_, mon_y, _, _)| cursor.y <= mon_y + (2.0 * scale) as i32);
+    if dwell_ms <= 0 || is_at_ceiling {
         MH_TOP_EDGE_ARMED.store(true, Ordering::Relaxed);
         return true;
     }
@@ -2811,11 +2814,12 @@ fn update_main_interaction(
 
         let mut is_click_interactive = false;
         let mut in_notch_rect = false;
+        let mut in_top_span = false;
 
         if let Some(r) = notch_rect {
-            let pad_x = (20.0 * scale) as i32;
-            let pad_y_bottom = (5.0 * scale) as i32;
-            let hyst = (10.0 * scale) as i32;
+            let pad_x = (50.0 * scale) as i32;
+            let pad_y_bottom = (8.0 * scale) as i32;
+            let hyst = (15.0 * scale) as i32;
             let rx = win_rect.left + (r.x as f64 * scale) as i32 - pad_x - hyst;
             let rw = (r.width as f64 * scale) as i32 + (pad_x * 2) + (hyst * 2);
             let ry_top = win_rect.top;
@@ -2823,10 +2827,10 @@ fn update_main_interaction(
 
             in_notch_rect = cursor.x >= rx && cursor.x <= (rx + rw) && cursor.y >= ry_top && cursor.y <= ry_bottom;
 
-            let edge_pad = (60.0 * scale) as i32;
-            let in_top_span = at_top_edge && cursor.x >= rx - edge_pad && cursor.x <= rx + rw + edge_pad;
+            let edge_pad = (160.0 * scale) as i32;
+            in_top_span = at_top_edge && cursor.x >= rx - edge_pad && cursor.x <= rx + rw + edge_pad;
 
-            let hover_active = in_notch_rect || edge_armed;
+            let hover_active = in_notch_rect || edge_armed || in_top_span;
             if (notch_visible || hover_active) && (in_notch_rect || in_top_span) {
                 is_click_interactive = true;
             }
@@ -2838,12 +2842,13 @@ fn update_main_interaction(
         let should_ignore = !is_click_interactive;
         set_click_through(hwnd, should_ignore);
 
-        let is_hovered = in_notch_rect || edge_armed;
+        let is_hovered = in_notch_rect || in_top_span || edge_armed;
         let changed = update_cached_notch_hover(&label, is_hovered);
         if changed {
             let _ = app_handle.emit_to(&label, "notch-edge-hover", serde_json::json!({
                 "target": label,
-                "hovered": is_hovered
+                "hovered": is_hovered,
+                "in_top_span": in_top_span
             }));
             if !is_hovered {
                 let _ = app_handle.emit_to(&label, "notch-pointer-left", serde_json::json!({

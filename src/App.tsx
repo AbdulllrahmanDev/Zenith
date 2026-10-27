@@ -1132,15 +1132,23 @@ function App() {
 			setIsOverlapped(event.payload);
 		});
 
-		const unlistenNotchEdgeHover = listen<boolean | { target?: string; hovered: boolean }>("notch-edge-hover", (event) => {
+		const unlistenNotchEdgeHover = listen<boolean | { target?: string; hovered: boolean; in_top_span?: boolean }>("notch-edge-hover", (event) => {
 			const payload = event.payload;
 			if (typeof payload === "object" && payload !== null) {
 				if (payload.target && payload.target !== windowLabel) {
 					return;
 				}
 				setIsEdgeHovered(payload.hovered);
+				if (payload.hovered) {
+					releaseDeferredRef.current = false;
+					setIsHovered(true);
+				}
 			} else {
 				setIsEdgeHovered(payload);
+				if (payload) {
+					releaseDeferredRef.current = false;
+					setIsHovered(true);
+				}
 			}
 		});
 
