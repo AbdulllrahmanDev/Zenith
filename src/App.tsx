@@ -757,12 +757,13 @@ function App() {
 	const appliedDock = useRef<{ enabled: boolean; mode: string } | null>(null);
 	const appliedNotchMode = useRef<string | null>(null);
 
-	const isAnyInteraction = isHovered || isNotchHovered || isEdgeHovered;
+	const isAnyInteraction = isHovered || isNotchHovered || isEdgeHovered || eventPeek;
 	const isHidden =
 		!startupAnimating &&
 		!showAthanBanner &&
-		((notchMode === "smart" && isOverlapped && interactionState === "none") ||
-			(notchMode === "peek" && interactionState === "none" && !eventPeek));
+		notchMode === "smart" &&
+		isOverlapped &&
+		interactionState === "none";
 
 	useEffect(() => {
 		if (isAnyInteraction) {
@@ -2039,8 +2040,13 @@ function App() {
 	// (running, paused or just finished) takes the pill, and music then moves to
 	// its own bubble beside it.
 	const timerActive = timerSeconds > 0 || isTimerFinished;
+	const peekMuted = notchMode === "peek" && !isHovered;
 	const musicActivity =
-		settingsMusicModeEnabled && settingsMusicCompactNotch && mediaInfo.has_media && musicActivityVisible;
+		!peekMuted &&
+		settingsMusicModeEnabled &&
+		settingsMusicCompactNotch &&
+		mediaInfo.has_media &&
+		musicActivityVisible;
 	const collapsedMode = musicActivity && !timerActive ? "music" : "status";
 	const showMusicBubble = musicActivity && timerActive && !isOpen && isVisible && !isHidden && !showAthanBanner;
 	const showShelfBubble =
@@ -2833,7 +2839,7 @@ function App() {
 			return Math.max(Math.min(200 + totalWidgets * 50, 380) - clock24hTrim, statusFitWidth);
 		}
 		if (isMusicMode && isOpen) return mediaLayout === "compact" ? 300 : 340;
-		if ((showPowerPulse || showLowBatteryPulse || showUpdatePulse) && !isHovered) return 200;
+		if ((showPowerPulse || showLowBatteryPulse || showUpdatePulse) && !isHovered && notchMode !== "peek") return 200;
 
 		let w = 140 - clock24hTrim;
 		if (isMusicMode) {
@@ -3369,7 +3375,8 @@ function App() {
 											<div className="main-row">
 												<AnimatePresence mode="wait">
 													{(showPowerPulse || showLowBatteryPulse || showUpdatePulse) &&
-													!isHovered ? (
+													!isHovered &&
+													notchMode !== "peek" ? (
 														showUpdatePulse ? (
 															<motion.div
 																key="update-pulse-view"

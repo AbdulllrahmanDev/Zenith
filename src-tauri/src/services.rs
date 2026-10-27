@@ -2842,7 +2842,13 @@ fn update_main_interaction(
         let should_ignore = !is_click_interactive;
         set_click_through(hwnd, should_ignore);
 
-        let is_hovered = in_notch_rect || in_top_span || edge_armed;
+        // In non-fixed modes, if the notch is not currently visible (i.e. hidden due to smart/peek overlap),
+        // only hovering the top edge ceiling (edge_armed) should reveal it.
+        let is_hovered = if is_fixed || notch_visible {
+            in_notch_rect || in_top_span || edge_armed
+        } else {
+            edge_armed
+        };
         let changed = update_cached_notch_hover(&label, is_hovered);
         if changed {
             let _ = app_handle.emit_to(&label, "notch-edge-hover", serde_json::json!({
@@ -3386,17 +3392,28 @@ unsafe extern "system" fn mouse_hook_proc(
                             }
                         }
                     }
-                } else if MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed) && btn == MouseBtn::Right {
-                    // Right-click while Radial Menu is open cancels and closes the wheel cleanly
-                    if is_down {
+                } else if MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed) {
+                    if btn == MouseBtn::Right && is_down {
+                        // Right-click cancels and closes
                         let app_clone = app.clone();
                         std::thread::spawn(move || {
                             let _ = app_clone.emit("radial-cancel", ());
                         });
+                        return windows::Win32::Foundation::LRESULT(1);
                     }
-                    return windows::Win32::Foundation::LRESULT(1);
                 }
             }
+        }
+    }
+
+    // Freeze background clicks: when Radial Menu is open, prevent any click from reaching background apps
+    if code >= 0 && MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed) {
+        if wparam.0 == WM_LBUTTONDOWN as usize
+            || wparam.0 == WM_RBUTTONDOWN as usize
+            || wparam.0 == 0x0207 /* WM_MBUTTONDOWN */
+            || wparam.0 == 0x020B /* WM_XBUTTONDOWN */
+        {
+            return windows::Win32::Foundation::LRESULT(1);
         }
     }
 
@@ -4144,6 +4161,28 @@ fn set_main_appbar_reservation(main_win: tauri::WebviewWindow, reserve: bool) {
         // may look clean while the shell still holds the strip.
         unregister_appbar_native(hwnd);
         MAIN_APPBAR_REGISTERED.store(false, Ordering::Relaxed);
+
+        if let Some(monitor) = crate::utils::get_target_monitor(main_win.app_handle(), "zenith-notch-display") {
+            let m_pos = monitor.position();
+            let m_size = monitor.size();
+            let scale = monitor.scale_factor();
+            let zenith_scale = crate::utils::get_zenith_scale(main_win.app_handle());
+            let target_height = (420.0 * zenith_scale * scale) as i32;
+            unsafe {
+                use windows::Win32::UI::WindowsAndMessaging::{
+                    SetWindowPos, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOZORDER,
+                };
+                let _ = SetWindowPos(
+                    hwnd,
+                    None,
+                    m_pos.x,
+                    m_pos.y,
+                    m_size.width as i32,
+                    target_height,
+                    SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                );
+            }
+        }
         re_assert_topmost(hwnd);
     }
 }
@@ -4151,7 +4190,7 @@ fn set_main_appbar_reservation(main_win: tauri::WebviewWindow, reserve: bool) {
 /// Whether the notch's 40px top strip should currently be reserved as an AppBar.
 /// Only fixed mode reserves screen space; smart and peek hide the notch freely.
 /// An unset mode defaults to fixed, matching SETTINGS.md and `re_register_appbars`.
-fn notch_mode_reserves_work_area(mode: Option<&str>) -> bool {
+pub(crate) fn notch_mode_reserves_work_area(mode: Option<&str>) -> bool {
     mode.map(|m| m == "fixed").unwrap_or(true)
 }
 
@@ -4699,6 +4738,29 @@ pub fn unregister_appbar_native(hwnd: HWND) {
             ..Default::default()
         };
         SHAppBarMessage(ABM_REMOVE, &mut abd);
+
+        // Tell Windows Shell and all top-level desktop windows that the work area changed
+        // so maximized windows immediately expand to the full screen edge without waiting for restart
+        use windows::Win32::UI::WindowsAndMessaging::{
+            PostMessageW, SendMessageTimeoutW, HWND_BROADCAST, SMTO_ABORTIFHUNG, WM_SETTINGCHANGE,
+        };
+        use windows::Win32::Foundation::{LPARAM, WPARAM};
+        let mut result = 0;
+        let _ = SendMessageTimeoutW(
+            HWND_BROADCAST,
+            WM_SETTINGCHANGE,
+            WPARAM(0x002F /* SPI_SETWORKAREA */),
+            LPARAM(0),
+            SMTO_ABORTIFHUNG,
+            100,
+            Some(&mut result),
+        );
+        let _ = PostMessageW(
+            Some(HWND_BROADCAST),
+            WM_SETTINGCHANGE,
+            WPARAM(0x002F),
+            LPARAM(0),
+        );
     }
 }
 

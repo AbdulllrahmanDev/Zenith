@@ -3595,16 +3595,46 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let settings = crate::utils::save_setting_file(&path, key.clone(), value)?;
+    let settings = crate::utils::save_setting_file(&path, key.clone(), value.clone())?;
+    let settings = if key == "zenith-notch-mode" {
+        crate::utils::save_setting_file(&path, "bloom-notch-mode".into(), value.clone()).unwrap_or(settings)
+    } else if key == "bloom-notch-mode" {
+        crate::utils::save_setting_file(&path, "zenith-notch-mode".into(), value.clone()).unwrap_or(settings)
+    } else {
+        settings
+    };
 
-    // Broadcast so all windows sync — emit the key as-is (zenith-prefixed)
+    let alt_key = if let Some(rest) = key.strip_prefix("zenith-") {
+        Some(format!("bloom-{rest}"))
+    } else if let Some(rest) = key.strip_prefix("bloom-") {
+        Some(format!("zenith-{rest}"))
+    } else {
+        None
+    };
+
+    // Broadcast so all windows sync
     let _ = app.emit(
         "settings-changed",
         serde_json::json!({ "key": &key, "value": &settings[&key] }),
     );
+    if let Some(ref alt) = alt_key {
+        if let Some(alt_val) = settings.get(alt) {
+            let _ = app.emit(
+                "settings-changed",
+                serde_json::json!({ "key": alt, "value": alt_val }),
+            );
+        }
+    }
 
     if key == "zenith-scale" || key == "bloom-scale" {
         re_register_appbars(&app, &settings);
+    } else if key == "zenith-notch-mode" || key == "bloom-notch-mode" {
+        let mode_val = settings
+            .get("zenith-notch-mode")
+            .or_else(|| settings.get("bloom-notch-mode"))
+            .and_then(|v| v.as_str());
+        let reserve = crate::services::notch_mode_reserves_work_area(mode_val);
+        crate::services::apply_main_appbar_mode(&app, reserve);
     } else if key == "zenith-notch-display"
         || key == "bloom-notch-display"
         || key == "zenith-dock-display"
