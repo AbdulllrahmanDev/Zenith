@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { CornerUpLeft, Settings as SettingsIcon } from "lucide-react";
+import { CornerUpLeft } from "lucide-react";
 import type { RadialItem, RadialWorkspace, RadialWheelConfig } from "../radial/types";
 import { DEFAULT_WORKSPACES, DEFAULT_WHEEL_CONFIG } from "../radial/types";
 import { sectorIndexForDelta } from "../radial/radialSectors";
@@ -1341,40 +1341,7 @@ export default function RadialMenu({
 				</div>
 			)}
 
-			{/* Corner Quick Settings Gear */}
-			{!echoActive && (
-				<button
-					type="button"
-					className="zn-radial-pill"
-					onClick={(e) => {
-						e.stopPropagation();
-						invoke("open_settings_window").catch(() => {});
-						dismissWithAnimation();
-					}}
-					title="Open Mouse Settings"
-					style={{
-						position: "fixed",
-						bottom: "24px",
-						right: "24px",
-						zIndex: 35,
-						width: "36px",
-						height: "36px",
-						borderRadius: "50%",
-						display: "flex",
-						alignItems: "center",
-						justifyContent: "center",
-						background: "rgba(8, 9, 12, 0.86)",
-						border: "1px solid rgba(255, 255, 255, 0.16)",
-						boxShadow: "0 4px 20px rgba(0, 0, 0, 0.45)",
-						color: "rgba(255, 255, 255, 0.7)",
-						cursor: "pointer",
-						pointerEvents: "auto",
-						["--zn-op" as string]: !isExiting && bloom ? 1 : 0
-					}}
-				>
-					<SettingsIcon size={16} strokeWidth={1.75} />
-				</button>
-			)}
+
 
 			{/* Wheel Origin Container */}
 			<div

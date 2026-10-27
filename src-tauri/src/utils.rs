@@ -1461,12 +1461,12 @@ pub fn set_click_through(hwnd: HWND, ignore: bool) -> bool {
 /// The extended style with WS_EX_LAYERED set and WS_EX_TRANSPARENT set only
 /// when ignoring input, every other bit kept.
 fn click_through_style(style: u32, ignore: bool) -> u32 {
-    use windows::Win32::UI::WindowsAndMessaging::{WS_EX_LAYERED, WS_EX_TRANSPARENT};
-    let layered = style | WS_EX_LAYERED.0;
+    use windows::Win32::UI::WindowsAndMessaging::{WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT};
+    let base = (style | WS_EX_LAYERED.0 | WS_EX_TOOLWINDOW.0) & !WS_EX_APPWINDOW.0;
     if ignore {
-        layered | WS_EX_TRANSPARENT.0
+        base | WS_EX_TRANSPARENT.0
     } else {
-        layered & !WS_EX_TRANSPARENT.0
+        base & !WS_EX_TRANSPARENT.0
     }
 }
 

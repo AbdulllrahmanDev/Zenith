@@ -2676,13 +2676,15 @@ pub fn show_overlay_for_radial(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
             unsafe {
                 use windows::Win32::Graphics::Gdi::SetWindowRgn;
                 use windows::Win32::UI::WindowsAndMessaging::{
-                    GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE, HWND_TOPMOST,
-                    SWP_NOMOVE, SWP_NOSIZE, WS_EX_NOACTIVATE, WS_EX_TRANSPARENT,
+                    GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE,
+                    HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
+                    SW_SHOWNA, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
                 };
                 let _ = SetWindowRgn(hwnd, None, true);
                 let current_ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
-                // Clear WS_EX_TRANSPARENT and WS_EX_NOACTIVATE so overlay window receives all clicks and hovers
-                let new_ex = (current_ex & !WS_EX_TRANSPARENT.0) & !WS_EX_NOACTIVATE.0;
+                // Keep WS_EX_TOOLWINDOW and remove WS_EX_APPWINDOW to NEVER appear on taskbar.
+                // Clear WS_EX_TRANSPARENT so the window receives mouse events.
+                let new_ex = ((current_ex & !WS_EX_TRANSPARENT.0) & !WS_EX_APPWINDOW.0) | WS_EX_TOOLWINDOW.0;
                 SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_ex as isize);
                 let _ = SetWindowPos(
                     hwnd,
@@ -2691,14 +2693,14 @@ pub fn show_overlay_for_radial(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
                     0,
                     0,
                     0,
-                    SWP_NOMOVE | SWP_NOSIZE,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
                 );
+                // Show without activating so Windows doesn't flash the top notch/taskbar
+                let _ = ShowWindow(hwnd, SW_SHOWNA);
             }
             crate::services::MH_LAST_OV_IGNORE.store(0, Ordering::Relaxed);
         }
 
-        let _ = ov_win.show();
-        let _ = ov_win.set_focus();
         let _ = app.emit(
             "radial-open",
             serde_json::json!({
