@@ -2499,16 +2499,44 @@ pub fn close_radial_menu(app: AppHandle) {
     crate::services::set_radial_menu_open(false);
     let _ = app.emit("radial-close", ());
     if let Some(win) = app.get_webview_window("overlay") {
+        if let Ok(hwnd) = win.hwnd() {
+            crate::utils::set_click_through(hwnd, true);
+            crate::state::MH_LAST_OV_IGNORE.store(1, Ordering::Relaxed);
+        }
         let _ = win.hide();
     }
 }
 
 #[tauri::command]
-pub async fn launch_radial_item(app: AppHandle, item_type: String, target: String) -> Result<(), String> {
+pub fn trigger_radial_menu(app: AppHandle) {
+    unsafe {
+        use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+        let mut pt = windows::Win32::Foundation::POINT::default();
+        if GetCursorPos(&mut pt).is_ok() {
+            show_overlay_for_radial(&app, pt.x, pt.y);
+        } else {
+            show_overlay_for_radial(&app, 960, 540);
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn launch_radial_item(
+    app: AppHandle,
+    item_type: String,
+    target: String,
+    echo_ms: Option<u64>,
+) -> Result<(), String> {
     crate::services::set_radial_menu_open(false);
-    let _ = app.emit("radial-close", ());
     if let Some(win) = app.get_webview_window("overlay") {
-        let _ = win.hide();
+        if let Ok(hwnd) = win.hwnd() {
+            crate::utils::set_click_through(hwnd, true);
+            crate::state::MH_LAST_OV_IGNORE.store(1, Ordering::Relaxed);
+        }
+        if echo_ms.unwrap_or(0) == 0 {
+            let _ = app.emit("radial-close", ());
+            let _ = win.hide();
+        }
     }
 
     match item_type.as_str() {
@@ -2553,6 +2581,7 @@ pub async fn launch_radial_item(app: AppHandle, item_type: String, target: Strin
 }
 
 pub fn show_overlay_for_radial(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
+    crate::services::set_radial_menu_open(true);
     if let Some(ov_win) = app.get_webview_window("overlay") {
         let monitor_choice = crate::utils::get_setting_str(app, "zenith-mouse-monitor").unwrap_or_else(|| "cursor".into());
         let mut target_monitor = None;
@@ -2600,28 +2629,44 @@ pub fn show_overlay_for_radial(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
             }
         }
 
-        let (rel_x, rel_y) = if let Some(m) = target_monitor {
+        let (rel_x, rel_y, css_w, css_h) = if let Some(m) = target_monitor {
             let pos = m.position();
+            let size = m.size();
             let scale = m.scale_factor();
+            crate::services::set_radial_monitor_metrics(pos.x, pos.y, scale);
             (
                 ((cursor_x - pos.x) as f64 / scale).round() as i32,
                 ((cursor_y - pos.y) as f64 / scale).round() as i32,
+                (size.width as f64 / scale).round() as i32,
+                (size.height as f64 / scale).round() as i32,
             )
         } else {
-            (cursor_x, cursor_y)
+            crate::services::set_radial_monitor_metrics(0, 0, 1.0);
+            (cursor_x, cursor_y, 1920, 1080)
         };
 
-        // Immediately clear any window clipping region so the full screen receives mouse events with 0 delay
+        // Immediately clear any window clipping region and make interactive so the full screen receives mouse events with 0 delay
         if let Ok(hwnd) = ov_win.hwnd() {
             unsafe {
                 use windows::Win32::Graphics::Gdi::SetWindowRgn;
                 let _ = SetWindowRgn(hwnd, None, true);
             }
+            crate::utils::re_assert_topmost(hwnd);
+            crate::utils::set_click_through(hwnd, false);
+            crate::state::MH_LAST_OV_IGNORE.store(0, Ordering::Relaxed);
         }
 
         let _ = ov_win.show();
         let _ = ov_win.set_focus();
-        let _ = app.emit("radial-open", serde_json::json!({ "x": rel_x, "y": rel_y }));
+        let _ = app.emit(
+            "radial-open",
+            serde_json::json!({
+                "x": rel_x,
+                "y": rel_y,
+                "width": css_w,
+                "height": css_h
+            }),
+        );
     }
 }
 

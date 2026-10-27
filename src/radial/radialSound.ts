@@ -16,6 +16,14 @@ export type RadialSoundId =
   | 'reese'
   | 'haptic';
 
+export interface RadialSounds {
+  open: RadialSoundId | null;
+  hover: RadialSoundId | null;
+}
+
+export const HUB_TARGET = '__hub__';
+export const OPEN_SOUND_QUIET_MS = 35;
+
 export const RADIAL_SOUNDS: { id: RadialSoundId; name: string }[] = [
   { id: 'sub-tick', name: 'Sub Tick' },
   { id: 'thump', name: 'Thump' },
@@ -28,6 +36,22 @@ export const RADIAL_SOUNDS: { id: RadialSoundId; name: string }[] = [
   { id: 'reese', name: 'Reese' },
   { id: 'haptic', name: 'Haptic' },
 ];
+
+export function isRadialSoundId(value: unknown): value is RadialSoundId {
+  return typeof value === 'string' && RADIAL_SOUNDS.some((s) => s.id === value);
+}
+
+export function noteForHighlight(
+  highlight: string | null,
+  aimedAway: boolean,
+  elapsedSinceBloomMs: number,
+  sounds: RadialSounds
+): RadialSoundId | null {
+  if (!sounds.hover || highlight === null) return null;
+  if (highlight === HUB_TARGET && !aimedAway) return null;
+  if (sounds.open && elapsedSinceBloomMs < OPEN_SOUND_QUIET_MS) return null;
+  return sounds.hover;
+}
 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
@@ -67,6 +91,29 @@ export function setRadialSoundVolume(vol: number) {
   if (master && ctx) {
     master.gain.setValueAtTime(masterGain(), ctx.currentTime);
   }
+}
+
+export function wakeRadialSound() {
+  if (sleepTimer) {
+    clearTimeout(sleepTimer);
+    sleepTimer = null;
+  }
+  const c = getContext();
+  if (c && c.state === 'suspended') {
+    void c.resume();
+  }
+}
+
+export function sleepRadialSound() {
+  if (sleepTimer) {
+    clearTimeout(sleepTimer);
+  }
+  sleepTimer = setTimeout(() => {
+    sleepTimer = null;
+    if (ctx && ctx.state === 'running') {
+      void ctx.suspend();
+    }
+  }, 1500);
 }
 
 function envelope(c: BaseAudioContext, t: number, attack: number, peak: number, decay: number): GainNode {

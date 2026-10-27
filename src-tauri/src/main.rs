@@ -139,6 +139,7 @@ fn main() {
             start_mouse_recording,
             stop_mouse_recording,
             close_radial_menu,
+            trigger_radial_menu,
             launch_radial_item,
             set_splash_fullscreen,
             sync_overlay_position,

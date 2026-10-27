@@ -1,320 +1,327 @@
-/* ─── Radial Menu — Zenith × Rovyl Impeccable Design System ─── */
+/* ══ Rovyl Radial Modal — Compositor-Driven Animations & Surfaces ═══════════ */
 
-.radial-menu-backdrop {
+.zn-radial-root {
 	position: fixed;
-	top: 0;
-	left: 0;
-	width: 100vw;
-	height: 100vh;
-	pointer-events: auto;
-	user-select: none;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	backdrop-filter: blur(14px);
-	-webkit-backdrop-filter: blur(14px);
-	z-index: 99999;
-}
-
-.radial-wheel-container {
-	position: absolute;
-	pointer-events: auto;
-	transform: translate(-50%, -50%);
-}
-
-/* Ambient Neon Glow */
-.radial-ambient-glow {
-	position: absolute;
-	top: 50%;
-	left: 50%;
-	width: 280px;
-	height: 280px;
-	transform: translate(-50%, -50%);
-	border-radius: 50%;
-	background: radial-gradient(circle, var(--bloom-accent, #007aff) 0%, transparent 72%);
-	opacity: 0.18;
-	filter: blur(36px);
-	pointer-events: none;
-	transition: opacity 0.3s ease;
-}
-
-/* SVG Wedges & Orbital Guide */
-.radial-wedges-svg {
-	position: absolute;
-	top: 0;
-	left: 0;
-	width: 100%;
-	height: 100%;
-	pointer-events: none;
-	overflow: visible;
-}
-
-.radial-wedges-svg line {
-	stroke: var(--bloom-border, rgba(255, 255, 255, 0.14));
-	stroke-width: 1;
-	stroke-dasharray: 4 5;
-	opacity: 0.6;
-}
-
-/* ─── Center Hub (Puck) ─── */
-.radial-center-hub {
-	position: absolute;
-	top: 50%;
-	left: 50%;
-	width: 72px;
-	height: 72px;
-	transform: translate(-50%, -50%);
-	border-radius: 50%;
-	background: radial-gradient(circle at 50% 30%, rgba(28, 30, 38, 0.88) 0%, rgba(12, 13, 18, 0.96) 100%);
-	backdrop-filter: blur(28px);
-	-webkit-backdrop-filter: blur(28px);
-	border: 1px solid rgba(255, 255, 255, 0.16);
-	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.2);
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	justify-content: center;
-	cursor: pointer;
-	transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.18s ease, box-shadow 0.18s ease;
-	z-index: 10;
-	color: var(--bloom-text, #ffffff);
-}
-
-.radial-center-hub:hover {
-	transform: translate(-50%, -50%) scale(1.06);
-	border-color: rgba(255, 75, 75, 0.6);
-	box-shadow: 0 14px 36px rgba(0, 0, 0, 0.6), 0 0 20px rgba(255, 75, 75, 0.25);
-}
-
-.radial-hub-icon-wrap {
-	color: var(--bloom-accent, #007aff);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	transition: transform 0.18s ease, color 0.18s ease;
-}
-
-.radial-center-hub:hover .radial-hub-icon-wrap {
-	transform: scale(0.9);
-	color: #ff5252;
-}
-
-.radial-hub-title {
-	font-size: 10px;
-	font-weight: 600;
-	letter-spacing: 0.2px;
-	color: rgba(255, 255, 255, 0.9);
-	max-width: 60px;
-	text-align: center;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	margin-top: 1px;
-	transition: opacity 0.15s ease;
-}
-
-.radial-center-hub:hover .radial-hub-title {
-	display: none;
-}
-
-.radial-hub-cancel-hint {
-	font-size: 9px;
-	font-weight: 600;
-	letter-spacing: 0.3px;
-	text-transform: uppercase;
-	color: #ff5252;
-	display: none;
-}
-
-.radial-center-hub:hover .radial-hub-cancel-hint {
-	display: block;
-}
-
-/* ─── Slices (Squircle Icon Tiles) ─── */
-.radial-slice-item {
-	position: absolute;
-	width: 58px;
-	height: 58px;
-	transform: translate(-50%, -50%);
-	border-radius: 17px;
-	background: rgba(20, 22, 28, 0.82);
-	backdrop-filter: blur(24px);
-	-webkit-backdrop-filter: blur(24px);
-	border: 1px solid rgba(255, 255, 255, 0.13);
-	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42), inset 0 1px 1px rgba(255, 255, 255, 0.18);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	cursor: pointer;
-	box-sizing: border-box;
-	transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-	z-index: 6;
-	color: var(--bloom-text, #ffffff);
-}
-
-.radial-slice-item:hover,
-.radial-slice-item.active {
-	background: rgba(30, 32, 42, 0.95);
-	border-color: var(--bloom-accent, #007aff);
-	transform: translate(-50%, -50%) scale(1.15);
-	box-shadow: 0 14px 34px rgba(0, 0, 0, 0.58), 0 0 24px rgba(0, 122, 255, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.28);
-	z-index: 9;
-}
-
-.radial-slice-icon-wrap {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	color: rgba(255, 255, 255, 0.92);
-	transition: transform 0.15s ease, color 0.15s ease;
-}
-
-.radial-slice-item.active .radial-slice-icon-wrap {
-	transform: scale(1.1);
-	color: var(--bloom-accent, #007aff);
-}
-
-/* Number Shortcut Key Badge */
-.radial-number-badge {
-	position: absolute;
-	top: -5px;
-	right: -5px;
-	font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-	font-size: 9px;
-	font-weight: 700;
-	padding: 1px 4.5px;
-	border-radius: 6px;
-	background: rgba(0, 0, 0, 0.65);
-	border: 1px solid rgba(255, 255, 255, 0.14);
-	color: rgba(255, 255, 255, 0.65);
-	line-height: 1.15;
-	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
-}
-
-.radial-slice-item.active .radial-number-badge {
-	background: var(--bloom-accent, #007aff);
-	border-color: rgba(255, 255, 255, 0.3);
-	color: #ffffff;
-}
-
-/* Floating Label Capsule Pill (Rovyl Style) */
-.radial-floating-label {
-	position: absolute;
-	transform: translate(-50%, -50%);
-	background: rgba(10, 11, 16, 0.94);
-	backdrop-filter: blur(20px);
-	-webkit-backdrop-filter: blur(20px);
-	border: 1px solid rgba(255, 255, 255, 0.22);
-	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55), inset 0 1px 1px rgba(255, 255, 255, 0.16);
-	border-radius: 20px;
-	padding: 4px 12px;
-	white-space: nowrap;
-	pointer-events: none;
-	z-index: 12;
-	color: #ffffff;
-	font-size: 11px;
-	font-weight: 600;
-	letter-spacing: 0.3px;
-}
-
-/* Dwell Indicator Ring */
-.radial-dwell-ring {
-	position: absolute;
 	inset: 0;
-	pointer-events: none;
-	border-radius: 17px;
-	overflow: hidden;
+	z-index: 99999;
+	user-select: none;
+	-webkit-user-select: none;
+	font-family: "Instrument Sans Variable", "Inter Variable", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-.radial-dwell-ring svg {
-	width: 100%;
-	height: 100%;
+.zn-radial-root img,
+.zn-radial-root svg {
+	-webkit-user-drag: none;
+	user-select: none;
 }
 
-.radial-dwell-ring rect {
-	fill: none;
-	stroke: var(--bloom-accent, #007aff);
-	stroke-width: 3;
-	stroke-dasharray: 216;
+.zn-radial-slice,
+.zn-radial-hub,
+.zn-radial-label,
+.zn-radial-pill {
+	transform: var(--zn-tf, none);
+	opacity: var(--zn-op, 1);
+	transition:
+		transform var(--zn-dur, 220ms) var(--zn-ease, cubic-bezier(0.2, 0.82, 0.28, 1)),
+		opacity var(--zn-dur-op, 175ms) ease-out;
 }
 
-/* Workspaces Pill Bar */
-.radial-workspaces-bar {
+.zn-radial-scrim {
+	position: fixed;
+	inset: 0;
+	z-index: 2;
+	transform: var(--zn-tf, none);
+	opacity: var(--zn-op, 1);
+	transition:
+		transform var(--zn-dur, 220ms) var(--zn-ease, cubic-bezier(0.2, 0.82, 0.28, 1)),
+		opacity var(--zn-dur-op, 200ms) cubic-bezier(0.16, 1, 0.3, 1);
+	will-change: opacity;
+}
+
+.zn-radial-hub {
+	transition:
+		transform var(--zn-dur, 190ms) var(--zn-ease, cubic-bezier(0.2, 0.82, 0.28, 1)),
+		opacity var(--zn-dur-op, 165ms) ease-out,
+		background-color 170ms ease-out,
+		border-color 170ms ease-out,
+		box-shadow 170ms ease-out;
+}
+
+.zn-radial-slice,
+.zn-radial-hub {
+	will-change: transform, opacity;
+}
+
+.zn-radial-slice {
+	--zn-ease: cubic-bezier(0.16, 0.86, 0.24, 1);
+	--zn-dur: 220ms;
+	--zn-dur-op: 165ms;
+}
+
+.zn-radial--closing .zn-radial-slice,
+.zn-radial--closing .zn-radial-hub,
+.zn-radial--closing .zn-radial-label,
+.zn-radial--closing .zn-radial-pill,
+.zn-radial--closing .zn-radial-scrim {
+	--zn-ease: ease-in;
+	--zn-dur: 110ms;
+	--zn-dur-op: 100ms;
+}
+
+/* ── Area Targeting Sectors ── */
+.zn-radial-sectors {
+	opacity: var(--zn-op, 1);
+	transition: opacity var(--zn-dur-op, 175ms) ease-out;
+	will-change: opacity;
+}
+
+.zn-radial-sector {
+	transition: opacity 130ms ease-out;
+}
+
+.zn-radial--closing .zn-radial-sectors {
+	--zn-dur-op: 100ms;
+}
+
+/* ── Sustained Aim (Dwell) Progress Ring ── */
+@keyframes zn-dwell-arc {
+	from {
+		stroke-dashoffset: 1;
+	}
+	to {
+		stroke-dashoffset: 0;
+	}
+}
+
+.zn-dwell-arc {
+	stroke-dasharray: 1;
+	stroke-dashoffset: 1;
+	animation: zn-dwell-arc var(--zn-dwell-ms, 400ms) linear forwards;
+}
+
+/* ── Launch Echo Animations (520ms) ── */
+@keyframes zn-launch-pop {
+	0%   { transform: scale(1);    opacity: 1; }
+	18%  { transform: scale(1.18); opacity: 1; }
+	42%  { transform: scale(1.02); opacity: 1; }
+	62%  { transform: scale(1.04); opacity: 0.96; }
+	100% { transform: scale(0.82); opacity: 0; }
+}
+
+@keyframes zn-launch-pop-center {
+	0%   { transform: translate(-50%, -50%) scale(1);    opacity: 1; }
+	18%  { transform: translate(-50%, -50%) scale(1.14); opacity: 1; }
+	42%  { transform: translate(-50%, -50%) scale(1);    opacity: 1; }
+	62%  { transform: translate(-50%, -50%) scale(1.02); opacity: 0.96; }
+	100% { transform: translate(-50%, -50%) scale(0.84); opacity: 0; }
+}
+
+@keyframes zn-launch-wave {
+	0%   { transform: translate(-50%, -50%) scale(0.92); opacity: 0; }
+	8%   { opacity: 0.58; }
+	100% { transform: translate(-50%, -50%) scale(2.7);  opacity: 0; }
+}
+
+.zn-radial-slice--faded {
+	--zn-dur-op: 120ms;
+	--zn-dur: 180ms;
+	--zn-ease: ease-in;
+}
+
+.zn-radial-slice--fired {
+	--zn-dur: 120ms;
+}
+
+.zn-launch-pop {
+	animation: zn-launch-pop var(--zn-echo-ms, 520ms) cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+	will-change: transform, opacity;
+}
+
+.zn-launch-pop-center {
+	animation: zn-launch-pop-center var(--zn-echo-ms, 520ms) cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+	will-change: transform, opacity;
+}
+
+.zn-launch-wave {
 	position: absolute;
-	bottom: -46px;
+	pointer-events: none;
+	opacity: 0;
+	transform: translate(-50%, -50%) scale(0.92);
+	animation: zn-launch-wave calc(var(--zn-echo-ms, 520ms) * 0.82) cubic-bezier(0.12, 0.74, 0.3, 1) forwards;
+	will-change: transform, opacity;
+}
+
+.zn-launch-wave--late {
+	animation-delay: calc(var(--zn-echo-ms, 520ms) * 0.16);
+	animation-duration: calc(var(--zn-echo-ms, 520ms) * 0.66);
+}
+
+@keyframes zn-launch-fade {
+	0%   { opacity: 1; }
+	55%  { opacity: 1; }
+	100% { opacity: 0; }
+}
+
+.zn-launch-fade {
+	animation: zn-launch-fade var(--zn-echo-ms, 520ms) ease-out forwards;
+}
+
+@keyframes zn-launch-scrim {
+	0%   { opacity: 1; }
+	100% { opacity: 0; }
+}
+
+.zn-launch-scrim {
+	animation: zn-launch-scrim var(--zn-echo-ms, 520ms) ease-in forwards;
+}
+
+/* ── Type-Ahead Filter Pill ── */
+.zn-radial-filter {
+	position: fixed;
+	top: 28px;
+	left: 50%;
+	transform: translateX(-50%);
+	z-index: 40;
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	padding: 6px 14px;
+	border-radius: 999px;
+	background: rgba(6, 7, 9, 0.94);
+	border: 1px solid rgba(255, 255, 255, 0.18);
+	box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.55);
+	pointer-events: none;
+}
+
+.zn-radial-filter-query {
+	font-size: 13px;
+	font-weight: 600;
+	color: #ffffff;
+	letter-spacing: -0.01em;
+}
+
+.zn-radial-filter-count {
+	font-size: 11px;
+	font-weight: 500;
+	color: rgba(255, 255, 255, 0.5);
+}
+
+/* ── Workspace Switcher Strip & Peek ── */
+.zn-ws-tabs {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px;
+	border-radius: 999px;
+	background: rgba(6, 7, 9, 0.94);
+	border: 1px solid rgba(255, 255, 255, 0.16);
+	box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 10px 26px rgba(0, 0, 0, 0.52);
+	pointer-events: auto;
+}
+
+.zn-ws-tab {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	padding: 5px 11px;
+	border-radius: 999px;
+	border: 1px solid transparent;
+	background: transparent;
+	color: rgba(255, 255, 255, 0.62);
+	font-size: 11.5px;
+	font-weight: 500;
+	line-height: 1;
+	cursor: pointer;
+	transition: all 140ms ease-out;
+}
+
+.zn-ws-tab:hover {
+	color: rgba(255, 255, 255, 0.92);
+	background: rgba(255, 255, 255, 0.07);
+}
+
+.zn-ws-tab.is-active {
+	background: var(--zn-hover-color, #ffffff);
+	color: var(--zn-hover-fg, #000000);
+	border-color: var(--zn-hover-color, #ffffff);
+	font-weight: 600;
+}
+
+.zn-ws-tab-key {
+	font-size: 10px;
+	padding: 2px 5px;
+	border-radius: 4px;
+	background: rgba(255, 255, 255, 0.1);
+	color: inherit;
+	opacity: 0.75;
+}
+
+.zn-ws-tab.is-active .zn-ws-tab-key {
+	background: rgba(0, 0, 0, 0.12);
+}
+
+/* Workspace Peek Fan/Ring */
+.zn-ws-peek {
+	position: absolute;
+	bottom: calc(100% + 10px);
 	left: 50%;
 	transform: translateX(-50%);
 	display: flex;
+	align-items: center;
 	gap: 6px;
-	padding: 4px 8px;
-	border-radius: 24px;
-	background: rgba(14, 15, 20, 0.88);
-	backdrop-filter: blur(24px);
-	-webkit-backdrop-filter: blur(24px);
-	border: 1px solid rgba(255, 255, 255, 0.14);
-	box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
-	z-index: 15;
+	padding: 6px 10px;
+	border-radius: 14px;
+	background: rgba(10, 11, 14, 0.96);
+	border: 1px solid rgba(255, 255, 255, 0.22);
+	box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55), 0 12px 28px rgba(0, 0, 0, 0.6);
+	pointer-events: none;
+	white-space: nowrap;
+	z-index: 50;
+	animation: zn-peek-in 150ms cubic-bezier(0.2, 0.82, 0.28, 1) forwards;
 }
 
-.radial-workspace-pill {
+@keyframes zn-peek-in {
+	from {
+		opacity: 0;
+		transform: translateX(-50%) translateY(6px) scale(0.92);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(-50%) translateY(0) scale(1);
+	}
+}
+
+.zn-ws-peek-item {
+	width: 26px;
+	height: 26px;
+	border-radius: 8px;
+	background: #141519;
+	border: 1px solid rgba(255, 255, 255, 0.2);
 	display: flex;
 	align-items: center;
-	gap: 5px;
-	padding: 4px 11px;
-	border-radius: 16px;
-	font-size: 11px;
-	font-weight: 500;
-	color: rgba(255, 255, 255, 0.65);
-	background: transparent;
-	border: none;
-	cursor: pointer;
-	transition: all 0.15s ease;
-}
-
-.radial-workspace-pill:hover {
+	justify-content: center;
 	color: #ffffff;
-	background: rgba(255, 255, 255, 0.08);
 }
 
-.radial-workspace-pill.active {
-	color: #ffffff;
-	background: var(--bloom-accent, #007aff);
-	box-shadow: 0 2px 10px rgba(0, 122, 255, 0.45);
-}
-
-/* Light Mode Overrides */
-.light-mode .radial-center-hub {
-	background: radial-gradient(circle at 50% 30%, rgba(255, 255, 255, 0.95) 0%, rgba(240, 242, 248, 0.98) 100%);
-	border-color: rgba(0, 0, 0, 0.1);
-	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15);
-	color: #1a1a1a;
-}
-
-.light-mode .radial-hub-title {
-	color: #222222;
-}
-
-.light-mode .radial-slice-item {
-	background: rgba(255, 255, 255, 0.85);
-	border-color: rgba(0, 0, 0, 0.1);
-	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
-	color: #1a1a1a;
-}
-
-.light-mode .radial-slice-item.active {
-	background: rgba(255, 255, 255, 0.98);
-	box-shadow: 0 14px 34px rgba(0, 0, 0, 0.18), 0 0 20px rgba(0, 122, 255, 0.35);
-}
-
-.light-mode .radial-floating-label {
-	background: rgba(255, 255, 255, 0.96);
-	border-color: rgba(0, 0, 0, 0.12);
-	color: #1a1a1a;
-	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
-}
-
-.light-mode .radial-workspaces-bar {
-	background: rgba(255, 255, 255, 0.9);
-	border-color: rgba(0, 0, 0, 0.1);
-	box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+@media (prefers-reduced-motion: reduce) {
+	.zn-radial-slice,
+	.zn-radial-hub,
+	.zn-radial-label,
+	.zn-radial-pill,
+	.zn-radial-scrim,
+	.zn-radial-sectors,
+	.zn-radial-sector {
+		transition-duration: 0.01ms !important;
+	}
+	.zn-launch-pop,
+	.zn-launch-pop-center,
+	.zn-launch-wave,
+	.zn-launch-fade,
+	.zn-launch-scrim {
+		animation: none !important;
+	}
+	.zn-launch-wave {
+		display: none !important;
+	}
 }

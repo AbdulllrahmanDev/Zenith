@@ -12,7 +12,7 @@ import { MixerIcon, SpeakerIcon } from "./icons";
 import "./Overlay.css";
 import { EdgeSurface } from "./components/EdgeSurface";
 import { RadialMenu } from "./components/RadialMenu";
-import { DEFAULT_WORKSPACES, type RadialWorkspace } from "./radial/types";
+import { DEFAULT_WHEEL_CONFIG, DEFAULT_WORKSPACES, type RadialWheelConfig } from "./radial/types";
 import { initTheme } from "./theme";
 import { createRegionSender, measureElements, type RegionRect } from "./windowRegion";
 
@@ -607,8 +607,12 @@ function OverlayApp() {
 	const [updateProgress, setUpdateProgress] = useState(0);
 
 	// Mouse Radial Menu State
-	const [radialOpen, setRadialOpen] = useState(false);
-	const [radialPosition, setRadialPosition] = useState({ x: 0, y: 0 });
+	const [radialPosition, setRadialPosition] = useState<{
+		x: number;
+		y: number;
+		width?: number;
+		height?: number;
+	}>({ x: 0, y: 0 });
 	const [mouseRadialEnabled, setMouseRadialEnabled] = useState(
 		() => localStorage.getItem("zenith-mouse-radial-enabled") !== "false"
 	);
@@ -622,19 +626,34 @@ function OverlayApp() {
 		() => (localStorage.getItem("zenith-mouse-selection-mode") === "cursor" ? "cursor" : "area")
 	);
 	const [mouseAreaWedges, setMouseAreaWedges] = useState(
-		() => localStorage.getItem("zenith-mouse-area-wedges") === "true"
+		() => localStorage.getItem("zenith-mouse-area-wedges") !== "false"
 	);
 	const [mouseInstantActivate, setMouseInstantActivate] = useState<"off" | "dwell">(
 		() => (localStorage.getItem("zenith-mouse-instant-activate") === "dwell" ? "dwell" : "off")
 	);
 	const [mouseInstantDwellMs, setMouseInstantDwellMs] = useState(
-		() => parseInt(localStorage.getItem("zenith-mouse-instant-dwell-ms") || "350", 10)
+		() => parseInt(localStorage.getItem("zenith-mouse-instant-dwell-ms") || "220", 10)
+	);
+	const [mouseInstantSensitivity, setMouseInstantSensitivity] = useState<"low" | "medium" | "high">(
+		() => {
+			const s = localStorage.getItem("zenith-mouse-instant-sensitivity");
+			return s === "low" || s === "high" ? s : "medium";
+		}
 	);
 	const [mouseNumberLaunch, setMouseNumberLaunch] = useState(
-		() => localStorage.getItem("zenith-mouse-number-launch") === "true"
+		() => localStorage.getItem("zenith-mouse-number-launch") !== "false"
 	);
 	const [mouseNumberLabels, setMouseNumberLabels] = useState(
 		() => localStorage.getItem("zenith-mouse-number-labels") !== "false"
+	);
+	const [mouseWorkspacePeek, setMouseWorkspacePeek] = useState(
+		() => localStorage.getItem("zenith-mouse-workspace-peek") !== "false"
+	);
+	const [mouseWorkspacePeekStyle, setMouseWorkspacePeekStyle] = useState<"fan" | "ring">(
+		() => (localStorage.getItem("zenith-mouse-workspace-peek-style") === "ring" ? "ring" : "fan")
+	);
+	const [mouseWorkspacePeekDelayMs, setMouseWorkspacePeekDelayMs] = useState(
+		() => parseInt(localStorage.getItem("zenith-mouse-workspace-peek-delay-ms") || "220", 10)
 	);
 	const [mouseSoundEnabled, setMouseSoundEnabled] = useState(
 		() => localStorage.getItem("zenith-mouse-sound-enabled") !== "false"
@@ -642,14 +661,46 @@ function OverlayApp() {
 	const [mouseSoundVolume, setMouseSoundVolume] = useState(
 		() => parseInt(localStorage.getItem("zenith-mouse-sound-volume") || "70", 10)
 	);
-	const [mouseWorkspaces, setMouseWorkspaces] = useState<RadialWorkspace[]>(() => {
-		try {
-			const stored = localStorage.getItem("zenith-mouse-workspaces");
-			return stored ? JSON.parse(stored) : DEFAULT_WORKSPACES;
-		} catch {
-			return DEFAULT_WORKSPACES;
-		}
-	});
+	const [mouseWorkspacesJson, setMouseWorkspacesJson] = useState<string>(
+		() => localStorage.getItem("zenith-mouse-workspaces") || JSON.stringify(DEFAULT_WORKSPACES)
+	);
+	const [mouseActiveWorkspaceId, setMouseActiveWorkspaceId] = useState<string>(
+		() => localStorage.getItem("zenith-mouse-active-workspace") || "main"
+	);
+	const [mouseWheelConfig, setMouseWheelConfig] = useState<RadialWheelConfig>(() => ({
+		menuRadius: parseInt(
+			localStorage.getItem("zenith-mouse-menu-radius") || String(DEFAULT_WHEEL_CONFIG.menuRadius),
+			10
+		),
+		iconSize: parseInt(
+			localStorage.getItem("zenith-mouse-icon-size") || String(DEFAULT_WHEEL_CONFIG.iconSize),
+			10
+		),
+		appSpacing: parseInt(
+			localStorage.getItem("zenith-mouse-app-spacing") || String(DEFAULT_WHEEL_CONFIG.appSpacing),
+			10
+		),
+		backdropOpacity: parseFloat(
+			localStorage.getItem("zenith-mouse-backdrop-opacity") ||
+				String(DEFAULT_WHEEL_CONFIG.backdropOpacity)
+		),
+		hoverColor:
+			localStorage.getItem("zenith-mouse-hover-color") || DEFAULT_WHEEL_CONFIG.hoverColor,
+		activationThreshold: parseInt(
+			localStorage.getItem("zenith-mouse-activation-threshold") ||
+				String(DEFAULT_WHEEL_CONFIG.activationThreshold),
+			10
+		),
+		showLabels: localStorage.getItem("zenith-mouse-show-labels") !== "false",
+		alwaysShowAppLabels: localStorage.getItem("zenith-mouse-always-show-labels") === "true",
+		showWorkspacePill: localStorage.getItem("zenith-mouse-show-workspace-pill") !== "false",
+		openSoundId:
+			(localStorage.getItem("zenith-mouse-open-sound") as RadialWheelConfig["openSoundId"]) ||
+			DEFAULT_WHEEL_CONFIG.openSoundId,
+		hoverSoundId:
+			(localStorage.getItem("zenith-mouse-hover-sound") as RadialWheelConfig["hoverSoundId"]) ||
+			DEFAULT_WHEEL_CONFIG.hoverSoundId
+	}));
 
 	// Volume state
 	const [volume, setVolume] = useState(0.5);
@@ -690,20 +741,113 @@ function OverlayApp() {
 		}, 2000);
 	}, []);
 
-	// Load scale from settings
+	// Load scale and radial settings from backend
 	useEffect(() => {
 		invoke("load_settings")
 			.then(async (settings: any) => {
 				if (await reloadIfMirrorWasStale(settings)) return;
-				if (settings && settings["bloom-scale"] !== undefined) {
+				if (!settings) return;
+				if (settings["bloom-scale"] !== undefined) {
 					setScale(parseFloat(settings["bloom-scale"]));
 				}
-				if (settings && settings["bloom-brightness-overlay-enabled"] !== undefined) {
+				if (settings["bloom-brightness-overlay-enabled"] !== undefined) {
 					setBrightnessOverlayEnabled(settings["bloom-brightness-overlay-enabled"] === "true");
 				}
-				if (settings && settings["bloom-volume-overlay-enabled"] !== undefined) {
+				if (settings["bloom-volume-overlay-enabled"] !== undefined) {
 					setVolumeOverlayEnabled(settings["bloom-volume-overlay-enabled"] === "true");
 				}
+				if (settings["zenith-mouse-radial-enabled"] !== undefined) {
+					setMouseRadialEnabled(settings["zenith-mouse-radial-enabled"] !== "false");
+				}
+				if (settings["zenith-mouse-trigger-mode"] !== undefined) {
+					setMouseTriggerMode(settings["zenith-mouse-trigger-mode"] === "click" ? "click" : "hold");
+				}
+				if (settings["zenith-mouse-placement"] !== undefined) {
+					setMousePlacement(settings["zenith-mouse-placement"] === "center" ? "center" : "cursor");
+				}
+				if (settings["zenith-mouse-selection-mode"] !== undefined) {
+					setMouseSelectionMode(settings["zenith-mouse-selection-mode"] === "cursor" ? "cursor" : "area");
+				}
+				if (settings["zenith-mouse-area-wedges"] !== undefined) {
+					setMouseAreaWedges(settings["zenith-mouse-area-wedges"] !== "false");
+				}
+				if (settings["zenith-mouse-instant-activate"] !== undefined) {
+					setMouseInstantActivate(settings["zenith-mouse-instant-activate"] === "dwell" ? "dwell" : "off");
+				}
+				if (settings["zenith-mouse-instant-dwell-ms"] !== undefined) {
+					setMouseInstantDwellMs(parseInt(settings["zenith-mouse-instant-dwell-ms"], 10) || 220);
+				}
+				if (settings["zenith-mouse-instant-sensitivity"] !== undefined) {
+					const s = settings["zenith-mouse-instant-sensitivity"];
+					setMouseInstantSensitivity(s === "low" || s === "high" ? s : "medium");
+				}
+				if (settings["zenith-mouse-number-launch"] !== undefined) {
+					setMouseNumberLaunch(settings["zenith-mouse-number-launch"] !== "false");
+				}
+				if (settings["zenith-mouse-number-labels"] !== undefined) {
+					setMouseNumberLabels(settings["zenith-mouse-number-labels"] !== "false");
+				}
+				if (settings["zenith-mouse-workspace-peek"] !== undefined) {
+					setMouseWorkspacePeek(settings["zenith-mouse-workspace-peek"] !== "false");
+				}
+				if (settings["zenith-mouse-workspace-peek-style"] !== undefined) {
+					setMouseWorkspacePeekStyle(settings["zenith-mouse-workspace-peek-style"] === "ring" ? "ring" : "fan");
+				}
+				if (settings["zenith-mouse-workspace-peek-delay-ms"] !== undefined) {
+					setMouseWorkspacePeekDelayMs(parseInt(settings["zenith-mouse-workspace-peek-delay-ms"], 10) || 220);
+				}
+				if (settings["zenith-mouse-sound-enabled"] !== undefined) {
+					setMouseSoundEnabled(settings["zenith-mouse-sound-enabled"] !== "false");
+				}
+				if (settings["zenith-mouse-sound-volume"] !== undefined) {
+					setMouseSoundVolume(parseInt(settings["zenith-mouse-sound-volume"], 10) || 70);
+				}
+				if (typeof settings["zenith-mouse-workspaces"] === "string") {
+					setMouseWorkspacesJson(settings["zenith-mouse-workspaces"]);
+				}
+				if (typeof settings["zenith-mouse-active-workspace"] === "string") {
+					setMouseActiveWorkspaceId(settings["zenith-mouse-active-workspace"]);
+				}
+				setMouseWheelConfig((prev) => ({
+					...prev,
+					...(settings["zenith-mouse-menu-radius"] !== undefined
+						? { menuRadius: parseInt(settings["zenith-mouse-menu-radius"], 10) || prev.menuRadius }
+						: null),
+					...(settings["zenith-mouse-icon-size"] !== undefined
+						? { iconSize: parseInt(settings["zenith-mouse-icon-size"], 10) || prev.iconSize }
+						: null),
+					...(settings["zenith-mouse-app-spacing"] !== undefined
+						? { appSpacing: parseInt(settings["zenith-mouse-app-spacing"], 10) || prev.appSpacing }
+						: null),
+					...(settings["zenith-mouse-backdrop-opacity"] !== undefined
+						? { backdropOpacity: parseFloat(settings["zenith-mouse-backdrop-opacity"]) }
+						: null),
+					...(settings["zenith-mouse-hover-color"] !== undefined
+						? { hoverColor: settings["zenith-mouse-hover-color"] }
+						: null),
+					...(settings["zenith-mouse-activation-threshold"] !== undefined
+						? {
+								activationThreshold:
+									parseInt(settings["zenith-mouse-activation-threshold"], 10) ||
+									prev.activationThreshold
+							}
+						: null),
+					...(settings["zenith-mouse-show-labels"] !== undefined
+						? { showLabels: settings["zenith-mouse-show-labels"] !== "false" }
+						: null),
+					...(settings["zenith-mouse-always-show-labels"] !== undefined
+						? { alwaysShowAppLabels: settings["zenith-mouse-always-show-labels"] === "true" }
+						: null),
+					...(settings["zenith-mouse-show-workspace-pill"] !== undefined
+						? { showWorkspacePill: settings["zenith-mouse-show-workspace-pill"] !== "false" }
+						: null),
+					...(settings["zenith-mouse-open-sound"] !== undefined
+						? { openSoundId: settings["zenith-mouse-open-sound"] }
+						: null),
+					...(settings["zenith-mouse-hover-sound"] !== undefined
+						? { hoverSoundId: settings["zenith-mouse-hover-sound"] }
+						: null)
+				}));
 			})
 			.catch(console.error);
 	}, []);
@@ -834,15 +978,21 @@ function OverlayApp() {
 			}
 		);
 
-		const radialOpenPromise = listen<{ x: number; y: number }>("radial-open", (event) => {
-			if (splashActiveRef.current || !mouseRadialEnabled) return;
-			setRadialPosition({ x: event.payload.x, y: event.payload.y });
-			setRadialOpen(true);
-			setMode("radial");
-		});
+		const radialOpenPromise = listen<{ x: number; y: number; width?: number; height?: number }>(
+			"radial-open",
+			(event) => {
+				if (splashActiveRef.current || !mouseRadialEnabled) return;
+				setRadialPosition({
+					x: event.payload.x,
+					y: event.payload.y,
+					width: event.payload.width,
+					height: event.payload.height
+				});
+				setMode("radial");
+			}
+		);
 
 		const radialClosePromise = listen("radial-close", () => {
-			setRadialOpen(false);
 			setMode("idle");
 		});
 
@@ -878,17 +1028,56 @@ function OverlayApp() {
 		"zenith-mouse-area-wedges": setMouseAreaWedges,
 		"zenith-mouse-instant-activate": (v: unknown) => setMouseInstantActivate(v === "dwell" ? "dwell" : "off"),
 		"zenith-mouse-instant-dwell-ms": setMouseInstantDwellMs,
+		"zenith-mouse-instant-sensitivity": (v: unknown) =>
+			setMouseInstantSensitivity(v === "low" || v === "high" ? v : "medium"),
 		"zenith-mouse-number-launch": setMouseNumberLaunch,
 		"zenith-mouse-number-labels": setMouseNumberLabels,
+		"zenith-mouse-workspace-peek": setMouseWorkspacePeek,
+		"zenith-mouse-workspace-peek-style": (v: unknown) =>
+			setMouseWorkspacePeekStyle(v === "ring" ? "ring" : "fan"),
+		"zenith-mouse-workspace-peek-delay-ms": setMouseWorkspacePeekDelayMs,
 		"zenith-mouse-sound-enabled": setMouseSoundEnabled,
 		"zenith-mouse-sound-volume": setMouseSoundVolume,
 		"zenith-mouse-workspaces": (v: unknown) => {
-			try {
-				if (typeof v === "string") {
-					setMouseWorkspaces(JSON.parse(v));
-				}
-			} catch {}
-		}
+			if (typeof v === "string") setMouseWorkspacesJson(v);
+		},
+		"zenith-mouse-active-workspace": (v: unknown) => {
+			if (typeof v === "string") setMouseActiveWorkspaceId(v);
+		},
+		"zenith-mouse-menu-radius": (v: unknown) =>
+			setMouseWheelConfig((prev) => ({ ...prev, menuRadius: Number(v) || prev.menuRadius })),
+		"zenith-mouse-icon-size": (v: unknown) =>
+			setMouseWheelConfig((prev) => ({ ...prev, iconSize: Number(v) || prev.iconSize })),
+		"zenith-mouse-app-spacing": (v: unknown) =>
+			setMouseWheelConfig((prev) => ({ ...prev, appSpacing: Number(v) || prev.appSpacing })),
+		"zenith-mouse-backdrop-opacity": (v: unknown) =>
+			setMouseWheelConfig((prev) => ({
+				...prev,
+				backdropOpacity: typeof v === "number" ? v : parseFloat(String(v)) || prev.backdropOpacity
+			})),
+		"zenith-mouse-hover-color": (v: unknown) =>
+			setMouseWheelConfig((prev) => ({ ...prev, hoverColor: String(v || prev.hoverColor) })),
+		"zenith-mouse-activation-threshold": (v: unknown) =>
+			setMouseWheelConfig((prev) => ({
+				...prev,
+				activationThreshold: Number(v) || prev.activationThreshold
+			})),
+		"zenith-mouse-show-labels": (v: unknown) =>
+			setMouseWheelConfig((prev) => ({ ...prev, showLabels: Boolean(v) })),
+		"zenith-mouse-always-show-labels": (v: unknown) =>
+			setMouseWheelConfig((prev) => ({ ...prev, alwaysShowAppLabels: Boolean(v) })),
+		"zenith-mouse-show-workspace-pill": (v: unknown) =>
+			setMouseWheelConfig((prev) => ({ ...prev, showWorkspacePill: Boolean(v) })),
+		"zenith-mouse-open-sound": (v: unknown) =>
+			setMouseWheelConfig((prev) => ({
+				...prev,
+				openSoundId: String(v || prev.openSoundId) as RadialWheelConfig["openSoundId"]
+			})),
+		"zenith-mouse-hover-sound": (v: unknown) =>
+			setMouseWheelConfig((prev) => ({
+				...prev,
+				hoverSoundId: String(v || prev.hoverSoundId) as RadialWheelConfig["hoverSoundId"]
+			}))
 	});
 
 	// Side effects: reset overlay mode to idle when overlay is disabled
@@ -917,6 +1106,11 @@ function OverlayApp() {
 					hideWindowTimeoutRef.current = setTimeout(async () => {
 						await appWindow.hide();
 					}, 400);
+				} else if (mode === "radial") {
+					// Rust `show_overlay_for_radial` already positioned the window on the
+					// target monitor and cleared WS_EX_TRANSPARENT. Do NOT call
+					// sync_overlay_position here, or it would re-apply WS_EX_TRANSPARENT!
+					await appWindow.show();
 				} else {
 					// Position the window first, then show
 					await invoke("sync_overlay_position");
@@ -1103,13 +1297,20 @@ function OverlayApp() {
 			{/* Mouse Radial Wheel Launcher */}
 			{mode === "radial" && (
 				<RadialMenu
-					isOpen={radialOpen}
-					position={radialPosition}
-					workspaces={mouseWorkspaces}
+					openX={radialPosition.x}
+					openY={radialPosition.y}
+					viewportWidth={radialPosition.width}
+					viewportHeight={radialPosition.height}
+					workspacesJson={mouseWorkspacesJson}
+					activeWorkspaceId={mouseActiveWorkspaceId}
+					wheelConfig={mouseWheelConfig}
 					onClose={() => {
-						setRadialOpen(false);
 						setMode("idle");
 						invoke("close_radial_menu").catch(() => {});
+					}}
+					onLaunchVolumeMixer={() => {
+						setMode("volume");
+						handleMixerExpandedChange(true);
 					}}
 					triggerMode={mouseTriggerMode}
 					placement={mousePlacement}
@@ -1117,8 +1318,12 @@ function OverlayApp() {
 					areaWedges={mouseAreaWedges}
 					instantActivate={mouseInstantActivate}
 					instantDwellMs={mouseInstantDwellMs}
+					instantSensitivity={mouseInstantSensitivity}
 					numberLaunch={mouseNumberLaunch}
 					numberLabels={mouseNumberLabels}
+					workspacePeek={mouseWorkspacePeek}
+					workspacePeekStyle={mouseWorkspacePeekStyle}
+					workspacePeekDelayMs={mouseWorkspacePeekDelayMs}
 					soundEnabled={mouseSoundEnabled}
 					soundVolume={mouseSoundVolume}
 				/>

@@ -319,6 +319,28 @@ function SettingsApp() {
 							toggleMouseSound={settings.toggleMouseSound}
 							mouseSoundVolume={settings.mouseSoundVolume}
 							handleMouseSoundVolumeChange={settings.handleMouseSoundVolumeChange}
+							mouseMenuRadius={settings.mouseMenuRadius}
+							handleMouseMenuRadiusChange={settings.handleMouseMenuRadiusChange}
+							mouseIconSize={settings.mouseIconSize}
+							handleMouseIconSizeChange={settings.handleMouseIconSizeChange}
+							mouseAppSpacing={settings.mouseAppSpacing}
+							handleMouseAppSpacingChange={settings.handleMouseAppSpacingChange}
+							mouseBackdropOpacity={settings.mouseBackdropOpacity}
+							handleMouseBackdropOpacityChange={settings.handleMouseBackdropOpacityChange}
+							mouseHoverColor={settings.mouseHoverColor}
+							handleMouseHoverColorChange={settings.handleMouseHoverColorChange}
+							mouseActivationThreshold={settings.mouseActivationThreshold}
+							handleMouseActivationThresholdChange={settings.handleMouseActivationThresholdChange}
+							mouseShowLabels={settings.mouseShowLabels}
+							toggleMouseShowLabels={settings.toggleMouseShowLabels}
+							mouseAlwaysShowLabels={settings.mouseAlwaysShowLabels}
+							toggleMouseAlwaysShowLabels={settings.toggleMouseAlwaysShowLabels}
+							mouseShowWorkspacePill={settings.mouseShowWorkspacePill}
+							toggleMouseShowWorkspacePill={settings.toggleMouseShowWorkspacePill}
+							mouseOpenSound={settings.mouseOpenSound}
+							handleMouseOpenSoundChange={settings.handleMouseOpenSoundChange}
+							mouseHoverSound={settings.mouseHoverSound}
+							handleMouseHoverSoundChange={settings.handleMouseHoverSoundChange}
 						/>
 					)}
 					{activeTab === "about" && (

@@ -1,200 +1,337 @@
-import React from 'react';
-import type { RadialItem } from './types';
-import { getRadialIcon } from './iconMap';
+import React, { useMemo, useState } from "react";
+import { radialScrimGradient } from "./radialScrim";
+import { RovylLogo } from "./RovylLogo";
+import { SmartIcon } from "./SmartIcon";
 import {
-  annularSectorPath,
-  sectorBoundsDeg,
-} from './radialSectors';
+  computeRadialLayout,
+  getLabelPlacement,
+  getReadableForeground,
+  normalizeHoverColor,
+  RadialSectors,
+  roundedRectPathFromTop,
+  snapToDevicePixel,
+} from "./radialLayout";
+import { DEFAULT_WHEEL_CONFIG, type RadialItem, type RadialWheelConfig } from "./types";
 
-interface WheelPreviewProps {
+export interface WheelPreviewProps {
   items: RadialItem[];
-  workspaceName: string;
-  workspaceIcon: string;
-  selectionMode?: 'area' | 'cursor';
+  config: Partial<RadialWheelConfig>;
   areaWedges?: boolean;
-  numberLabels?: boolean;
-  hoverColor?: string;
-  onSliceClick?: (index: number) => void;
+  workspaceName?: string;
+  size?: number;
+  interactive?: boolean;
 }
+
+const FALLBACK_ITEMS: RadialItem[] = [
+  { id: "1", label: "Browser", type: "url", value: "https://google.com", icon: "Globe" },
+  { id: "2", label: "Terminal", type: "app", value: "wt.exe", icon: "Terminal" },
+  { id: "3", label: "Explorer", type: "folder", value: "C:\\", icon: "Folder" },
+  { id: "4", label: "Settings", type: "system", value: "settings", icon: "Settings" },
+  { id: "5", label: "Media", type: "system", value: "media-toggle", icon: "Music" },
+  { id: "6", label: "Calculator", type: "app", value: "calc.exe", icon: "Calculator" },
+];
 
 export const WheelPreview: React.FC<WheelPreviewProps> = ({
   items,
-  workspaceName,
-  workspaceIcon,
-  areaWedges = false,
-  numberLabels = true,
-  hoverColor = '#007aff',
-  onSliceClick,
+  config,
+  areaWedges = true,
+  workspaceName = "General",
+  size = 248,
+  interactive = true,
 }) => {
-  const [hoverIndex, setHoverIndex] = React.useState<number | null>(null);
-  const count = items.length;
-  const radiusInner = 36;
-  const radiusOuter = 110;
-  const orbitRadius = 78;
+  const fullConfig: RadialWheelConfig = { ...DEFAULT_WHEEL_CONFIG, ...config };
+  const previewItems = items.length > 0 ? items.slice(0, 12) : FALLBACK_ITEMS;
+  const [hoveredIdx, setHoveredIdx] = useState<number>(0);
 
-  const sliceAngle = count > 0 ? 360 / count : 360;
+  const { actualMenuRadius, actualIconSize } = useMemo(
+    () =>
+      computeRadialLayout({
+        numberOfApps: previewItems.length,
+        iconSizePx: fullConfig.iconSize,
+        minGap: fullConfig.appSpacing,
+        menuRadius: fullConfig.menuRadius,
+        activationThreshold: fullConfig.activationThreshold,
+        viewportSize: { width: 1400, height: 900 },
+      }),
+    [
+      previewItems.length,
+      fullConfig.iconSize,
+      fullConfig.appSpacing,
+      fullConfig.menuRadius,
+      fullConfig.activationThreshold,
+    ]
+  );
+
+  const hoverColor = normalizeHoverColor(fullConfig.hoverColor);
+  const hoverFg = getReadableForeground(hoverColor);
+
+  const hubDiameter =
+    Math.max(
+      32,
+      Math.min(
+        Math.round(fullConfig.iconSize * 0.82 * 1.2),
+        Math.round((actualMenuRadius - actualIconSize / 2 - 10) * 2)
+      )
+    ) & ~1;
+  const deadZoneRadius = Math.max(
+    fullConfig.activationThreshold ?? 60,
+    Math.ceil((hubDiameter / 2) * 1.06 * Math.SQRT2) + 4
+  );
+  const sectorOuterRadius = Math.max(actualMenuRadius + actualIconSize * 1.65, deadZoneRadius + 40);
+  const falloffRadius = actualMenuRadius + actualIconSize * 0.85;
+
+  const naturalSpan = (actualMenuRadius + actualIconSize / 2 + 88) * 2;
+  const scale = Math.min(0.68, size / Math.max(360, naturalSpan));
+
+  const scrimBg = useMemo(
+    () =>
+      radialScrimGradient(
+        Math.round(size / 2),
+        Math.round(size / 2),
+        Math.round((actualMenuRadius + actualIconSize / 2) * scale),
+        fullConfig.backdropOpacity
+      ),
+    [size, actualMenuRadius, actualIconSize, scale, fullConfig.backdropOpacity]
+  );
+
+  const activeIndex = hoveredIdx >= 0 && hoveredIdx < previewItems.length ? hoveredIdx : 0;
+  const stepDeg = 360 / Math.max(previewItems.length, 1);
 
   return (
     <div
+      className="zn-wheel-preview-card"
       style={{
-        position: 'relative',
-        width: '100%',
-        height: '240px',
-        borderRadius: '12px',
-        overflow: 'hidden',
-        background: 'radial-gradient(circle at center, rgba(32, 32, 46, 0.6) 0%, rgba(10, 10, 14, 0.95) 100%)',
-        border: '1px solid var(--bloom-border, rgba(255, 255, 255, 0.1))',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        userSelect: 'none',
+        position: "relative",
+        width: size,
+        height: size,
+        borderRadius: 16,
+        overflow: "hidden",
+        background: "linear-gradient(155deg, #8d97ad 0%, #6c758c 48%, #4d5468 100%)",
+        border: "1px solid rgba(255,255,255,0.14)",
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.2), 0 10px 28px rgba(0,0,0,0.34)",
+        userSelect: "none",
+        flexShrink: 0,
       }}
     >
-      {/* SVG Wedges Layer */}
-      {count > 0 && (
-        <svg
-          viewBox={`0 0 ${radiusOuter * 2} ${radiusOuter * 2}`}
-          style={{
-            position: 'absolute',
-            width: `${radiusOuter * 2}px`,
-            height: `${radiusOuter * 2}px`,
-            pointerEvents: 'none',
-          }}
-        >
-          {items.map((_, i) => {
-            const bounds = sectorBoundsDeg(i, count);
-            const isHovered = hoverIndex === i;
-            const path = annularSectorPath(radiusInner, radiusOuter, bounds.startDeg, bounds.endDeg);
-            return (
-              <path
-                key={i}
-                d={path}
-                fill={isHovered ? hoverColor : 'transparent'}
-                fillOpacity={isHovered ? 0.28 : 0}
-                stroke={areaWedges ? 'rgba(255, 255, 255, 0.12)' : 'none'}
-                strokeWidth={areaWedges ? 1 : 0}
-                style={{ transition: 'fill 0.15s ease, fill-opacity 0.15s ease' }}
-              />
-            );
-          })}
-        </svg>
-      )}
-
-      {/* Center Hub */}
+      {/* Stand-in desktop grid */}
       <div
         style={{
-          position: 'absolute',
-          width: '64px',
-          height: '64px',
-          borderRadius: '50%',
-          background: 'var(--bloom-bg, rgba(18, 18, 24, 0.92))',
-          backdropFilter: 'blur(20px)',
-          WebkitBackdropFilter: 'blur(20px)',
-          border: '1px solid var(--bloom-border, rgba(255, 255, 255, 0.15))',
-          boxShadow: '0 8px 24px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.2)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'var(--bloom-text, #ffffff)',
-          zIndex: 10,
-          cursor: 'default',
+          position: "absolute",
+          inset: 0,
+          backgroundImage: "radial-gradient(rgba(255,255,255,0.14) 1px, transparent 1px)",
+          backgroundSize: "18px 18px",
+          opacity: 0.45,
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* Live radial scrim */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: scrimBg,
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* Scaled wheel origin at card center */}
+      <div
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: "50%",
+          width: 0,
+          height: 0,
+          transform: `scale(${scale.toFixed(4)})`,
+          transformOrigin: "0 0",
         }}
       >
-        {(() => {
-          const HubIcon = getRadialIcon(workspaceIcon);
-          return <HubIcon size={18} strokeWidth={2} style={{ color: hoverColor }} />;
-        })()}
-        <span
+        {areaWedges && (
+          <RadialSectors
+            count={previewItems.length}
+            activeIndex={activeIndex}
+            radiusInner={hubDiameter / 2 + 4}
+            radiusOuter={sectorOuterRadius}
+            hoverColor={hoverColor}
+            falloffRadius={falloffRadius}
+            visible={true}
+            dimmed={false}
+          />
+        )}
+
+        {/* Center hub */}
+        <div
           style={{
-            fontSize: '9px',
-            fontWeight: 600,
-            marginTop: '2px',
-            maxWidth: '52px',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            position: "absolute",
+            left: 0,
+            top: 0,
+            width: hubDiameter,
+            height: hubDiameter,
+            transform: "translate(-50%, -50%)",
+            borderRadius: "50%",
+            background: `rgb(${12 + Math.round(fullConfig.backdropOpacity * 10)}, ${
+              12 + Math.round(fullConfig.backdropOpacity * 10)
+            }, ${14 + Math.round(fullConfig.backdropOpacity * 10)})`,
+            border: "1px solid rgba(255, 255, 255, 0.24)",
+            boxShadow:
+              "inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 0 0 1px rgba(0,0,0,0.5), 0 8px 22px rgba(0, 0, 0, 0.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#ffffff",
+            zIndex: 10,
           }}
         >
-          {workspaceName}
-        </span>
-      </div>
+          <RovylLogo size={Math.max(16, Math.round(hubDiameter * 0.44))} />
+        </div>
 
-      {/* Slices */}
-      {items.map((item, idx) => {
-        const angleDeg = idx * sliceAngle - 90;
-        const angleRad = angleDeg * (Math.PI / 180);
-        const posX = `calc(50% + ${Math.round(orbitRadius * Math.cos(angleRad))}px)`;
-        const posY = `calc(50% + ${Math.round(orbitRadius * Math.sin(angleRad))}px)`;
-        const isHovered = hoverIndex === idx;
-        const ItemIcon = getRadialIcon(item.icon);
+        {/* Wedge tiles & outer labels */}
+        {previewItems.map((item, i) => {
+          const isActive = i === activeIndex;
+          const angleDeg = i * stepDeg - 90;
+          const rad = (angleDeg * Math.PI) / 180;
+          const ix = actualMenuRadius * Math.cos(rad);
+          const iy = actualMenuRadius * Math.sin(rad);
 
-        return (
-          <div
-            key={item.id || idx}
-            onMouseEnter={() => setHoverIndex(idx)}
-            onMouseLeave={() => setHoverIndex(null)}
-            onClick={() => onSliceClick?.(idx)}
-            style={{
-              position: 'absolute',
-              left: posX,
-              top: posY,
-              transform: `translate(-50%, -50%) scale(${isHovered ? 1.12 : 1})`,
-              width: '46px',
-              height: '40px',
-              borderRadius: '9px',
-              background: isHovered
-                ? 'var(--bloom-bg-expanded, rgba(32, 32, 46, 0.95))'
-                : 'var(--bloom-bg, rgba(22, 22, 30, 0.88))',
-              border: `1px solid ${isHovered ? hoverColor : 'var(--bloom-border, rgba(255, 255, 255, 0.12))'}`,
-              boxShadow: isHovered
-                ? `0 6px 18px rgba(0, 0, 0, 0.5), 0 0 14px ${hoverColor}40`
-                : '0 4px 12px rgba(0, 0, 0, 0.35)',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              zIndex: isHovered ? 8 : 5,
-              transition: 'all 0.16s cubic-bezier(0.16, 1, 0.3, 1)',
-              color: 'var(--bloom-text, #ffffff)',
-              padding: '2px',
-              boxSizing: 'border-box',
-            }}
-            title={`${item.label} (${item.target})`}
-          >
-            {numberLabels && (
-              <span
-                style={{
-                  position: 'absolute',
-                  top: '2px',
-                  left: '3px',
-                  fontSize: '7px',
-                  fontWeight: 700,
-                  opacity: isHovered ? 1 : 0.6,
-                  color: isHovered ? hoverColor : 'inherit',
-                }}
-              >
-                {idx + 1}
-              </span>
-            )}
-            <ItemIcon size={15} strokeWidth={1.8} style={{ color: isHovered ? hoverColor : 'inherit' }} />
-            <span
+          const labelPos = getLabelPlacement(angleDeg, actualIconSize);
+          const showLabel =
+            fullConfig.showLabels && (fullConfig.alwaysShowAppLabels || isActive);
+
+          return (
+            <div
+              key={item.id || i}
               style={{
-                fontSize: '8px',
-                fontWeight: isHovered ? 600 : 500,
-                marginTop: '1px',
-                maxWidth: '40px',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
+                position: "absolute",
+                left: 0,
+                top: 0,
+                transform: `translate3d(${snapToDevicePixel(ix)}px, ${snapToDevicePixel(
+                  iy
+                )}px, 0) scale(${isActive ? 1.06 : 1})`,
+                transition: "transform 150ms cubic-bezier(0.22, 1, 0.36, 1)",
+                zIndex: isActive ? 25 : 15,
               }}
             >
-              {item.label}
-            </span>
+              <div
+                style={{
+                  position: "relative",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  transform: "translate(-50%, -50%)",
+                }}
+              >
+                <div
+                  onMouseEnter={() => interactive && setHoveredIdx(i)}
+                  style={{
+                    width: actualIconSize,
+                    height: actualIconSize,
+                    borderRadius: 18,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: isActive
+                      ? hoverColor
+                      : `rgb(${12 + Math.round(fullConfig.backdropOpacity * 10)}, ${
+                          12 + Math.round(fullConfig.backdropOpacity * 10)
+                        }, ${14 + Math.round(fullConfig.backdropOpacity * 10)})`,
+                    border: isActive
+                      ? `1px solid ${hoverColor}`
+                      : `1px solid rgba(255,255,255,${(
+                          0.28 +
+                          fullConfig.backdropOpacity * 0.08
+                        ).toFixed(2)})`,
+                    color: isActive ? hoverFg : "#ffffff",
+                    boxShadow: isActive
+                      ? `0 0 0 1px rgba(0,0,0,0.45), 0 0 0 4px ${hoverColor}2e, 0 0 22px ${hoverColor}38, 0 12px 28px rgba(0,0,0,0.5)`
+                      : "inset 0 1px 0 rgba(255,255,255,0.08), 0 0 0 1px rgba(0,0,0,0.5), 0 8px 22px rgba(0,0,0,0.42)",
+                    cursor: interactive ? "pointer" : "default",
+                    transition:
+                      "background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease",
+                  }}
+                >
+                  <SmartIcon item={item} size={actualIconSize} />
+                </div>
+
+                {showLabel && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: "50%",
+                      top: "50%",
+                      transform:
+                        `translate(${labelPos.originX}, ${labelPos.originY}) ` +
+                        `translate3d(${snapToDevicePixel(labelPos.x)}px, ${snapToDevicePixel(
+                          labelPos.y
+                        )}px, 0)`,
+                      padding: "5px 11px",
+                      borderRadius: 999,
+                      whiteSpace: "nowrap",
+                      background: isActive ? hoverColor : "rgba(6,7,9,0.95)",
+                      border: `1px solid ${isActive ? hoverColor : "rgba(255,255,255,0.2)"}`,
+                      color: isActive ? hoverFg : "rgba(255,255,255,0.78)",
+                      fontSize: 12,
+                      fontWeight: 500,
+                      boxShadow: "0 0 0 1px rgba(0,0,0,0.45), 0 6px 18px rgba(0,0,0,0.45)",
+                      pointerEvents: "none",
+                      zIndex: 30,
+                    }}
+                  >
+                    {item.label}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Workspace indicator pill below wheel */}
+        {fullConfig.showWorkspacePill && (
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              top: actualMenuRadius + actualIconSize / 2 + 34,
+              transform: "translateX(-50%)",
+              padding: "5px 14px",
+              borderRadius: 999,
+              background: "rgba(12, 12, 15, 0.94)",
+              border: "1px solid rgba(255,255,255,0.16)",
+              color: "#ffffff",
+              fontSize: 11.5,
+              fontWeight: 600,
+              whiteSpace: "nowrap",
+              boxShadow: "0 8px 20px rgba(0,0,0,0.45)",
+              pointerEvents: "none",
+            }}
+          >
+            {workspaceName}
           </div>
-        );
-      })}
+        )}
+      </div>
+
+      {/* Live Preview badge */}
+      <div
+        style={{
+          position: "absolute",
+          left: 10,
+          bottom: 8,
+          fontSize: 10,
+          fontWeight: 600,
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+          color: "rgba(255,255,255,0.72)",
+          background: "rgba(14, 14, 18, 0.62)",
+          padding: "2px 7px",
+          borderRadius: 6,
+          border: "1px solid rgba(255,255,255,0.12)",
+          pointerEvents: "none",
+        }}
+      >
+        Live Preview
+      </div>
     </div>
   );
 };
+
+export { roundedRectPathFromTop };

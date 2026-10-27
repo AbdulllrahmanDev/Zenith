@@ -2373,6 +2373,28 @@ static MOUSE_RADIAL_DOWN_POINT: AtomicI64 = AtomicI64::new(0);
 static MOUSE_RADIAL_CLICK_ARMED: AtomicBool = AtomicBool::new(false);
 static MOUSE_RADIAL_CLICK_INJECTED: AtomicU32 = AtomicU32::new(0);
 static MOUSE_RADIAL_ARMED_BTN: AtomicU32 = AtomicU32::new(0);
+static RADIAL_MON_ORIGIN_X: AtomicI32 = AtomicI32::new(0);
+static RADIAL_MON_ORIGIN_Y: AtomicI32 = AtomicI32::new(0);
+static RADIAL_MON_SCALE_MILLI: AtomicI32 = AtomicI32::new(1000);
+static LAST_RADIAL_EMIT_CURSOR: AtomicI64 = AtomicI64::new(-1);
+
+pub fn set_radial_monitor_metrics(origin_x: i32, origin_y: i32, scale_factor: f64) {
+    RADIAL_MON_ORIGIN_X.store(origin_x, Ordering::Relaxed);
+    RADIAL_MON_ORIGIN_Y.store(origin_y, Ordering::Relaxed);
+    let scale_milli = (scale_factor * 1000.0).round().max(250.0) as i32;
+    RADIAL_MON_SCALE_MILLI.store(scale_milli, Ordering::Relaxed);
+    LAST_RADIAL_EMIT_CURSOR.store(-1, Ordering::Relaxed);
+}
+
+pub fn screen_to_radial_css(cursor_x: i32, cursor_y: i32) -> (i32, i32) {
+    let ox = RADIAL_MON_ORIGIN_X.load(Ordering::Relaxed);
+    let oy = RADIAL_MON_ORIGIN_Y.load(Ordering::Relaxed);
+    let scale = (RADIAL_MON_SCALE_MILLI.load(Ordering::Relaxed).max(250) as f64) / 1000.0;
+    (
+        ((cursor_x - ox) as f64 / scale).round() as i32,
+        ((cursor_y - oy) as f64 / scale).round() as i32,
+    )
+}
 
 fn inject_synthetic_mouse(button: u32, want_down: bool, want_up: bool) {
     use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -2440,11 +2462,15 @@ pub fn setup_mouse_hook(app_handle: AppHandle) {
     std::thread::Builder::new()
         .name("zenith-cursor-worker".into())
         .spawn(move || {
-            let frame = Duration::from_millis(32);
-            let mut last_processed = Instant::now() - frame;
+            let mut last_processed = Instant::now() - Duration::from_millis(32);
             while !SHUTTING_DOWN.load(Ordering::Relaxed) {
                 match receiver.recv_timeout(Duration::from_millis(500)) {
                     Ok(()) => {
+                        let frame = if MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed) {
+                            Duration::from_millis(8)
+                        } else {
+                            Duration::from_millis(32)
+                        };
                         if let Some(remaining) = frame.checked_sub(last_processed.elapsed()) {
                             std::thread::sleep(remaining);
                         }
@@ -3219,14 +3245,18 @@ unsafe extern "system" fn mouse_hook_proc(
             let is_bare_left_or_right = matches!(btn, MouseBtn::Left | MouseBtn::Right) && !ctrl && !alt && !shift && !win;
             if !is_bare_left_or_right {
                 let recorded = format_recorded_trigger(btn);
-                if let Some(ref app) = app_opt {
-                    let _ = crate::commands::save_setting(
-                        app.clone(),
-                        "zenith-mouse-trigger-button".into(),
-                        serde_json::Value::String(recorded),
-                    );
-                }
                 MOUSE_RADIAL_RECORDING.store(false, Ordering::Relaxed);
+                if let Some(ref app) = app_opt {
+                    let app_clone = app.clone();
+                    std::thread::spawn(move || {
+                        let _ = crate::commands::save_setting(
+                            app_clone.clone(),
+                            "zenith-mouse-trigger-button".into(),
+                            serde_json::Value::String(recorded.clone()),
+                        );
+                        let _ = app_clone.emit("mouse-trigger-recorded", recorded);
+                    });
+                }
                 return windows::Win32::Foundation::LRESULT(1);
             }
         }
@@ -3279,20 +3309,27 @@ unsafe extern "system" fn mouse_hook_proc(
                                 let dy = cursor_pt.y - down_pt.y;
                                 let dist_sq = dx * dx + dy * dy;
 
-                                MOUSE_RADIAL_MENU_OPEN.store(false, Ordering::Relaxed);
-
                                 // Short stationary tap: user wanted a native click (e.g. middle-click link/tab)
                                 if elapsed <= PASSTHROUGH_MAX_MS && dist_sq <= PASSTHROUGH_SLOP_PX * PASSTHROUGH_SLOP_PX {
+                                    MOUSE_RADIAL_MENU_OPEN.store(false, Ordering::Relaxed);
                                     let app_clone = app.clone();
                                     std::thread::spawn(move || {
-                                        let _ = app_clone.emit("radial-close", ());
+                                        crate::commands::close_radial_menu(app_clone);
                                     });
                                     inject_synthetic_mouse(btn_ordinal, true, true);
                                 } else {
-                                    // Gesture confirmed: execute aimed item
+                                    // Gesture confirmed: let RadialMenu resolve aim at release point, run Launch Echo / folder nav, or cancel on hub
+                                    let (rel_x, rel_y) = screen_to_radial_css(cursor_pt.x, cursor_pt.y);
                                     let app_clone = app.clone();
                                     std::thread::spawn(move || {
-                                        let _ = app_clone.emit("radial-release", ());
+                                        let _ = app_clone.emit(
+                                            "radial-release",
+                                            serde_json::json!({
+                                                "x": rel_x,
+                                                "y": rel_y,
+                                                "elapsed": elapsed
+                                            }),
+                                        );
                                     });
                                 }
                                 return windows::Win32::Foundation::LRESULT(1);
@@ -3317,7 +3354,7 @@ unsafe extern "system" fn mouse_hook_proc(
                                         MOUSE_RADIAL_MENU_OPEN.store(false, Ordering::Relaxed);
                                         let app_clone = app.clone();
                                         std::thread::spawn(move || {
-                                            let _ = app_clone.emit("radial-close", ());
+                                            crate::commands::close_radial_menu(app_clone);
                                         });
                                     }
                                 } else if was_armed {
@@ -3330,13 +3367,12 @@ unsafe extern "system" fn mouse_hook_proc(
 
                                     if elapsed < CLICK_HOLD_MS && dist_sq < CLICK_DRAG_PX * CLICK_DRAG_PX {
                                         let currently_open = MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed);
-                                        MOUSE_RADIAL_MENU_OPEN.store(!currently_open, Ordering::Relaxed);
                                         let app_clone = app.clone();
                                         std::thread::spawn(move || {
                                             if !currently_open {
                                                 crate::commands::show_overlay_for_radial(&app_clone, cursor_pt.x, cursor_pt.y);
                                             } else {
-                                                let _ = app_clone.emit("radial-close", ());
+                                                crate::commands::close_radial_menu(app_clone);
                                             }
                                         });
                                     }
@@ -3345,6 +3381,15 @@ unsafe extern "system" fn mouse_hook_proc(
                             }
                         }
                     }
+                } else if MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed) && btn == MouseBtn::Right {
+                    // Right-click while Radial Menu is open cancels and closes the wheel cleanly
+                    if is_down {
+                        let app_clone = app.clone();
+                        std::thread::spawn(move || {
+                            let _ = app_clone.emit("radial-cancel", ());
+                        });
+                    }
+                    return windows::Win32::Foundation::LRESULT(1);
                 }
             }
         }
@@ -3569,6 +3614,15 @@ fn process_mouse_position(app_handle: &AppHandle, cursor: windows::Win32::Founda
                         set_click_through(hwnd, false);
                     }
                     MH_LAST_OV_IGNORE.store(0, Ordering::Relaxed);
+                }
+                // Forward live OS cursor coordinates to RadialMenu (crucial for Hold mode where OS mouse capture is on the background window)
+                let packed = pack_cursor(cursor);
+                if LAST_RADIAL_EMIT_CURSOR.swap(packed, Ordering::Relaxed) != packed {
+                    let (rel_x, rel_y) = screen_to_radial_css(cursor.x, cursor.y);
+                    let _ = app_handle.emit(
+                        "radial-move",
+                        serde_json::json!({ "x": rel_x, "y": rel_y }),
+                    );
                 }
             } else if fg_fs {
                 let prev = MH_LAST_OV_IGNORE.load(Ordering::Relaxed);

@@ -150,7 +150,6 @@ export function useSettings() {
 	const [dockExtrasRecycleBin, setDockExtrasRecycleBin] = useState(
 		() => localStorage.getItem("bloom-dock-extras-recycle-bin") !== "false"
 	);
-	// Off unless turned on, so existing docks don't change.
 	const [dockTaskView, setDockTaskView] = useState(
 		() => localStorage.getItem("bloom-dock-task-view") === "true"
 	);
@@ -161,8 +160,6 @@ export function useSettings() {
 		() => localStorage.getItem("bloom-dock-extras-custom-folders") || "[]"
 	);
 	const [dockMode, setDockMode] = useState(() => {
-		// "smart" is the fresh-install default — keep in step with App.tsx,
-		// Dock.tsx, and the backend fallback in commands.rs.
 		const raw = localStorage.getItem("bloom-dock-mode") || "smart";
 		return raw === "auto-hide" ? "smart" : raw;
 	});
@@ -206,13 +203,13 @@ export function useSettings() {
 		() => (localStorage.getItem("zenith-mouse-selection-mode") === "cursor" ? "cursor" : "area")
 	);
 	const [mouseAreaWedges, setMouseAreaWedges] = useState(
-		() => localStorage.getItem("zenith-mouse-area-wedges") === "true"
+		() => localStorage.getItem("zenith-mouse-area-wedges") !== "false"
 	);
 	const [mouseInstantActivate, setMouseInstantActivate] = useState<"off" | "dwell">(
 		() => (localStorage.getItem("zenith-mouse-instant-activate") === "dwell" ? "dwell" : "off")
 	);
 	const [mouseInstantDwellMs, setMouseInstantDwellMs] = useState<number>(
-		() => parseInt(localStorage.getItem("zenith-mouse-instant-dwell-ms") || "350", 10)
+		() => parseInt(localStorage.getItem("zenith-mouse-instant-dwell-ms") || "220", 10)
 	);
 	const [mouseInstantSensitivity, setMouseInstantSensitivity] = useState<"low" | "medium" | "high">(
 		() => {
@@ -221,19 +218,19 @@ export function useSettings() {
 		}
 	);
 	const [mouseNumberLaunch, setMouseNumberLaunch] = useState(
-		() => localStorage.getItem("zenith-mouse-number-launch") === "true"
+		() => localStorage.getItem("zenith-mouse-number-launch") !== "false"
 	);
 	const [mouseNumberLabels, setMouseNumberLabels] = useState(
 		() => localStorage.getItem("zenith-mouse-number-labels") !== "false"
 	);
 	const [mouseWorkspacePeek, setMouseWorkspacePeek] = useState(
-		() => localStorage.getItem("zenith-mouse-workspace-peek") === "true"
+		() => localStorage.getItem("zenith-mouse-workspace-peek") !== "false"
 	);
 	const [mouseWorkspacePeekStyle, setMouseWorkspacePeekStyle] = useState<"fan" | "ring">(
 		() => (localStorage.getItem("zenith-mouse-workspace-peek-style") === "ring" ? "ring" : "fan")
 	);
 	const [mouseWorkspacePeekDelayMs, setMouseWorkspacePeekDelayMs] = useState<number>(
-		() => parseInt(localStorage.getItem("zenith-mouse-workspace-peek-delay-ms") || "300", 10)
+		() => parseInt(localStorage.getItem("zenith-mouse-workspace-peek-delay-ms") || "220", 10)
 	);
 	const [mouseGameModeEnabled, setMouseGameModeEnabled] = useState(
 		() => localStorage.getItem("zenith-mouse-game-mode-enabled") !== "false"
@@ -253,6 +250,40 @@ export function useSettings() {
 	const [mouseSoundVolume, setMouseSoundVolume] = useState<number>(
 		() => parseInt(localStorage.getItem("zenith-mouse-sound-volume") || "70", 10)
 	);
+	const [mouseMenuRadius, setMouseMenuRadius] = useState<number>(
+		() => parseInt(localStorage.getItem("zenith-mouse-menu-radius") || "126", 10)
+	);
+	const [mouseIconSize, setMouseIconSize] = useState<number>(
+		() => parseInt(localStorage.getItem("zenith-mouse-icon-size") || "56", 10)
+	);
+	const [mouseAppSpacing, setMouseAppSpacing] = useState<number>(
+		() => parseInt(localStorage.getItem("zenith-mouse-app-spacing") || "12", 10)
+	);
+	const [mouseBackdropOpacity, setMouseBackdropOpacity] = useState<number>(
+		() => parseFloat(localStorage.getItem("zenith-mouse-backdrop-opacity") || "0.75")
+	);
+	const [mouseHoverColor, setMouseHoverColor] = useState<string>(
+		() => localStorage.getItem("zenith-mouse-hover-color") || "#FFFFFF"
+	);
+	const [mouseActivationThreshold, setMouseActivationThreshold] = useState<number>(
+		() => parseInt(localStorage.getItem("zenith-mouse-activation-threshold") || "60", 10)
+	);
+	const [mouseShowLabels, setMouseShowLabels] = useState<boolean>(
+		() => localStorage.getItem("zenith-mouse-show-labels") !== "false"
+	);
+	const [mouseAlwaysShowLabels, setMouseAlwaysShowLabels] = useState<boolean>(
+		() => localStorage.getItem("zenith-mouse-always-show-labels") === "true"
+	);
+	const [mouseShowWorkspacePill, setMouseShowWorkspacePill] = useState<boolean>(
+		() => localStorage.getItem("zenith-mouse-show-workspace-pill") !== "false"
+	);
+	const [mouseOpenSound, setMouseOpenSound] = useState<string>(
+		() => localStorage.getItem("zenith-mouse-open-sound") || "sub-tick"
+	);
+	const [mouseHoverSound, setMouseHoverSound] = useState<string>(
+		() => localStorage.getItem("zenith-mouse-hover-sound") || "sub-tick"
+	);
+
 	const [lowBatteryThreshold, setLowBatteryThreshold] = useState(20);
 	const [updateStatus, setUpdateStatus] = useState<
 		"idle" | "checking" | "available" | "uptodate" | "error" | "downloading" | "installing"
@@ -363,21 +394,32 @@ export function useSettings() {
 			apply(getVal("zenith-mouse-placement"), setMousePlacement, (v) => v === "center" ? "center" : "cursor");
 			apply(getVal("zenith-mouse-monitor"), setMouseMonitor, (v) => v === "primary" ? "primary" : "cursor");
 			apply(getVal("zenith-mouse-selection-mode"), setMouseSelectionMode, (v) => v === "cursor" ? "cursor" : "area");
-			apply(getVal("zenith-mouse-area-wedges"), setMouseAreaWedges, readBool);
+			apply(getVal("zenith-mouse-area-wedges"), setMouseAreaWedges, (v) => v !== "false");
 			apply(getVal("zenith-mouse-instant-activate"), setMouseInstantActivate, (v) => v === "dwell" ? "dwell" : "off");
 			apply(getVal("zenith-mouse-instant-dwell-ms"), setMouseInstantDwellMs, parseInt);
 			apply(getVal("zenith-mouse-instant-sensitivity"), setMouseInstantSensitivity, (v) => v === "low" || v === "high" ? v : "medium");
-			apply(getVal("zenith-mouse-number-launch"), setMouseNumberLaunch, readBool);
-			apply(getVal("zenith-mouse-number-labels"), setMouseNumberLabels, readBool);
-			apply(getVal("zenith-mouse-workspace-peek"), setMouseWorkspacePeek, readBool);
+			apply(getVal("zenith-mouse-number-launch"), setMouseNumberLaunch, (v) => v !== "false");
+			apply(getVal("zenith-mouse-number-labels"), setMouseNumberLabels, (v) => v !== "false");
+			apply(getVal("zenith-mouse-workspace-peek"), setMouseWorkspacePeek, (v) => v !== "false");
 			apply(getVal("zenith-mouse-workspace-peek-style"), setMouseWorkspacePeekStyle, (v) => v === "ring" ? "ring" : "fan");
 			apply(getVal("zenith-mouse-workspace-peek-delay-ms"), setMouseWorkspacePeekDelayMs, parseInt);
-			apply(getVal("zenith-mouse-game-mode-enabled"), setMouseGameModeEnabled, readBool);
+			apply(getVal("zenith-mouse-game-mode-enabled"), setMouseGameModeEnabled, (v) => v !== "false");
 			apply(getVal("zenith-mouse-game-mode-scope"), setMouseGameModeScope, (v) => v === "list" ? "list" : "all");
 			apply(getVal("zenith-mouse-game-mode-blocked-apps"), setMouseGameModeBlockedApps, (v) => v);
-			apply(getVal("zenith-mouse-game-mode-auto-detect"), setMouseGameModeAutoDetect, readBool);
-			apply(getVal("zenith-mouse-sound-enabled"), setMouseSoundEnabled, readBool);
+			apply(getVal("zenith-mouse-game-mode-auto-detect"), setMouseGameModeAutoDetect, (v) => v !== "false");
+			apply(getVal("zenith-mouse-sound-enabled"), setMouseSoundEnabled, (v) => v !== "false");
 			apply(getVal("zenith-mouse-sound-volume"), setMouseSoundVolume, parseInt);
+			apply(getVal("zenith-mouse-menu-radius"), setMouseMenuRadius, parseInt);
+			apply(getVal("zenith-mouse-icon-size"), setMouseIconSize, parseInt);
+			apply(getVal("zenith-mouse-app-spacing"), setMouseAppSpacing, parseInt);
+			apply(getVal("zenith-mouse-backdrop-opacity"), setMouseBackdropOpacity, parseFloat);
+			apply(getVal("zenith-mouse-hover-color"), setMouseHoverColor, (v) => v);
+			apply(getVal("zenith-mouse-activation-threshold"), setMouseActivationThreshold, parseInt);
+			apply(getVal("zenith-mouse-show-labels"), setMouseShowLabels, (v) => v !== "false");
+			apply(getVal("zenith-mouse-always-show-labels"), setMouseAlwaysShowLabels, readBool);
+			apply(getVal("zenith-mouse-show-workspace-pill"), setMouseShowWorkspacePill, (v) => v !== "false");
+			apply(getVal("zenith-mouse-open-sound"), setMouseOpenSound, (v) => v);
+			apply(getVal("zenith-mouse-hover-sound"), setMouseHoverSound, (v) => v);
 
 			const savedCity = getVal("bloom-weather-city");
 			if (savedCity) setCityName(savedCity);
@@ -415,10 +457,6 @@ export function useSettings() {
 		}
 	}, []);
 
-	// The file write is authoritative. Serialize controls that change several
-	// settings, and update the local mirror only after the backend confirms the
-	// write. A failed save reloads the page from persisted values and leaves a
-	// visible error instead of keeping an optimistic control value on screen.
 	const saveSetting = (key: string, value: string | null): Promise<boolean> => {
 		const operation = saveQueue.current.then(async () => {
 			if (saveFailed.current) return false;
@@ -437,7 +475,6 @@ export function useSettings() {
 				else localStorage.setItem(key, value);
 				sessionStorage.removeItem("bloom-settings-save-error");
 			} catch (error) {
-				// The file is saved; a mirror failure must not be reported as a failed write.
 				console.warn("Settings mirror update failed:", error);
 			}
 			setSaveError(false);
@@ -447,8 +484,6 @@ export function useSettings() {
 		return operation;
 	};
 
-	// Coordinates only need the backend settings file. Keep them out of the
-	// browser's localStorage mirror while preserving the same queued/error path.
 	const saveLocation = (key: "bloom-weather-lat" | "bloom-weather-lon", value: string | null): Promise<boolean> => {
 		const operation = saveQueue.current.then(async () => {
 			if (saveFailed.current) return false;
@@ -593,7 +628,18 @@ export function useSettings() {
 		"zenith-mouse-game-mode-blocked-apps": setMouseGameModeBlockedApps,
 		"zenith-mouse-game-mode-auto-detect": setMouseGameModeAutoDetect,
 		"zenith-mouse-sound-enabled": setMouseSoundEnabled,
-		"zenith-mouse-sound-volume": setMouseSoundVolume
+		"zenith-mouse-sound-volume": setMouseSoundVolume,
+		"zenith-mouse-menu-radius": setMouseMenuRadius,
+		"zenith-mouse-icon-size": setMouseIconSize,
+		"zenith-mouse-app-spacing": setMouseAppSpacing,
+		"zenith-mouse-backdrop-opacity": setMouseBackdropOpacity,
+		"zenith-mouse-hover-color": setMouseHoverColor,
+		"zenith-mouse-activation-threshold": setMouseActivationThreshold,
+		"zenith-mouse-show-labels": setMouseShowLabels,
+		"zenith-mouse-always-show-labels": setMouseAlwaysShowLabels,
+		"zenith-mouse-show-workspace-pill": setMouseShowWorkspacePill,
+		"zenith-mouse-open-sound": setMouseOpenSound,
+		"zenith-mouse-hover-sound": setMouseHoverSound
 	});
 
 	// ── Listen for system accent changes (adaptive theme) ──
@@ -678,7 +724,6 @@ export function useSettings() {
 		}
 	};
 
-	// Reflect install progress triggered from any window (including auto-update).
 	useEffect(() => {
 		const unlisten = listen<{ status: string; progress?: number }>(
 			"auto-update-status",
@@ -986,6 +1031,64 @@ export function useSettings() {
 		saveSetting("zenith-mouse-sound-volume", String(val));
 	};
 
+	const handleMouseMenuRadiusChange = (val: number) => {
+		setMouseMenuRadius(val);
+		saveSetting("zenith-mouse-menu-radius", String(val));
+	};
+
+	const handleMouseIconSizeChange = (val: number) => {
+		setMouseIconSize(val);
+		saveSetting("zenith-mouse-icon-size", String(val));
+	};
+
+	const handleMouseAppSpacingChange = (val: number) => {
+		setMouseAppSpacing(val);
+		saveSetting("zenith-mouse-app-spacing", String(val));
+	};
+
+	const handleMouseBackdropOpacityChange = (val: number) => {
+		setMouseBackdropOpacity(val);
+		saveSetting("zenith-mouse-backdrop-opacity", String(val));
+	};
+
+	const handleMouseHoverColorChange = (val: string) => {
+		setMouseHoverColor(val);
+		saveSetting("zenith-mouse-hover-color", val);
+	};
+
+	const handleMouseActivationThresholdChange = (val: number) => {
+		setMouseActivationThreshold(val);
+		saveSetting("zenith-mouse-activation-threshold", String(val));
+	};
+
+	const toggleMouseShowLabels = () => {
+		const next = !mouseShowLabels;
+		setMouseShowLabels(next);
+		saveSetting("zenith-mouse-show-labels", String(next));
+	};
+
+	const toggleMouseAlwaysShowLabels = () => {
+		const next = !mouseAlwaysShowLabels;
+		setMouseAlwaysShowLabels(next);
+		saveSetting("zenith-mouse-always-show-labels", String(next));
+	};
+
+	const toggleMouseShowWorkspacePill = () => {
+		const next = !mouseShowWorkspacePill;
+		setMouseShowWorkspacePill(next);
+		saveSetting("zenith-mouse-show-workspace-pill", String(next));
+	};
+
+	const handleMouseOpenSoundChange = (val: string) => {
+		setMouseOpenSound(val);
+		saveSetting("zenith-mouse-open-sound", val);
+	};
+
+	const handleMouseHoverSoundChange = (val: string) => {
+		setMouseHoverSound(val);
+		saveSetting("zenith-mouse-hover-sound", val);
+	};
+
 	const toggleCorners = () => {
 		const next = !cornersEnabled;
 		setCornersEnabled(next);
@@ -1265,14 +1368,11 @@ export function useSettings() {
 
 			await invoke("reset_settings");
 
-			// settings.json is cleared, but every window also caches bloom keys
-			// in localStorage; drop them so the restart can't resurrect values.
-			// The first-run/version sentinels are lifecycle markers, not
-			// preferences — keeping them avoids replaying the splash, which
-			// would also re-trigger the first-run autostart enable.
 			const keep = new Set(["bloom-first-run", "bloom-app-version"]);
 			for (const key of Object.keys(localStorage)) {
-				if (key.startsWith("bloom-") && !keep.has(key)) localStorage.removeItem(key);
+				if ((key.startsWith("bloom-") || key.startsWith("zenith-")) && !keep.has(key)) {
+					localStorage.removeItem(key);
+				}
 			}
 
 			await invoke("restart_zenith").catch(console.error);
@@ -1282,8 +1382,6 @@ export function useSettings() {
 	};
 
 	// ── Export / Import ──
-	// The backend opens the native dialog and owns the file path, so these
-	// cannot be used to read or write arbitrary files from a webview.
 	const handleExportSettings = async () => {
 		setExportStatus("exporting");
 		try {
@@ -1506,6 +1604,28 @@ export function useSettings() {
 		toggleMouseSound,
 		mouseSoundVolume,
 		handleMouseSoundVolumeChange,
+		mouseMenuRadius,
+		handleMouseMenuRadiusChange,
+		mouseIconSize,
+		handleMouseIconSizeChange,
+		mouseAppSpacing,
+		handleMouseAppSpacingChange,
+		mouseBackdropOpacity,
+		handleMouseBackdropOpacityChange,
+		mouseHoverColor,
+		handleMouseHoverColorChange,
+		mouseActivationThreshold,
+		handleMouseActivationThresholdChange,
+		mouseShowLabels,
+		toggleMouseShowLabels,
+		mouseAlwaysShowLabels,
+		toggleMouseAlwaysShowLabels,
+		mouseShowWorkspacePill,
+		toggleMouseShowWorkspacePill,
+		mouseOpenSound,
+		handleMouseOpenSoundChange,
+		mouseHoverSound,
+		handleMouseHoverSoundChange,
 
 		// Notifications
 		notificationsEnabled,
