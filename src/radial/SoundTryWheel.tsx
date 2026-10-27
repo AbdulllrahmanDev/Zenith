@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Volume2 } from "lucide-react";
-import { RovylLogo } from "./RovylLogo";
+import { ZenithLogo } from "./ZenithLogo";
 import { SmartIcon } from "./SmartIcon";
 import {
   computeRadialLayout,
@@ -148,7 +148,7 @@ export const SoundTryWheel: React.FC<SoundTryWheelProps> = ({
               zIndex: 15,
             }}
           >
-            <RovylLogo size={18} />
+            <ZenithLogo size={18} />
           </button>
 
           {/* Sector tiles */}

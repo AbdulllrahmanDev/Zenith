@@ -19,7 +19,7 @@ import {
 import { clampDwellMs } from "../radial/radialDwell";
 import { HUB_DRAG_SLOP_PX, clampWheelCenter } from "../radial/radialDrag";
 import { radialScrimGradient } from "../radial/radialScrim";
-import { RovylLogo } from "../radial/RovylLogo";
+import { ZenithLogo } from "../radial/ZenithLogo";
 import { SmartIcon } from "../radial/SmartIcon";
 import { getRadialIcon } from "../radial/iconMap";
 import {
@@ -1079,7 +1079,7 @@ export default function RadialMenu({
 			}
 			if (aim.index !== null && stateRef.current.currentLevelItems[aim.index]) {
 				executeItem(stateRef.current.currentLevelItems[aim.index], aim.index);
-			} else if (triggerMode === "click") {
+			} else {
 				dismissWithAnimation();
 			}
 		};
@@ -1116,15 +1116,15 @@ export default function RadialMenu({
 					? { x: ev.payload.x, y: ev.payload.y }
 					: lastPointerRef.current;
 			const aim = resolveAimAtPoint(releasePt);
+			// If releasing directly over a slice or center, handle that; otherwise stay open!
 			if (aim.isCenter) {
 				handleCenterActivate();
 				return;
 			}
 			if (aim.index !== null && stateRef.current.currentLevelItems[aim.index]) {
 				executeItem(stateRef.current.currentLevelItems[aim.index], aim.index);
-			} else {
-				dismissWithAnimation();
 			}
+			// Kept open until user explicitly clicks the center hub or anywhere on the screen
 		});
 
 		const unlistenCancel = listen("radial-cancel", () => {
@@ -1279,6 +1279,11 @@ export default function RadialMenu({
 					["--zn-dur-op" as string]: !isExiting ? "180ms" : "120ms",
 					...(echoActive ? { ["--zn-echo-ms" as string]: `${LAUNCH_ECHO_MS}ms` } : null)
 				}}
+				onClick={() => {
+					if (!isExiting && !echoActive) {
+						dismissWithAnimation();
+					}
+				}}
 			/>
 
 			{/* Type-Ahead Filter Readout */}
@@ -1411,6 +1416,10 @@ export default function RadialMenu({
 					}}
 					onMouseDown={(e) => e.stopPropagation()}
 					onMouseUp={(e) => e.stopPropagation()}
+					onClick={(e) => {
+						e.stopPropagation();
+						handleCenterActivate();
+					}}
 				>
 					{/* Crisp Vector Hub Ring */}
 					<svg
@@ -1442,7 +1451,7 @@ export default function RadialMenu({
 								transition: "opacity 150ms ease"
 							}}
 						>
-							<RovylLogo
+							<ZenithLogo
 								size={Math.round(actualIconSize * 0.64)}
 								color={isCenterActive ? hoverForeground : "#F4F2ED"}
 							/>

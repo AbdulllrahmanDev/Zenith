@@ -43,7 +43,7 @@ import {
 import { RADIAL_SOUNDS, playRadialSound, setRadialSoundVolume, isRadialSoundId, type RadialSoundId } from "../radial/radialSound";
 import { getRadialIcon, RADIAL_ICON_NAMES } from "../radial/iconMap";
 import { SmartIcon } from "../radial/SmartIcon";
-import { RovylLogo } from "../radial/RovylLogo";
+import { ZenithLogo } from "../radial/ZenithLogo";
 import { WheelPreview } from "../radial/WheelPreview";
 import { SoundTryWheel } from "../radial/SoundTryWheel";
 
@@ -540,7 +540,7 @@ export function MouseTab({
 			<div className="zn-mouse-header-card">
 				<div className="zn-mouse-header-left">
 					<div className="zn-mouse-logo-badge">
-						<RovylLogo size={20} />
+						<ZenithLogo size={20} />
 					</div>
 					<div>
 						<div className="zn-mouse-header-title">

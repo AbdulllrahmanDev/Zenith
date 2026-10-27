@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { radialScrimGradient } from "./radialScrim";
-import { RovylLogo } from "./RovylLogo";
+import { ZenithLogo } from "./ZenithLogo";
 import { SmartIcon } from "./SmartIcon";
 import {
   computeRadialLayout,
@@ -182,7 +182,7 @@ export const WheelPreview: React.FC<WheelPreviewProps> = ({
             zIndex: 10,
           }}
         >
-          <RovylLogo size={Math.max(16, Math.round(hubDiameter * 0.44))} />
+          <ZenithLogo size={Math.max(16, Math.round(hubDiameter * 0.44))} />
         </div>
 
         {/* Wedge tiles & outer labels */}
