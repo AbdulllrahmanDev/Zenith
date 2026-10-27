@@ -366,7 +366,7 @@ export function MouseTab({
 	const openEditDrawer = (item: RadialItem) => {
 		setEditingItemId(item.id);
 		setNewItemLabel(item.label);
-		setNewItemTarget(item.target || item.value || "");
+		setNewItemTarget(item.target || "");
 		setNewItemType(item.type);
 		setNewItemIcon(item.icon || "Sparkles");
 		if (item.type === "system") setAddKind("system");
@@ -767,7 +767,7 @@ export function MouseTab({
 															<span className="zn-slice-target">
 																{isSubmenu
 																	? `${(item.children || []).length} nested items`
-																	: item.target || item.value}
+																	: item.target}
 															</span>
 														</div>
 													</div>
@@ -1107,16 +1107,16 @@ export function MouseTab({
 								<div className="zn-color-swatch-row">
 									{HOVER_COLOR_PRESETS.map((preset) => (
 										<button
-											key={preset.hex}
+											key={preset.value}
 											type="button"
-											title={preset.name}
+											title={preset.label}
 											className={`zn-color-swatch ${
-												mouseHoverColor.toLowerCase() === preset.hex.toLowerCase()
+												mouseHoverColor.toLowerCase() === preset.value.toLowerCase()
 													? "active"
 													: ""
 											}`}
-											style={{ background: preset.hex }}
-											onClick={() => handleMouseHoverColorChange(preset.hex)}
+											style={{ background: preset.value }}
+											onClick={() => handleMouseHoverColorChange(preset.value)}
 										/>
 									))}
 									<label className="zn-color-custom-picker" title="Custom Hex Color">

@@ -23,12 +23,12 @@ export interface WheelPreviewProps {
 }
 
 const FALLBACK_ITEMS: RadialItem[] = [
-  { id: "1", label: "Browser", type: "url", value: "https://google.com", icon: "Globe" },
-  { id: "2", label: "Terminal", type: "app", value: "wt.exe", icon: "Terminal" },
-  { id: "3", label: "Explorer", type: "folder", value: "C:\\", icon: "Folder" },
-  { id: "4", label: "Settings", type: "system", value: "settings", icon: "Settings" },
-  { id: "5", label: "Media", type: "system", value: "media-toggle", icon: "Music" },
-  { id: "6", label: "Calculator", type: "app", value: "calc.exe", icon: "Calculator" },
+  { id: "1", label: "Browser", type: "url", target: "https://google.com", icon: "Globe" },
+  { id: "2", label: "Terminal", type: "app", target: "wt.exe", icon: "Terminal" },
+  { id: "3", label: "Explorer", type: "folder", target: "C:\\", icon: "Folder" },
+  { id: "4", label: "Settings", type: "system", target: "settings", icon: "Settings" },
+  { id: "5", label: "Media", type: "system", target: "media-toggle", icon: "Music" },
+  { id: "6", label: "Calculator", type: "app", target: "calc.exe", icon: "Calculator" },
 ];
 
 export const WheelPreview: React.FC<WheelPreviewProps> = ({
@@ -86,10 +86,9 @@ export const WheelPreview: React.FC<WheelPreviewProps> = ({
   const scrimBg = useMemo(
     () =>
       radialScrimGradient(
-        Math.round(size / 2),
-        Math.round(size / 2),
-        Math.round((actualMenuRadius + actualIconSize / 2) * scale),
-        fullConfig.backdropOpacity
+        { x: Math.round(size / 2), y: Math.round(size / 2) },
+        fullConfig.backdropOpacity,
+        Math.round((actualMenuRadius + actualIconSize / 2) * scale)
       ),
     [size, actualMenuRadius, actualIconSize, scale, fullConfig.backdropOpacity]
   );

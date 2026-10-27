@@ -2501,7 +2501,7 @@ pub fn close_radial_menu(app: AppHandle) {
     if let Some(win) = app.get_webview_window("overlay") {
         if let Ok(hwnd) = win.hwnd() {
             crate::utils::set_click_through(hwnd, true);
-            crate::state::MH_LAST_OV_IGNORE.store(1, Ordering::Relaxed);
+            crate::services::MH_LAST_OV_IGNORE.store(1, Ordering::Relaxed);
         }
         let _ = win.hide();
     }
@@ -2531,7 +2531,7 @@ pub async fn launch_radial_item(
     if let Some(win) = app.get_webview_window("overlay") {
         if let Ok(hwnd) = win.hwnd() {
             crate::utils::set_click_through(hwnd, true);
-            crate::state::MH_LAST_OV_IGNORE.store(1, Ordering::Relaxed);
+            crate::services::MH_LAST_OV_IGNORE.store(1, Ordering::Relaxed);
         }
         if echo_ms.unwrap_or(0) == 0 {
             let _ = app.emit("radial-close", ());
@@ -2653,7 +2653,7 @@ pub fn show_overlay_for_radial(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
             }
             crate::utils::re_assert_topmost(hwnd);
             crate::utils::set_click_through(hwnd, false);
-            crate::state::MH_LAST_OV_IGNORE.store(0, Ordering::Relaxed);
+            crate::services::MH_LAST_OV_IGNORE.store(0, Ordering::Relaxed);
         }
 
         let _ = ov_win.show();

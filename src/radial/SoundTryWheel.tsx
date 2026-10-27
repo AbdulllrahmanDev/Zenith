@@ -20,12 +20,12 @@ export interface SoundTryWheelProps {
 }
 
 const DEMO_ITEMS: RadialItem[] = [
-  { id: "s1", label: "Browser", type: "url", value: "https://google.com", icon: "Globe" },
-  { id: "s2", label: "Terminal", type: "app", value: "wt.exe", icon: "Terminal" },
-  { id: "s3", label: "Files", type: "folder", value: "C:\\", icon: "Folder" },
-  { id: "s4", label: "Music", type: "system", value: "media-toggle", icon: "Music" },
-  { id: "s5", label: "Code", type: "app", value: "code", icon: "Code" },
-  { id: "s6", label: "Settings", type: "system", value: "settings", icon: "Settings" },
+  { id: "s1", label: "Browser", type: "url", target: "https://google.com", icon: "Globe" },
+  { id: "s2", label: "Terminal", type: "app", target: "wt.exe", icon: "Terminal" },
+  { id: "s3", label: "Files", type: "folder", target: "C:\\", icon: "Folder" },
+  { id: "s4", label: "Music", type: "system", target: "media-toggle", icon: "Music" },
+  { id: "s5", label: "Code", type: "app", target: "code", icon: "Code" },
+  { id: "s6", label: "Settings", type: "system", target: "settings", icon: "Settings" },
 ];
 
 export const SoundTryWheel: React.FC<SoundTryWheelProps> = ({
