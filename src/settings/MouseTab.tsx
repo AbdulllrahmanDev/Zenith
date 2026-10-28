@@ -760,8 +760,17 @@ export function MouseTab({
 				</div>
 			</div>
 
-			{/* Sub-Navigation Pills */}
-			<div className="zn-mouse-subnav">
+			{/* Sub-Navigation Pills & Subtabs (only shown when feature is enabled) */}
+			{mouseRadialEnabled && (
+				<div
+					style={{
+						display: "flex",
+						flexDirection: "column",
+						gap: 10,
+						animation: "znDrawerFadeIn 180ms ease"
+					}}
+				>
+					<div className="zn-mouse-subnav">
 				<button
 					type="button"
 					className={`zn-mouse-subnav-btn ${subTab === "workspaces" ? "active" : ""}`}
@@ -2315,6 +2324,8 @@ export function MouseTab({
 							</div>
 						</>
 					)}
+				</div>
+			)}
 				</div>
 			)}
 		</div>
