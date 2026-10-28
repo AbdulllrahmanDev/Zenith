@@ -847,6 +847,21 @@ export function MouseTab({
 							</div>
 
 							<div className="zn-ws-toolbar-right">
+								<input
+									type="file"
+									ref={wsIconFileInputRef}
+									accept="image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon,.ico,.png,.jpg,.jpeg,.svg,.webp"
+									style={{ display: "none" }}
+									onChange={handleWsCustomIconFileSelect}
+								/>
+								<button
+									type="button"
+									className={`zn-icon-action-btn ${showWsIconPicker ? "active" : ""}`}
+									onClick={() => setShowWsIconPicker((prev) => !prev)}
+									title="Change workspace icon or upload custom image"
+								>
+									<Palette size={12} />
+								</button>
 								{renamingWs ? (
 									<div style={{ display: "flex", gap: 4, alignItems: "center" }}>
 										<input
@@ -903,6 +918,103 @@ export function MouseTab({
 								</button>
 							</div>
 						</div>
+
+						{/* Workspace Icon Customizer Modal */}
+						{showWsIconPicker && (
+							<div
+								className="zn-ws-icon-modal-backdrop"
+								onClick={() => setShowWsIconPicker(false)}
+							>
+								<div
+									className="zn-ws-icon-modal"
+									onClick={(e) => e.stopPropagation()}
+								>
+									<div className="zn-ws-icon-modal-header">
+										<div className="zn-ws-icon-modal-title">
+											<span>Workspace Icon & Image: {currentWs.name}</span>
+										</div>
+										<button
+											type="button"
+											className="zn-search-clear-btn"
+											onClick={() => setShowWsIconPicker(false)}
+										>
+											<X size={14} />
+										</button>
+									</div>
+									<div className="zn-ws-icon-modal-body">
+										<div className="zn-ws-custom-img-row">
+											<div
+												className="zn-ws-preview-disc"
+												onClick={() => wsIconFileInputRef.current?.click()}
+												title="Click to choose an image from your PC"
+											>
+												{currentWs.customIconUrl ? (
+													<img src={currentWs.customIconUrl} alt="" />
+												) : (
+													(() => {
+														const CurIcon = getRadialIcon(currentWs.icon);
+														return <CurIcon size={20} strokeWidth={2} />;
+													})()
+												)}
+												<div className="zn-preview-disc-hover-overlay">
+													<Upload size={13} />
+												</div>
+											</div>
+											<div className="zn-ws-custom-img-info">
+												<span className="zn-ws-custom-img-title">
+													{currentWs.customIconUrl ? "Custom Image Active" : "Upload Custom Image"}
+												</span>
+												<span className="zn-ws-custom-img-desc">
+													Shows as the main slice icon on the root wheel
+												</span>
+											</div>
+											<div className="zn-ws-custom-img-actions">
+												<button
+													type="button"
+													className="zn-custom-icon-pick-btn"
+													onClick={() => wsIconFileInputRef.current?.click()}
+												>
+													<Upload size={12} />
+													<span>{currentWs.customIconUrl ? "Change" : "Browse..."}</span>
+												</button>
+												{currentWs.customIconUrl && (
+													<button
+														type="button"
+														className="zn-custom-icon-remove-btn"
+														onClick={handleClearWsCustomIcon}
+														title="Reset to vector icon"
+													>
+														<RotateCcw size={11} />
+														<span>Reset</span>
+													</button>
+												)}
+											</div>
+										</div>
+
+										<div className="zn-picker-subtitle" style={{ marginTop: 4 }}>
+											Or Select a Vector Icon
+										</div>
+										<div className="zn-ws-icons-grid">
+											{WS_PRESET_ICONS.map((iconName) => {
+												const Ic = getRadialIcon(iconName);
+												const isSelected = !currentWs.customIconUrl && currentWs.icon === iconName;
+												return (
+													<button
+														key={iconName}
+														type="button"
+														className={`zn-ws-icon-btn ${isSelected ? "selected" : ""}`}
+														onClick={() => handleSelectWsIcon(iconName)}
+														title={iconName}
+													>
+														<Ic size={16} strokeWidth={isSelected ? 2.2 : 1.8} />
+													</button>
+												);
+											})}
+										</div>
+									</div>
+								</div>
+							</div>
+						)}
 
 						{/* Interactive Wheel Preview + Slice List Split */}
 						<div className="zn-ws-split-layout">
