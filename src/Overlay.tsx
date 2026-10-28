@@ -967,13 +967,17 @@ function OverlayApp() {
 				if (progress !== undefined) setUpdateProgress(progress);
 
 				if (status === "checking" || status === "downloading" || status === "installing") {
-					splashActiveRef.current = true;
-					setMode("updating");
-					invoke("set_splash_fullscreen", { fullscreen: true });
+					if (!splashActiveRef.current) {
+						splashActiveRef.current = true;
+						setMode("updating");
+						invoke("set_splash_fullscreen", { fullscreen: true });
+					}
 				} else if (status === "done") {
-					splashActiveRef.current = false;
-					setMode("idle");
-					invoke("set_splash_fullscreen", { fullscreen: false });
+					if (splashActiveRef.current) {
+						splashActiveRef.current = false;
+						setMode("idle");
+						invoke("set_splash_fullscreen", { fullscreen: false });
+					}
 				}
 			}
 		);
@@ -1277,19 +1281,21 @@ function OverlayApp() {
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						exit={{ opacity: 0 }}
-						transition={{ duration: 0.3 }}
+						transition={{ duration: 0.25 }}
 					>
-						<img src="/zenith-white-no-bg-nosmile.svg" className="update-splash-logo" alt="Zenith" />
-						<p className="update-splash-text">
-							{updateStatus === "checking" && "Checking for updates..."}
-							{updateStatus === "downloading" && `Downloading update... ${updateProgress}%`}
-							{updateStatus === "installing" && "Installing update..."}
-						</p>
-						{updateStatus === "downloading" && (
-							<div className="update-progress-bar">
-								<div className="update-progress-fill" style={{ width: `${updateProgress}%` }} />
-							</div>
-						)}
+						<div className="update-splash-card">
+							<img src="/zenith-white-no-bg-nosmile.svg" className="update-splash-logo" alt="Zenith" draggable={false} />
+							<p className="update-splash-text">
+								{updateStatus === "checking" && "Checking for updates..."}
+								{updateStatus === "downloading" && `Downloading update... ${updateProgress}%`}
+								{updateStatus === "installing" && "Installing update..."}
+							</p>
+							{updateStatus === "downloading" && (
+								<div className="update-progress-bar">
+									<div className="update-progress-fill" style={{ width: `${updateProgress}%` }} />
+								</div>
+							)}
+						</div>
 					</motion.div>
 				)}
 			</AnimatePresence>

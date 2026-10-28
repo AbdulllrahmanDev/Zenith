@@ -2715,10 +2715,12 @@ pub fn show_overlay_for_radial(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
 
 #[tauri::command]
 pub fn set_splash_fullscreen(app: AppHandle, fullscreen: bool) {
-    crate::state::OVERLAY_IN_SPLASH.store(fullscreen, Ordering::Relaxed);
+    let was_in_splash = crate::state::OVERLAY_IN_SPLASH.swap(fullscreen, Ordering::Relaxed);
+    if fullscreen && was_in_splash {
+        return;
+    }
     if let Some(win) = app.get_webview_window("overlay") {
         if fullscreen {
-            let _ = win.hide();
             if let Ok(Some(monitor)) = win.primary_monitor() {
                 let size = monitor.size();
                 let pos = monitor.position();

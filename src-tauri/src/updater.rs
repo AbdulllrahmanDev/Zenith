@@ -205,6 +205,12 @@ pub async fn install(app: &AppHandle) -> Result<(), String> {
         return Err("an update is already in progress".to_string());
     }
     let result = install_inner(app).await;
+    if result.is_err() {
+        let _ = app.emit(
+            "auto-update-status",
+            serde_json::json!({ "status": "done" }),
+        );
+    }
     UPDATE_BUSY.store(false, Ordering::SeqCst);
     result
 }
@@ -246,17 +252,20 @@ async fn install_inner(app: &AppHandle) -> Result<(), String> {
     let progress_handle = app.clone();
     let downloaded = Arc::new(AtomicU64::new(0));
     let downloaded_cb = downloaded.clone();
+    let last_progress = Arc::new(AtomicU64::new(0));
     let bytes = update
         .download(
             move |chunk_len, total| {
                 let current =
                     downloaded_cb.fetch_add(chunk_len as u64, Ordering::Relaxed) + chunk_len as u64;
-                if let Some(total) = total {
-                    if total > 0 {
-                        let progress = (current.saturating_mul(100) / total) as u32;
+                if let Some(progress) =
+                    total.and_then(|t| current.saturating_mul(100).checked_div(t))
+                {
+                    let progress = progress.min(100);
+                    if last_progress.swap(progress, Ordering::Relaxed) != progress {
                         let _ = progress_handle.emit(
                             "auto-update-status",
-                            serde_json::json!({ "status": "downloading", "progress": progress }),
+                            serde_json::json!({ "status": "downloading", "progress": progress as u32 }),
                         );
                     }
                 }
@@ -299,33 +308,11 @@ pub async fn run_startup_check(app: AppHandle) {
     let auto_update =
         crate::utils::get_setting_str(&app, "zenith-auto-update").as_deref() == Some("true");
 
-    if auto_update {
-        let _ = app.emit(
-            "auto-update-status",
-            serde_json::json!({ "status": "checking" }),
-        );
-    }
-
-    let result = match check(&app, false).await {
-        Ok(result) => result,
-        Err(_) => {
-            if auto_update {
-                let _ = app.emit(
-                    "auto-update-status",
-                    serde_json::json!({ "status": "done" }),
-                );
-            }
-            return;
-        }
+    let Ok(result) = check(&app, false).await else {
+        return;
     };
 
     if !result.available {
-        if auto_update {
-            let _ = app.emit(
-                "auto-update-status",
-                serde_json::json!({ "status": "done" }),
-            );
-        }
         return;
     }
 
@@ -335,20 +322,7 @@ pub async fn run_startup_check(app: AppHandle) {
 
     if auto_update && release_is_old_enough(&result) && !attempted_recently {
         // On Windows this never returns: the installer exits the process.
-        if install(&app).await.is_err() {
-            let _ = app.emit(
-                "auto-update-status",
-                serde_json::json!({ "status": "done" }),
-            );
-        }
-    } else if auto_update {
-        // An install for this version was already attempted (or is pending),
-        // so keep the badge visible instead of relaunching the installer on
-        // every startup.
-        let _ = app.emit(
-            "auto-update-status",
-            serde_json::json!({ "status": "done" }),
-        );
+        let _ = install(&app).await;
     }
 }
 

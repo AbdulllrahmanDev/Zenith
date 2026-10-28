@@ -54,15 +54,29 @@ body,
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	background: transparent;
+	background: rgba(0, 0, 0, 0.35);
+	backdrop-filter: blur(8px);
 	z-index: 9999;
 }
 
+.update-splash-card {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	padding: 28px 36px;
+	border-radius: 20px;
+	background: var(--bloom-bg, rgba(18, 18, 22, 0.92));
+	border: 1px solid var(--bloom-border, rgba(255, 255, 255, 0.12));
+	box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+	min-width: 260px;
+}
+
 .update-splash-logo {
-	width: 100px;
-	height: 100px;
+	width: 64px;
+	height: 64px;
 	object-fit: contain;
-	margin-bottom: 20px;
+	margin-bottom: 16px;
 }
 
 .update-splash-text {
@@ -77,12 +91,13 @@ body,
 	font-weight: 500;
 	margin-bottom: 16px;
 	text-align: center;
+	font-variant-numeric: tabular-nums;
 }
 
 .update-progress-bar {
 	width: 200px;
 	height: 4px;
-	background: var(--bloom-border, rgba(255, 255, 255, 0.1));
+	background: var(--bloom-border, rgba(255, 255, 255, 0.12));
 	border-radius: 2px;
 	overflow: hidden;
 }
@@ -91,7 +106,7 @@ body,
 	height: 100%;
 	background: var(--bloom-text, rgba(255, 255, 255, 0.9));
 	border-radius: 2px;
-	transition: width 0.3s ease;
+	transition: width 0.15s linear;
 }
 
 /* ─── Volume Notch (Left Edge) ──────────────────────────────────────────── */
