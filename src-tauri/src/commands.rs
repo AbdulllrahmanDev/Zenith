@@ -2676,11 +2676,29 @@ pub fn show_overlay_for_radial(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
             unsafe {
                 use windows::Win32::Graphics::Gdi::SetWindowRgn;
                 use windows::Win32::UI::WindowsAndMessaging::{
-                    GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE,
-                    HWND_TOPMOST, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE,
-                    SW_SHOWNA, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT,
+                    GetWindowLongW, SetWindowLongW, GetWindowLongPtrW, SetWindowLongPtrW,
+                    SetWindowPos, ShowWindow, GWL_EXSTYLE, GWL_STYLE, HWND_TOPMOST,
+                    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SW_SHOWNA,
+                    WS_BORDER, WS_CAPTION, WS_DLGFRAME, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
+                    WS_EX_TRANSPARENT, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_POPUP, WS_SYSMENU,
+                    WS_THICKFRAME,
                 };
                 let _ = SetWindowRgn(hwnd, None, true);
+
+                // Strip any caption or frame styles from GWL_STYLE so Windows never draws a titlebar
+                let current_style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
+                let clean_style = (current_style | WS_POPUP.0)
+                    & !(WS_CAPTION.0
+                        | WS_THICKFRAME.0
+                        | WS_MINIMIZEBOX.0
+                        | WS_MAXIMIZEBOX.0
+                        | WS_SYSMENU.0
+                        | WS_BORDER.0
+                        | WS_DLGFRAME.0);
+                if clean_style != current_style {
+                    SetWindowLongW(hwnd, GWL_STYLE, clean_style as i32);
+                }
+
                 let current_ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
                 // Keep WS_EX_TOOLWINDOW and remove WS_EX_APPWINDOW to NEVER appear on taskbar.
                 // Clear WS_EX_TRANSPARENT so the window receives mouse events.

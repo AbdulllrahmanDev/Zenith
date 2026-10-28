@@ -44,6 +44,44 @@ pub fn set_window_region(window: Window, rects: Vec<IntRect>) {
     // A region on a window that isn't layered turns its transparent pixels
     // opaque (see set_click_through). Make sure it's layered before the region
     // lands, keeping whatever click-through state it has.
+    // Strip any caption or frame styles so SetWindowRgn never draws a classic titlebar
+    unsafe {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowLongW, SetWindowLongW, GWL_STYLE, WS_BORDER, WS_CAPTION,
+            WS_DLGFRAME, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
+        };
+        let style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
+        let clean = (style | WS_POPUP.0)
+            & !(WS_CAPTION.0
+                | WS_THICKFRAME.0
+                | WS_MINIMIZEBOX.0
+                | WS_MAXIMIZEBOX.0
+                | WS_SYSMENU.0
+                | WS_BORDER.0
+                | WS_DLGFRAME.0);
+        if clean != style {
+            SetWindowLongW(hwnd, GWL_STYLE, clean as i32);
+        }
+    }
+
+    // If a single rectangle covers the full window, remove the clipping region
+    // entirely so DWM handles transparency without any GDI region clipping.
+    if rects.len() == 1 {
+        let r = &rects[0];
+        if r.x <= 0 && r.y <= 0 {
+            if let Ok(size) = window.inner_size() {
+                let w = (r.width as f64 * scale).ceil() as u32;
+                let h = (r.height as f64 * scale).ceil() as u32;
+                if w >= size.width && h >= size.height {
+                    unsafe {
+                        let _ = SetWindowRgn(hwnd, None, true);
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
     let click_through = unsafe {
         use windows::Win32::UI::WindowsAndMessaging::{
             GetWindowLongPtrW, GWL_EXSTYLE, WS_EX_TRANSPARENT,

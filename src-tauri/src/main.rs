@@ -376,6 +376,35 @@ fn main() {
                 let _ = ov_win.set_ignore_cursor_events(true);
                 if let Ok(hwnd) = ov_win.hwnd() {
                     OVERLAY_HWND.store(hwnd.0 as isize, Ordering::Relaxed);
+                    unsafe {
+                        use windows::Win32::UI::WindowsAndMessaging::{
+                            GetWindowLongW, SetWindowLongW, SetWindowPos, GWL_STYLE,
+                            SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+                            WS_BORDER, WS_CAPTION, WS_DLGFRAME, WS_MAXIMIZEBOX, WS_MINIMIZEBOX,
+                            WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
+                        };
+                        let style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
+                        let clean = (style | WS_POPUP.0)
+                            & !(WS_CAPTION.0
+                                | WS_THICKFRAME.0
+                                | WS_MINIMIZEBOX.0
+                                | WS_MAXIMIZEBOX.0
+                                | WS_SYSMENU.0
+                                | WS_BORDER.0
+                                | WS_DLGFRAME.0);
+                        if clean != style {
+                            SetWindowLongW(hwnd, GWL_STYLE, clean as i32);
+                            let _ = SetWindowPos(
+                                hwnd,
+                                None,
+                                0,
+                                0,
+                                0,
+                                0,
+                                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                            );
+                        }
+                    }
                 }
                 let _ = ov_win.show();
                 let _ = ov_win.hide();
