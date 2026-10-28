@@ -775,6 +775,15 @@ export default function RadialMenu({
 			if (item.type === "submenu" && item.children && item.children.length > 0) {
 				levelGenRef.current += 1;
 				gestureConsumedRef.current = false;
+				if (item.id.startsWith("ws_")) {
+					const targetWsId = item.id.slice(3);
+					setCurrentWsId(targetWsId);
+					localStorage.setItem("zenith-mouse-active-workspace", targetWsId);
+					invoke("save_setting", {
+						key: "zenith-mouse-active-workspace",
+						value: targetWsId
+					}).catch(() => {});
+				}
 				setFolderStack((prev) => [...prev, { label: item.label, items: item.children! }]);
 				setTypeAhead("");
 				setActiveIndex(null);
@@ -1022,12 +1031,17 @@ export default function RadialMenu({
 	// Switch workspace helper
 	const switchWorkspace = useCallback(
 		(nextWsId: string) => {
-			if (nextWsId === currentWsId) return;
+			const targetWs = workspaces.find((w) => w.id === nextWsId);
+			if (!targetWs) return;
 			levelGenRef.current += 1;
 			disarmDwell();
 			gestureConsumedRef.current = false;
 			setCurrentWsId(nextWsId);
-			setFolderStack([]);
+			if (workspaces.length > 1) {
+				setFolderStack([{ label: targetWs.name, items: targetWs.items }]);
+			} else {
+				setFolderStack([]);
+			}
 			setTypeAhead("");
 			setActiveIndex(null);
 			localStorage.setItem("zenith-mouse-active-workspace", nextWsId);
@@ -1036,7 +1050,7 @@ export default function RadialMenu({
 				value: nextWsId
 			}).catch(() => {});
 		},
-		[currentWsId, disarmDwell]
+		[workspaces, disarmDwell]
 	);
 
 	// Pointer & Tauri live hook events (`radial-move`, `radial-release`, `radial-cancel`)
@@ -1497,7 +1511,7 @@ export default function RadialMenu({
 				</div>
 
 				{/* Bottom Context / Workspace Switcher Pill */}
-				{cfg.showWorkspacePill !== false && (
+				{cfg.showWorkspacePill !== false && !isRoot && (
 					<div
 						className="zn-radial-pill"
 						style={{
@@ -1512,7 +1526,7 @@ export default function RadialMenu({
 							...(echoActive ? { ["--zn-dur-op" as string]: "130ms" } : null)
 						}}
 					>
-						{isRoot && workspaces.length > 1 ? (
+						{workspaces.length > 1 ? (
 							<div
 								className="zn-ws-tabs"
 								onMouseDown={(e) => e.stopPropagation()}
@@ -1572,10 +1586,7 @@ export default function RadialMenu({
 									boxShadow: "0 0 0 1px rgba(0,0,0,0.45)"
 								}}
 							>
-								{(isRoot
-									? [workspaces.length > 1 ? "Workspaces" : (currentWorkspace?.name || "Zenith")]
-									: folderStack.map((level) => level.label)
-								).map((label, i) => (
+								{folderStack.map((level) => level.label).map((label, i) => (
 									<React.Fragment key={`${label}-${i}`}>
 										{i > 0 && (
 											<span style={{ fontSize: 11, color: "rgba(255,255,255,0.25)" }}>/</span>
@@ -1600,7 +1611,7 @@ export default function RadialMenu({
 										background: "rgba(255,255,255,0.09)"
 									}}
 								>
-									{isRoot ? "Esc" : "Back"}
+									Back
 								</span>
 							</div>
 						)}
