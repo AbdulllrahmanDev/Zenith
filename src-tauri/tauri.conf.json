@@ -187,7 +187,7 @@
   },
   "bundle": {
     "active": true,
-    "createUpdaterArtifacts": false,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "publisher": "AbdulllrahmanDev",
     "copyright": "Copyright © 2026 AbdulllrahmanDev. Portions © 2026 Sehajveer Singh (GPL-3.0, see NOTICE)",
