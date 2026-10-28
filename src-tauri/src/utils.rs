@@ -1724,17 +1724,18 @@ mod tests {
         const LAYERED: u32 = 0x0008_0000;
         const TRANSPARENT: u32 = 0x0000_0020;
         const NOACTIVATE: u32 = 0x0800_0000;
+        const TOOLWINDOW: u32 = 0x0000_0080;
         // tao's interactive style: neither bit. Taking clicks adds layered.
-        assert_eq!(click_through_style(NOACTIVATE, false), NOACTIVATE | LAYERED);
+        assert_eq!(click_through_style(NOACTIVATE, false), NOACTIVATE | LAYERED | TOOLWINDOW);
         // Click-through adds both; other bits are kept.
         assert_eq!(
             click_through_style(NOACTIVATE, true),
-            NOACTIVATE | LAYERED | TRANSPARENT
+            NOACTIVATE | LAYERED | TOOLWINDOW | TRANSPARENT
         );
         // Back to taking clicks drops only the transparent bit.
         assert_eq!(
             click_through_style(NOACTIVATE | LAYERED | TRANSPARENT, false),
-            NOACTIVATE | LAYERED
+            NOACTIVATE | LAYERED | TOOLWINDOW
         );
     }
     use std::collections::HashMap;
