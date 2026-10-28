@@ -74,7 +74,7 @@ pub fn set_window_region(window: Window, rects: Vec<IntRect>) {
                 let h = (r.height as f64 * scale).ceil() as u32;
                 if w >= size.width && h >= size.height {
                     unsafe {
-                        let _ = SetWindowRgn(hwnd, None, true);
+                        let _ = SetWindowRgn(hwnd, None, false);
                     }
                     return;
                 }

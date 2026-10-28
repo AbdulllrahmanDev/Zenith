@@ -377,6 +377,16 @@ fn main() {
                 if let Ok(hwnd) = ov_win.hwnd() {
                     OVERLAY_HWND.store(hwnd.0 as isize, Ordering::Relaxed);
                     unsafe {
+                        use windows::Win32::Graphics::Dwm::{
+                            DwmSetWindowAttribute, DWMNCRP_DISABLED, DWMWA_NCRENDERING_POLICY,
+                        };
+                        let policy = DWMNCRP_DISABLED;
+                        let _ = DwmSetWindowAttribute(
+                            hwnd,
+                            DWMWA_NCRENDERING_POLICY,
+                            &policy as *const _ as *const _,
+                            std::mem::size_of_val(&policy) as u32,
+                        );
                         use windows::Win32::UI::WindowsAndMessaging::{
                             GetWindowLongW, SetWindowLongW, SetWindowPos, GWL_STYLE,
                             SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,

@@ -998,6 +998,11 @@ function OverlayApp() {
 
 		const radialClosePromise = listen("radial-close", () => {
 			setMode("idle");
+			if (hideWindowTimeoutRef.current) {
+				clearTimeout(hideWindowTimeoutRef.current);
+				hideWindowTimeoutRef.current = null;
+			}
+			getCurrentWebviewWindow().hide().catch(() => {});
 		});
 
 		return () => {
@@ -1114,7 +1119,7 @@ function OverlayApp() {
 					// Rust `show_overlay_for_radial` already positioned the window on the
 					// target monitor and cleared WS_EX_TRANSPARENT. Do NOT call
 					// sync_overlay_position here, or it would re-apply WS_EX_TRANSPARENT!
-					await appWindow.show();
+					// Rust show_overlay_for_radial already displayed the window with SW_SHOWNA (do not call show() here to prevent focus stealing)
 				} else {
 					// Position the window first, then show
 					await invoke("sync_overlay_position");

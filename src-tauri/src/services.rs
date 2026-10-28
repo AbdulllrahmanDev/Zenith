@@ -2365,6 +2365,8 @@ fn apply_capture_ui_state(app: &AppHandle, active: bool) {
 
 const PASSTHROUGH_MAX_MS: i64 = 250;
 const PASSTHROUGH_SLOP_PX: i32 = 6;
+const HOLD_TRIGGER_DELAY_MS: i64 = 150;
+const HOLD_SLOP_PX: i32 = 8;
 const CLICK_HOLD_MS: i64 = 400;
 const CLICK_DRAG_PX: i32 = 30;
 const SYNTHETIC_TAG: usize = 0x524F_5659;
@@ -2372,6 +2374,7 @@ const SYNTHETIC_TAG: usize = 0x524F_5659;
 static MOUSE_HOOK_APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 static MOUSE_RADIAL_RECORDING: AtomicBool = AtomicBool::new(false);
 pub static MOUSE_RADIAL_MENU_OPEN: AtomicBool = AtomicBool::new(false);
+static MOUSE_RADIAL_HOLD_ARMED: AtomicBool = AtomicBool::new(false);
 static MOUSE_RADIAL_DOWN_TIME: AtomicI64 = AtomicI64::new(0);
 static MOUSE_RADIAL_DOWN_POINT: AtomicI64 = AtomicI64::new(0);
 static MOUSE_RADIAL_CLICK_ARMED: AtomicBool = AtomicBool::new(false);
@@ -2556,6 +2559,30 @@ fn run_mouse_hook_thread() {
             if message.message == WM_TIMER && message.wParam.0 == timer {
                 if SHUTTING_DOWN.load(Ordering::Relaxed) {
                     break;
+                }
+
+                // Hold-mode tick: if user held without releasing or moving for HOLD_TRIGGER_DELAY_MS,
+                // open the radial menu so they see the wheel while holding in place
+                if MOUSE_RADIAL_HOLD_ARMED.load(Ordering::Acquire)
+                    && !MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed)
+                {
+                    let down_time = MOUSE_RADIAL_DOWN_TIME.load(Ordering::Relaxed);
+                    let held_ms = hook_tick_ms() - down_time;
+                    let cur_packed = MOUSE_HOOK_CURSOR.load(Ordering::Relaxed);
+                    let cur_pt = unpack_cursor(cur_packed);
+                    let down_pt = unpack_cursor(MOUSE_RADIAL_DOWN_POINT.load(Ordering::Relaxed));
+                    let dx = cur_pt.x - down_pt.x;
+                    let dy = cur_pt.y - down_pt.y;
+                    let dist_sq = dx * dx + dy * dy;
+                    if held_ms >= HOLD_TRIGGER_DELAY_MS || dist_sq >= HOLD_SLOP_PX * HOLD_SLOP_PX {
+                        MOUSE_RADIAL_MENU_OPEN.store(true, Ordering::Relaxed);
+                        if let Some(app) = MOUSE_HOOK_APP_HANDLE.get() {
+                            let app_clone = app.clone();
+                            std::thread::spawn(move || {
+                                crate::commands::show_overlay_for_radial(&app_clone, down_pt.x, down_pt.y);
+                            });
+                        }
+                    }
                 }
 
                 // Click-mode tick: if DOWN was swallowed, check if user is holding or dragging
@@ -3245,10 +3272,31 @@ unsafe extern "system" fn mouse_hook_proc(
         return chain();
     }
 
+
     if message == WM_MOUSEMOVE && !SHUTTING_DOWN.load(Ordering::Relaxed) {
         let cursor = data.pt;
         queue_cursor(cursor);
         MOUSE_HOOK_LAST_EVENT_MS.store(hook_tick_ms(), Ordering::Relaxed);
+        // WM_MOUSEMOVE hold-mode trigger check: flick/drag opens the wheel immediately
+        if MOUSE_RADIAL_HOLD_ARMED.load(Ordering::Acquire)
+            && !MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed)
+        {
+            let down_pt = unpack_cursor(MOUSE_RADIAL_DOWN_POINT.load(Ordering::Relaxed));
+            let dx = cursor.x - down_pt.x;
+            let dy = cursor.y - down_pt.y;
+            let dist_sq = dx * dx + dy * dy;
+            let down_time = MOUSE_RADIAL_DOWN_TIME.load(Ordering::Relaxed);
+            let held_ms = hook_tick_ms() - down_time;
+            if dist_sq >= HOLD_SLOP_PX * HOLD_SLOP_PX || held_ms >= HOLD_TRIGGER_DELAY_MS {
+                MOUSE_RADIAL_MENU_OPEN.store(true, Ordering::Relaxed);
+                if let Some(app) = MOUSE_HOOK_APP_HANDLE.get().or_else(|| WINDOW_CHANGE_APP_HANDLE.get()) {
+                    let app_clone = app.clone();
+                    std::thread::spawn(move || {
+                        crate::commands::show_overlay_for_radial(&app_clone, down_pt.x, down_pt.y);
+                    });
+                }
+            }
+        }
     }
 
     let app_opt = MOUSE_HOOK_APP_HANDLE.get().or_else(|| WINDOW_CHANGE_APP_HANDLE.get()).cloned();
@@ -3261,7 +3309,7 @@ unsafe extern "system" fn mouse_hook_proc(
             if !is_bare_left_or_right {
                 let recorded = format_recorded_trigger(btn);
                 MOUSE_RADIAL_RECORDING.store(false, Ordering::Relaxed);
-                if let Some(ref app) = app_opt {
+                if let Some(app) = MOUSE_HOOK_APP_HANDLE.get().or_else(|| WINDOW_CHANGE_APP_HANDLE.get()) {
                     let app_clone = app.clone();
                     std::thread::spawn(move || {
                         let _ = crate::commands::save_setting(
@@ -3310,42 +3358,44 @@ unsafe extern "system" fn mouse_hook_proc(
                                 MOUSE_RADIAL_DOWN_TIME.store(hook_tick_ms(), Ordering::Relaxed);
                                 MOUSE_RADIAL_DOWN_POINT.store(pack_cursor(cursor_pt), Ordering::Relaxed);
                                 MOUSE_RADIAL_ARMED_BTN.store(btn_ordinal, Ordering::Relaxed);
-                                MOUSE_RADIAL_MENU_OPEN.store(true, Ordering::Relaxed);
-                                let app_clone = app.clone();
-                                std::thread::spawn(move || {
-                                    crate::commands::show_overlay_for_radial(&app_clone, cursor_pt.x, cursor_pt.y);
-                                });
+                                MOUSE_RADIAL_HOLD_ARMED.store(true, Ordering::Release);
+                                MOUSE_RADIAL_MENU_OPEN.store(false, Ordering::Relaxed);
                                 return windows::Win32::Foundation::LRESULT(1);
-                            } else if MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed) {
-                                let down_time = MOUSE_RADIAL_DOWN_TIME.load(Ordering::Relaxed);
-                                let elapsed = hook_tick_ms() - down_time;
-                                let down_pt = unpack_cursor(MOUSE_RADIAL_DOWN_POINT.load(Ordering::Relaxed));
-                                let dx = cursor_pt.x - down_pt.x;
-                                let dy = cursor_pt.y - down_pt.y;
-                                let dist_sq = dx * dx + dy * dy;
+                            } else if MOUSE_RADIAL_HOLD_ARMED.swap(false, Ordering::AcqRel) || MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed) {
+                                if MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed) {
+                                    let down_time = MOUSE_RADIAL_DOWN_TIME.load(Ordering::Relaxed);
+                                    let elapsed = hook_tick_ms() - down_time;
+                                    let down_pt = unpack_cursor(MOUSE_RADIAL_DOWN_POINT.load(Ordering::Relaxed));
+                                    let dx = cursor_pt.x - down_pt.x;
+                                    let dy = cursor_pt.y - down_pt.y;
+                                    let dist_sq = dx * dx + dy * dy;
 
-                                // Short stationary tap: user wanted a native click (e.g. middle-click link/tab)
-                                if elapsed <= PASSTHROUGH_MAX_MS && dist_sq <= PASSTHROUGH_SLOP_PX * PASSTHROUGH_SLOP_PX {
-                                    MOUSE_RADIAL_MENU_OPEN.store(false, Ordering::Relaxed);
-                                    let app_clone = app.clone();
-                                    std::thread::spawn(move || {
-                                        crate::commands::close_radial_menu(app_clone);
-                                    });
-                                    inject_synthetic_mouse(btn_ordinal, true, true);
+                                    // Short stationary tap: user wanted a native click (e.g. middle-click link/tab)
+                                    if elapsed <= PASSTHROUGH_MAX_MS && dist_sq <= PASSTHROUGH_SLOP_PX * PASSTHROUGH_SLOP_PX {
+                                        MOUSE_RADIAL_MENU_OPEN.store(false, Ordering::Relaxed);
+                                        let app_clone = app.clone();
+                                        std::thread::spawn(move || {
+                                            crate::commands::close_radial_menu(app_clone);
+                                        });
+                                        inject_synthetic_mouse(btn_ordinal, true, true);
+                                    } else {
+                                        // Gesture confirmed: let RadialMenu resolve aim at release point, run Launch Echo / folder nav, or cancel on hub
+                                        let (rel_x, rel_y) = screen_to_radial_css(cursor_pt.x, cursor_pt.y);
+                                        let app_clone = app.clone();
+                                        std::thread::spawn(move || {
+                                            let _ = app_clone.emit(
+                                                "radial-release",
+                                                serde_json::json!({
+                                                    "x": rel_x,
+                                                    "y": rel_y,
+                                                    "elapsed": elapsed
+                                                }),
+                                            );
+                                        });
+                                    }
                                 } else {
-                                    // Gesture confirmed: let RadialMenu resolve aim at release point, run Launch Echo / folder nav, or cancel on hub
-                                    let (rel_x, rel_y) = screen_to_radial_css(cursor_pt.x, cursor_pt.y);
-                                    let app_clone = app.clone();
-                                    std::thread::spawn(move || {
-                                        let _ = app_clone.emit(
-                                            "radial-release",
-                                            serde_json::json!({
-                                                "x": rel_x,
-                                                "y": rel_y,
-                                                "elapsed": elapsed
-                                            }),
-                                        );
-                                    });
+                                    // Released before hold threshold without drag: pass through native click with ZERO overlay flash!
+                                    inject_synthetic_mouse(btn_ordinal, true, true);
                                 }
                                 return windows::Win32::Foundation::LRESULT(1);
                             }

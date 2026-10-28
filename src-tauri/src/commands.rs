@@ -2670,20 +2670,30 @@ pub fn show_overlay_for_radial(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
             (cursor_x, cursor_y, 1920, 1080)
         };
 
-        // Immediately clear any window clipping region and make interactive so the full screen receives mouse events with 0 delay
-        let _ = ov_win.set_ignore_cursor_events(false);
+        // Immediately make interactive and frame-less without losing transparency or flashing a titlebar
         if let Ok(hwnd) = ov_win.hwnd() {
             unsafe {
+                use windows::Win32::Graphics::Dwm::{
+                    DwmSetWindowAttribute, DWMNCRP_DISABLED, DWMWA_NCRENDERING_POLICY,
+                };
                 use windows::Win32::Graphics::Gdi::SetWindowRgn;
                 use windows::Win32::UI::WindowsAndMessaging::{
-                    GetWindowLongW, SetWindowLongW, GetWindowLongPtrW, SetWindowLongPtrW,
+                    GetWindowLongPtrW, GetWindowLongW, SetWindowLongPtrW, SetWindowLongW,
                     SetWindowPos, ShowWindow, GWL_EXSTYLE, GWL_STYLE, HWND_TOPMOST,
                     SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SW_SHOWNA,
-                    WS_BORDER, WS_CAPTION, WS_DLGFRAME, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
-                    WS_EX_TRANSPARENT, WS_MAXIMIZEBOX, WS_MINIMIZEBOX, WS_POPUP, WS_SYSMENU,
-                    WS_THICKFRAME,
+                    WS_BORDER, WS_CAPTION, WS_DLGFRAME, WS_EX_APPWINDOW, WS_EX_LAYERED,
+                    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_MAXIMIZEBOX,
+                    WS_MINIMIZEBOX, WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
                 };
-                let _ = SetWindowRgn(hwnd, None, true);
+
+                // Permanently disable non-client rendering (titlebars / borders) via DWM
+                let policy = DWMNCRP_DISABLED;
+                let _ = DwmSetWindowAttribute(
+                    hwnd,
+                    DWMWA_NCRENDERING_POLICY,
+                    &policy as *const _ as *const _,
+                    std::mem::size_of_val(&policy) as u32,
+                );
 
                 // Strip any caption or frame styles from GWL_STYLE so Windows never draws a titlebar
                 let current_style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
@@ -2699,11 +2709,18 @@ pub fn show_overlay_for_radial(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
                     SetWindowLongW(hwnd, GWL_STYLE, clean_style as i32);
                 }
 
+                // Keep WS_EX_TOOLWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE.
+                // Clear WS_EX_TRANSPARENT so the window receives mouse events, but KEEP WS_EX_LAYERED!
                 let current_ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
-                // Keep WS_EX_TOOLWINDOW and remove WS_EX_APPWINDOW to NEVER appear on taskbar.
-                // Clear WS_EX_TRANSPARENT so the window receives mouse events.
-                let new_ex = ((current_ex & !WS_EX_TRANSPARENT.0) & !WS_EX_APPWINDOW.0) | WS_EX_TOOLWINDOW.0;
+                let new_ex = ((current_ex & !WS_EX_TRANSPARENT.0) & !WS_EX_APPWINDOW.0)
+                    | WS_EX_TOOLWINDOW.0
+                    | WS_EX_NOACTIVATE.0
+                    | WS_EX_LAYERED.0;
                 SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_ex as isize);
+
+                // Remove clipping region with bRedraw = false to prevent non-client redraw flash
+                let _ = SetWindowRgn(hwnd, None, false);
+
                 let _ = SetWindowPos(
                     hwnd,
                     Some(HWND_TOPMOST),
