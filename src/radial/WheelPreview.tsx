@@ -308,27 +308,6 @@ export const WheelPreview: React.FC<WheelPreviewProps> = ({
           </div>
         )}
       </div>
-
-      {/* Live Preview badge */}
-      <div
-        style={{
-          position: "absolute",
-          left: 10,
-          bottom: 8,
-          fontSize: 10,
-          fontWeight: 600,
-          letterSpacing: "0.04em",
-          textTransform: "uppercase",
-          color: "rgba(255,255,255,0.72)",
-          background: "rgba(14, 14, 18, 0.62)",
-          padding: "2px 7px",
-          borderRadius: 6,
-          border: "1px solid rgba(255,255,255,0.12)",
-          pointerEvents: "none",
-        }}
-      >
-        Live Preview
-      </div>
     </div>
   );
 };

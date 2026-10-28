@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
 	MousePointer,
 	Compass,
@@ -26,7 +26,10 @@ import {
 	Palette,
 	Sliders,
 	FolderPlus,
-	Edit3
+	Edit3,
+	X,
+	Upload,
+	Image as ImageIcon
 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
 import { invoke } from "@tauri-apps/api/core";
@@ -51,6 +54,44 @@ interface InstalledAppInfo {
 	name: string;
 	path: string;
 	icon: string | null;
+}
+
+const QUICK_FOLDER_PRESETS: { label: string; target: string; icon: string }[] = [
+	{ label: "Desktop", target: "shell:Desktop", icon: "Monitor" },
+	{ label: "Downloads", target: "shell:Downloads", icon: "FolderOpen" },
+	{ label: "Documents", target: "shell:Personal", icon: "FileText" },
+	{ label: "Pictures", target: "shell:My Pictures", icon: "Image" },
+	{ label: "Videos", target: "shell:My Video", icon: "Video" },
+	{ label: "Music", target: "shell:My Music", icon: "Music" },
+	{ label: "C: Drive", target: "C:\\", icon: "HardDrive" }
+];
+
+const WEB_URL_PRESETS: { label: string; target: string; icon: string; domain: string }[] = [
+	{ label: "Google", target: "https://www.google.com", icon: "Search", domain: "google.com" },
+	{ label: "YouTube", target: "https://www.youtube.com", icon: "Video", domain: "youtube.com" },
+	{ label: "GitHub", target: "https://github.com", icon: "Code", domain: "github.com" },
+	{ label: "ChatGPT", target: "https://chatgpt.com", icon: "Sparkles", domain: "chatgpt.com" },
+	{ label: "Reddit", target: "https://reddit.com", icon: "MessageCircle", domain: "reddit.com" },
+	{ label: "Twitter / X", target: "https://x.com", icon: "Globe", domain: "x.com" },
+	{ label: "Notion", target: "https://notion.so", icon: "BookOpen", domain: "notion.so" },
+	{ label: "Spotify Web", target: "https://open.spotify.com", icon: "Music", domain: "spotify.com" }
+];
+
+function guessIconForName(name: string): string {
+	const n = name.toLowerCase();
+	if (n.includes("chrome") || n.includes("edge") || n.includes("firefox") || n.includes("brave") || n.includes("browser")) return "Globe";
+	if (n.includes("terminal") || n.includes("powershell") || n.includes("cmd") || n.includes("prompt")) return "Terminal";
+	if (n.includes("code") || n.includes("studio") || n.includes("ide") || n.includes("git") || n.includes("cursor")) return "Code";
+	if (n.includes("calc")) return "Calculator";
+	if (n.includes("camera")) return "Camera";
+	if (n.includes("music") || n.includes("spotify")) return "Music";
+	if (n.includes("video") || n.includes("media") || n.includes("vlc") || n.includes("player")) return "Video";
+	if (n.includes("setting") || n.includes("control")) return "Settings";
+	if (n.includes("folder") || n.includes("explorer") || n.includes("file")) return "Folder";
+	if (n.includes("mail") || n.includes("outlook")) return "Mail";
+	if (n.includes("discord") || n.includes("slack") || n.includes("chat") || n.includes("telegram")) return "MessageCircle";
+	if (n.includes("paint") || n.includes("photo") || n.includes("image") || n.includes("figma")) return "Image";
+	return "AppWindow";
 }
 
 export interface MouseTabProps {
@@ -212,10 +253,35 @@ export function MouseTab({
 	const [newItemTarget, setNewItemTarget] = useState("");
 	const [newItemType, setNewItemType] = useState<RadialItemType>("command");
 	const [newItemIcon, setNewItemIcon] = useState("Sparkles");
+	const [newItemCustomIconUrl, setNewItemCustomIconUrl] = useState("");
 	const [editingItemId, setEditingItemId] = useState<string | null>(null);
+	const customIconFileRef = useRef<HTMLInputElement | null>(null);
 
-	// Installed Apps Picker
+	const handleCustomIconFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const file = e.target.files?.[0];
+		if (!file) return;
+
+		const reader = new FileReader();
+		reader.onload = async () => {
+			const dataUri = reader.result as string;
+			try {
+				const cacheKey = `radial_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+				const optimized = await invoke<string>("set_custom_icon", {
+					cacheKey,
+					iconData: dataUri
+				});
+				setNewItemCustomIconUrl(optimized);
+			} catch {
+				setNewItemCustomIconUrl(dataUri);
+			}
+		};
+		reader.readAsDataURL(file);
+		e.target.value = "";
+	};
+
+	// Installed Apps Picker & Native Icon Cache
 	const [installedApps, setInstalledApps] = useState<InstalledAppInfo[]>([]);
+	const [appIcons, setAppIcons] = useState<Record<string, string>>({});
 	const [loadingApps, setLoadingApps] = useState(false);
 	const [appSearch, setAppSearch] = useState("");
 
@@ -249,9 +315,45 @@ export function MouseTab({
 
 	const filteredApps = useMemo(() => {
 		const q = appSearch.trim().toLowerCase();
-		if (!q) return installedApps.slice(0, 40);
-		return installedApps.filter((a) => a.name.toLowerCase().includes(q)).slice(0, 40);
+		if (!q) return installedApps.slice(0, 80);
+		return installedApps.filter((a) => a.name.toLowerCase().includes(q)).slice(0, 80);
 	}, [installedApps, appSearch]);
+
+	// Fetch native Windows icons for visible installed apps in batch
+	useEffect(() => {
+		if (filteredApps.length === 0) return;
+		let active = true;
+		const targets = filteredApps.filter((a) => !appIcons[a.path]);
+		if (targets.length === 0) return;
+
+		Promise.all(
+			targets.map(async (app) => {
+				try {
+					const icon = await invoke<string | null>("get_app_icon", {
+						path: app.path,
+						name: app.name,
+						hwnd: null
+					});
+					return [app.path, icon] as const;
+				} catch {
+					return [app.path, null] as const;
+				}
+			})
+		).then((pairs) => {
+			if (!active) return;
+			const batch: Record<string, string> = {};
+			for (const [path, icon] of pairs) {
+				if (icon) batch[path] = icon;
+			}
+			if (Object.keys(batch).length > 0) {
+				setAppIcons((prev) => ({ ...prev, ...batch }));
+			}
+		});
+
+		return () => {
+			active = false;
+		};
+	}, [filteredApps, appIcons]);
 
 	const wheelConfig: Partial<RadialWheelConfig> = useMemo(
 		() => ({
@@ -339,8 +441,9 @@ export function MouseTab({
 		setAddKind(kind);
 		setNewItemLabel("");
 		setNewItemTarget("");
+		setNewItemCustomIconUrl("");
 		if (kind === "app") {
-			setNewItemType("command");
+			setNewItemType("app");
 			setNewItemIcon("AppWindow");
 		} else if (kind === "system") {
 			const first = SYSTEM_ACTION_PRESETS[0];
@@ -369,6 +472,7 @@ export function MouseTab({
 		setNewItemTarget(item.target || "");
 		setNewItemType(item.type);
 		setNewItemIcon(item.icon || "Sparkles");
+		setNewItemCustomIconUrl(item.customIconUrl || "");
 		if (item.type === "system") setAddKind("system");
 		else if (item.type === "url") setAddKind("url");
 		else if (item.type === "folder" || item.type === "file") setAddKind("folder");
@@ -392,7 +496,12 @@ export function MouseTab({
 								target,
 								type: newItemType,
 								icon: newItemIcon,
-								useNativeIcon: newItemType === "command" || newItemType === "app"
+								customIconUrl: newItemCustomIconUrl.trim() || undefined,
+								useNativeIcon:
+									newItemType === "command" ||
+									newItemType === "app" ||
+									newItemType === "file" ||
+									newItemType === "folder"
 							}
 						: it
 				)
@@ -404,7 +513,12 @@ export function MouseTab({
 				target,
 				type: newItemType,
 				icon: newItemIcon,
-				useNativeIcon: newItemType === "command" || newItemType === "app",
+				...(newItemCustomIconUrl.trim() ? { customIconUrl: newItemCustomIconUrl.trim() } : null),
+				useNativeIcon:
+					newItemType === "command" ||
+					newItemType === "app" ||
+					newItemType === "file" ||
+					newItemType === "folder",
 				...(newItemType === "submenu" ? { children: [] } : null)
 			};
 			updateDisplayedItems((items) => [...items, newItem]);
@@ -412,6 +526,7 @@ export function MouseTab({
 
 		setNewItemLabel("");
 		setNewItemTarget("");
+		setNewItemCustomIconUrl("");
 		setEditingItemId(null);
 		setShowAddForm(false);
 	};
@@ -419,8 +534,8 @@ export function MouseTab({
 	const handlePickInstalledApp = (app: InstalledAppInfo) => {
 		setNewItemLabel(app.name);
 		setNewItemTarget(app.path);
-		setNewItemType("command");
-		setNewItemIcon("AppWindow");
+		setNewItemType("app");
+		setNewItemIcon(guessIconForName(app.name));
 	};
 
 	const handleBrowseExecutable = async () => {
@@ -437,7 +552,8 @@ export function MouseTab({
 				const cleanName = base.replace(/\.(exe|lnk|bat|cmd)$/i, "");
 				setNewItemTarget(selected);
 				if (!newItemLabel.trim()) setNewItemLabel(cleanName);
-				setNewItemType("command");
+				setNewItemType("app");
+				setNewItemIcon(guessIconForName(cleanName));
 			}
 		} catch {}
 	};
@@ -887,24 +1003,30 @@ export function MouseTab({
 											className={`zn-add-kind-btn ${addKind === id ? "active" : ""}`}
 											onClick={() => {
 												setAddKind(id);
-												if (id === "app") setNewItemType("command");
-												else if (id === "system") {
+												if (id === "app") {
+													setNewItemType("app");
+													setNewItemIcon("AppWindow");
+												} else if (id === "system") {
 													setNewItemType("system");
 													if (!newItemTarget) {
 														setNewItemLabel(SYSTEM_ACTION_PRESETS[0].label);
 														setNewItemTarget(SYSTEM_ACTION_PRESETS[0].target);
 														setNewItemIcon(SYSTEM_ACTION_PRESETS[0].icon);
 													}
-												} else if (id === "folder") setNewItemType("folder");
-												else if (id === "url") setNewItemType("url");
-												else if (id === "submenu") {
+												} else if (id === "folder") {
+													setNewItemType("folder");
+													setNewItemIcon("Folder");
+												} else if (id === "url") {
+													setNewItemType("url");
+													setNewItemIcon("Globe");
+												} else if (id === "submenu") {
 													setNewItemType("submenu");
 													setNewItemTarget("submenu");
 													setNewItemIcon("Layers");
 												}
 											}}
 										>
-											<Icon size={12} />
+											<Icon size={13} />
 											<span>{label}</span>
 										</button>
 									))}
@@ -915,143 +1037,367 @@ export function MouseTab({
 									<div className="zn-app-picker-section">
 										<div className="zn-app-picker-search-row">
 											<div className="zn-app-search-box">
-												<Search size={12} />
+												<Search size={13} />
 												<input
 													type="text"
-													placeholder="Search installed Windows apps..."
+													placeholder="Search installed Windows apps or executables..."
 													value={appSearch}
 													onChange={(e) => setAppSearch(e.target.value)}
 												/>
+												{appSearch && (
+													<button
+														type="button"
+														className="zn-search-clear-btn"
+														onClick={() => setAppSearch("")}
+														title="Clear search"
+													>
+														<X size={12} />
+													</button>
+												)}
+												<span className="zn-app-search-count">
+													{loadingApps ? "Scanning..." : `${filteredApps.length} apps`}
+												</span>
 											</div>
 											<button
 												type="button"
 												className="settings-btn"
 												onClick={handleBrowseExecutable}
+												title="Browse filesystem for .exe or .lnk"
 											>
-												<FolderOpen size={12} />
+												<FolderOpen size={13} />
 												<span>Browse .exe</span>
 											</button>
 										</div>
 
 										<div className="zn-installed-apps-grid">
 											{loadingApps ? (
-												<div className="zn-apps-loading">Scanning installed applications...</div>
+												<div className="zn-apps-loading">
+													<AppWindow size={16} />
+													<span>Scanning installed Windows applications...</span>
+												</div>
 											) : filteredApps.length === 0 ? (
-												<div className="zn-apps-loading">No matching apps found. Use Browse .exe or type path below.</div>
+												<div className="zn-apps-loading">
+													<span>No matching apps found. Click "Browse .exe" or type path below.</span>
+												</div>
 											) : (
-												filteredApps.map((app) => (
-													<button
-														key={app.path}
-														type="button"
-														className={`zn-installed-app-chip ${
-															newItemTarget === app.path ? "selected" : ""
-														}`}
-														onClick={() => handlePickInstalledApp(app)}
-													>
-														{app.icon ? (
-															<img src={app.icon} alt="" />
-														) : (
-															<AppWindow size={14} />
-														)}
-														<span>{app.name}</span>
-													</button>
-												))
+												filteredApps.map((app) => {
+													const isSelected = newItemTarget === app.path;
+													const exeName = app.path.split(/[\\/]/).pop() || "";
+													return (
+														<button
+															key={app.path}
+															type="button"
+															className={`zn-installed-app-chip ${isSelected ? "selected" : ""}`}
+															onClick={() => handlePickInstalledApp(app)}
+															title={app.path}
+														>
+															<div className="zn-app-chip-icon-box">
+																{appIcons[app.path] ? (
+																	<img src={appIcons[app.path]} alt={app.name} />
+																) : (
+																	<SmartIcon
+																		item={{
+																			id: app.path,
+																			label: app.name,
+																			target: app.path,
+																			type: "app",
+																			icon: guessIconForName(app.name)
+																		}}
+																		size={22}
+																		displayScale={0.88}
+																	/>
+																)}
+															</div>
+															<div className="zn-app-chip-info">
+																<span className="zn-app-chip-title">{app.name}</span>
+																<span className="zn-app-chip-path">{exeName}</span>
+															</div>
+															{isSelected && (
+																<div className="zn-app-chip-check">
+																	<Check size={10} strokeWidth={3} />
+																</div>
+															)}
+														</button>
+													);
+												})
 											)}
 										</div>
 									</div>
 								)}
 
 								{addKind === "system" && (
-									<div className="zn-system-presets-grid">
-										{SYSTEM_ACTION_PRESETS.map((preset) => {
-											const PIcon = getRadialIcon(preset.icon);
-											const selected = newItemTarget === preset.target;
-											return (
-												<button
-													key={preset.target}
-													type="button"
-													className={`zn-system-preset-chip ${selected ? "selected" : ""}`}
-													onClick={() => {
-														setNewItemLabel(preset.label);
-														setNewItemTarget(preset.target);
-														setNewItemType("system");
-														setNewItemIcon(preset.icon);
-													}}
-												>
-													<PIcon size={13} />
-													<span>{preset.label}</span>
-												</button>
-											);
-										})}
+									<div className="zn-system-presets-section">
+										<div className="zn-picker-subtitle">Standard Windows & Zenith Actions</div>
+										<div className="zn-system-presets-grid">
+											{SYSTEM_ACTION_PRESETS.map((preset) => {
+												const PIcon = getRadialIcon(preset.icon);
+												const selected = newItemTarget === preset.target;
+												return (
+													<button
+														key={preset.target}
+														type="button"
+														className={`zn-system-preset-chip ${selected ? "selected" : ""}`}
+														onClick={() => {
+															setNewItemLabel(preset.label);
+															setNewItemTarget(preset.target);
+															setNewItemType("system");
+															setNewItemIcon(preset.icon);
+														}}
+													>
+														<div className="zn-system-preset-icon">
+															<PIcon size={14} />
+														</div>
+														<span className="zn-system-preset-label">{preset.label}</span>
+														{selected && (
+															<Check size={11} strokeWidth={2.5} style={{ marginLeft: "auto" }} />
+														)}
+													</button>
+												);
+											})}
+										</div>
 									</div>
 								)}
 
 								{addKind === "folder" && (
-									<div style={{ display: "flex", gap: 8 }}>
-										<button
-											type="button"
-											className="settings-btn"
-											onClick={() => handleBrowseFolderOrFile(true)}
-											style={{ flex: 1, justifyContent: "center" }}
-										>
-											<FolderOpen size={13} />
-											<span>Choose Folder...</span>
-										</button>
-										<button
-											type="button"
-											className="settings-btn"
-											onClick={() => handleBrowseFolderOrFile(false)}
-											style={{ flex: 1, justifyContent: "center" }}
-										>
-											<FileText size={13} />
-											<span>Choose File...</span>
-										</button>
+									<div className="zn-folder-picker-section">
+										<div className="zn-folder-actions-row">
+											<button
+												type="button"
+												className="zn-folder-action-card"
+												onClick={() => handleBrowseFolderOrFile(true)}
+											>
+												<div className="zn-folder-action-icon folder">
+													<FolderOpen size={20} />
+												</div>
+												<div className="zn-folder-action-text">
+													<span className="zn-folder-action-title">Browse Folder...</span>
+													<span className="zn-folder-action-desc">Choose any directory on your computer</span>
+												</div>
+											</button>
+											<button
+												type="button"
+												className="zn-folder-action-card"
+												onClick={() => handleBrowseFolderOrFile(false)}
+											>
+												<div className="zn-folder-action-icon file">
+													<FileText size={20} />
+												</div>
+												<div className="zn-folder-action-text">
+													<span className="zn-folder-action-title">Browse File...</span>
+													<span className="zn-folder-action-desc">Choose any document, media, or script</span>
+												</div>
+											</button>
+										</div>
+
+										<div className="zn-picker-subtitle">Quick Windows Folders</div>
+										<div className="zn-quick-folders-grid">
+											{QUICK_FOLDER_PRESETS.map((qf) => {
+												const QIcon = getRadialIcon(qf.icon);
+												const isSelected = newItemTarget === qf.target;
+												return (
+													<button
+														key={qf.target}
+														type="button"
+														className={`zn-quick-folder-chip ${isSelected ? "selected" : ""}`}
+														onClick={() => {
+															setNewItemLabel(qf.label);
+															setNewItemTarget(qf.target);
+															setNewItemType("folder");
+															setNewItemIcon(qf.icon);
+														}}
+													>
+														<div className="zn-quick-folder-icon">
+															<QIcon size={14} />
+														</div>
+														<span className="zn-quick-folder-title">{qf.label}</span>
+													</button>
+												);
+											})}
+										</div>
 									</div>
 								)}
 
-								{/* Common Label + Target + Icon Row */}
-								<div className="zn-add-fields-row">
+								{addKind === "url" && (
+									<div className="zn-url-picker-section">
+										<div className="zn-picker-subtitle">Popular Website Presets</div>
+										<div className="zn-quick-urls-grid">
+											{WEB_URL_PRESETS.map((site) => {
+												const SIcon = getRadialIcon(site.icon);
+												const isSelected = newItemTarget === site.target;
+												return (
+													<button
+														key={site.target}
+														type="button"
+														className={`zn-quick-url-chip ${isSelected ? "selected" : ""}`}
+														onClick={() => {
+															setNewItemLabel(site.label);
+															setNewItemTarget(site.target);
+															setNewItemType("url");
+															setNewItemIcon(site.icon);
+														}}
+													>
+														<div className="zn-quick-url-icon">
+															<SIcon size={14} />
+														</div>
+														<div className="zn-quick-url-info">
+															<span className="zn-quick-url-title">{site.label}</span>
+															<span className="zn-quick-url-domain">{site.domain}</span>
+														</div>
+													</button>
+												);
+											})}
+										</div>
+									</div>
+								)}
+
+								{addKind === "submenu" && (
+									<div className="zn-submenu-intro-card">
+										<div className="zn-submenu-intro-icon">
+											<FolderPlus size={24} />
+										</div>
+										<div className="zn-submenu-intro-body">
+											<span className="zn-submenu-intro-title">Submenu Folder</span>
+											<span className="zn-submenu-intro-desc">
+												Creates an expandable slice on the wheel that opens its own nested ring of shortcuts.
+											</span>
+										</div>
+									</div>
+								)}
+
+								{/* Item Configuration & Live Radial Slice Preview */}
+								<div className="zn-drawer-config-panel">
+									{/* Hidden file input for custom icon selection */}
 									<input
-										type="text"
-										className="settings-text-input"
-										placeholder="Label (e.g. Chrome, Work Tools)"
-										value={newItemLabel}
-										onChange={(e) => setNewItemLabel(e.target.value)}
-										style={{ flex: "1 1 36%" }}
+										type="file"
+										ref={customIconFileRef}
+										accept="image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon,.ico,.png,.jpg,.jpeg,.svg,.webp"
+										style={{ display: "none" }}
+										onChange={handleCustomIconFileSelect}
 									/>
-									{addKind !== "submenu" && (
-										<input
-											type="text"
-											className="settings-text-input"
-											placeholder={
-												addKind === "url"
-													? "https://example.com"
-													: "Path, command, or action ID"
-											}
-											value={newItemTarget}
-											onChange={(e) => setNewItemTarget(e.target.value)}
-											style={{ flex: "1 1 44%" }}
-										/>
-									)}
-									<select
-										className="settings-select"
-										value={newItemIcon}
-										onChange={(e) => setNewItemIcon(e.target.value)}
-										style={{ minWidth: 105 }}
-										title="Fallback Icon"
-									>
-										{RADIAL_ICON_NAMES.map((ic) => (
-											<option key={ic} value={ic}>
-												{ic}
-											</option>
-										))}
-									</select>
+
+									<div className="zn-drawer-preview-box">
+										<div
+											className="zn-drawer-preview-disc"
+											onClick={() => customIconFileRef.current?.click()}
+											title="Click to choose a custom image or icon from your PC"
+										>
+											<SmartIcon
+												item={{
+													id: "preview_slice",
+													label: newItemLabel || "Shortcut",
+													target: newItemTarget || "app",
+													type: newItemType,
+													icon: newItemIcon,
+													customIconUrl: newItemCustomIconUrl || undefined,
+													useNativeIcon:
+														!newItemCustomIconUrl &&
+														(newItemType === "app" ||
+															newItemType === "command" ||
+															newItemType === "file" ||
+															newItemType === "folder")
+												}}
+												size={36}
+												displayScale={0.82}
+											/>
+											<div className="zn-preview-disc-hover-overlay">
+												<Upload size={14} />
+											</div>
+										</div>
+
+										<div className="zn-drawer-preview-details">
+											<div className="zn-drawer-preview-top">
+												<span className="zn-drawer-preview-label">
+													{newItemLabel || "New Shortcut"}
+												</span>
+												<span className="zn-drawer-badge">{newItemType.toUpperCase()}</span>
+												{newItemCustomIconUrl && (
+													<span className="zn-custom-icon-active-badge">
+														<ImageIcon size={10} /> Custom Image
+													</span>
+												)}
+											</div>
+											<span className="zn-drawer-preview-target" title={newItemTarget}>
+												{newItemTarget || "Select an app, location, or action above"}
+											</span>
+										</div>
+
+										<div className="zn-custom-icon-actions">
+											<button
+												type="button"
+												className="zn-custom-icon-pick-btn"
+												onClick={() => customIconFileRef.current?.click()}
+												title="Upload custom image (PNG, ICO, SVG, JPG, WebP) from your computer"
+											>
+												<Upload size={12} />
+												<span>{newItemCustomIconUrl ? "Change Image" : "Custom Image"}</span>
+											</button>
+											{newItemCustomIconUrl && (
+												<button
+													type="button"
+													className="zn-custom-icon-remove-btn"
+													onClick={() => setNewItemCustomIconUrl("")}
+													title="Revert back to default / native icon"
+												>
+													<RotateCcw size={11} />
+													<span>Reset</span>
+												</button>
+											)}
+										</div>
+									</div>
+
+									<div className="zn-add-fields-grid">
+										<div className="zn-field-group">
+											<label className="zn-field-label">Label on Wheel</label>
+											<input
+												type="text"
+												className="settings-text-input zn-input-styled"
+												placeholder="e.g. Chrome, Discord, Work..."
+												value={newItemLabel}
+												onChange={(e) => setNewItemLabel(e.target.value)}
+											/>
+										</div>
+
+										{addKind !== "submenu" && (
+											<div className="zn-field-group zn-field-flex2">
+												<label className="zn-field-label">
+													{addKind === "url" ? "Target Web Address" : "Target Path / Command"}
+												</label>
+												<input
+													type="text"
+													className="settings-text-input zn-input-styled"
+													placeholder={
+														addKind === "url"
+															? "https://example.com"
+															: "Path, shell command, or executable"
+													}
+													value={newItemTarget}
+													onChange={(e) => setNewItemTarget(e.target.value)}
+												/>
+											</div>
+										)}
+
+										<div className="zn-field-group">
+											<label className="zn-field-label">Fallback Icon</label>
+											<select
+												className="settings-select zn-select-styled"
+												value={newItemIcon}
+												onChange={(e) => setNewItemIcon(e.target.value)}
+												title="Fallback Icon when native icon is unavailable"
+											>
+												{RADIAL_ICON_NAMES.map((ic) => (
+													<option key={ic} value={ic}>
+														{ic}
+													</option>
+												))}
+											</select>
+										</div>
+									</div>
 								</div>
 
 								<div className="zn-add-drawer-footer">
 									<button
 										type="button"
-										className="settings-btn"
+										className="zn-drawer-cancel-btn"
 										onClick={() => {
 											setShowAddForm(false);
 											setEditingItemId(null);
@@ -1061,11 +1407,11 @@ export function MouseTab({
 									</button>
 									<button
 										type="button"
-										className="zn-mouse-test-btn"
+										className="zn-mouse-save-btn"
 										onClick={handleSaveItem}
 										disabled={!newItemLabel.trim() || (!newItemTarget.trim() && addKind !== "submenu")}
 									>
-										<Check size={12} />
+										<Check size={13} strokeWidth={2.4} />
 										<span>{editingItemId ? "Save Changes" : "Add to Wheel"}</span>
 									</button>
 								</div>
