@@ -284,6 +284,19 @@ export function MouseTab({
 	const customIconFileRef = useRef<HTMLInputElement | null>(null);
 	const wsIconFileInputRef = useRef<HTMLInputElement | null>(null);
 	const [showWsIconPicker, setShowWsIconPicker] = useState(false);
+	const [showIconDropdown, setShowIconDropdown] = useState(false);
+	const iconDropdownRef = useRef<HTMLDivElement | null>(null);
+
+	useEffect(() => {
+		if (!showIconDropdown) return;
+		const handleClickOutside = (e: MouseEvent) => {
+			if (iconDropdownRef.current && !iconDropdownRef.current.contains(e.target as Node)) {
+				setShowIconDropdown(false);
+			}
+		};
+		window.addEventListener("mousedown", handleClickOutside);
+		return () => window.removeEventListener("mousedown", handleClickOutside);
+	}, [showIconDropdown]);
 
 	const handleCustomIconFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
 		const file = e.target.files?.[0];
@@ -698,10 +711,6 @@ export function MouseTab({
 		}
 	};
 
-	const testRadialMenu = () => {
-		invoke("trigger_radial_menu").catch(() => {});
-	};
-
 	const formatTriggerLabel = (btn: string) => {
 		const map: Record<string, string> = {
 			middle: "Middle Click (Wheel)",
@@ -740,15 +749,6 @@ export function MouseTab({
 				</div>
 
 				<div className="zn-mouse-header-actions">
-					<button
-						type="button"
-						className="zn-mouse-test-btn"
-						onClick={testRadialMenu}
-						title="Open the live radial wheel now"
-					>
-						<Play size={12} fill="currentColor" />
-						<span>Test Wheel</span>
-					</button>
 					<label className="toggle-switch">
 						<input
 							type="checkbox"
@@ -1566,20 +1566,48 @@ export function MouseTab({
 											</div>
 										)}
 
-										<div className="zn-field-group">
+										<div className="zn-field-group zn-custom-select-container" ref={iconDropdownRef}>
 											<label className="zn-field-label">Fallback Icon</label>
-											<select
-												className="settings-select zn-select-styled"
-												value={newItemIcon}
-												onChange={(e) => setNewItemIcon(e.target.value)}
+											<button
+												type="button"
+												className={`zn-custom-select-trigger ${showIconDropdown ? "active" : ""}`}
+												onClick={() => setShowIconDropdown((v) => !v)}
 												title="Fallback Icon when native icon is unavailable"
 											>
-												{RADIAL_ICON_NAMES.map((ic) => (
-													<option key={ic} value={ic}>
-														{ic}
-													</option>
-												))}
-											</select>
+												<div className="zn-custom-select-value">
+													{(() => {
+														const SelectedIcon = getRadialIcon(newItemIcon);
+														return <SelectedIcon size={14} strokeWidth={2} />;
+													})()}
+													<span>{newItemIcon}</span>
+												</div>
+												<ChevronDown
+													size={13}
+													className={`zn-custom-select-chevron ${showIconDropdown ? "open" : ""}`}
+												/>
+											</button>
+
+											{showIconDropdown && (
+												<div className="zn-custom-select-dropdown">
+													{RADIAL_ICON_NAMES.map((ic) => {
+														const Ic = getRadialIcon(ic);
+														const isSelected = newItemIcon === ic;
+														return (
+															<div
+																key={ic}
+																className={`zn-custom-select-option ${isSelected ? "selected" : ""}`}
+																onClick={() => {
+																	setNewItemIcon(ic);
+																	setShowIconDropdown(false);
+																}}
+															>
+																<Ic size={14} strokeWidth={isSelected ? 2.2 : 1.8} />
+																<span>{ic}</span>
+															</div>
+														);
+													})}
+												</div>
+											)}
 										</div>
 									</div>
 								</div>
