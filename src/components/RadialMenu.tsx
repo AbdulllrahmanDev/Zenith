@@ -495,6 +495,7 @@ export default function RadialMenu({
 				id: `ws_${ws.id}`,
 				label: ws.name,
 				icon: ws.icon || "Sparkles",
+				customIconUrl: ws.customIconUrl,
 				type: "submenu" as const,
 				target: ws.id,
 				children: ws.items
@@ -1566,7 +1567,15 @@ export default function RadialMenu({
 													))}
 												</div>
 											)}
-											<WsIcon size={12} strokeWidth={2} />
+											{ws.customIconUrl ? (
+												<img
+													src={ws.customIconUrl}
+													alt=""
+													style={{ width: 14, height: 14, objectFit: "contain", flexShrink: 0 }}
+												/>
+											) : (
+												<WsIcon size={12} strokeWidth={2} />
+											)}
 											<span>{ws.name}</span>
 										</button>
 									);

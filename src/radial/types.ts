@@ -16,6 +16,7 @@ export interface RadialWorkspace {
 	id: string;
 	name: string;
 	icon: string;
+	customIconUrl?: string;
 	enabled?: boolean;
 	hotkey?: string;
 	items: RadialItem[];

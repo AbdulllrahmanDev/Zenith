@@ -94,6 +94,32 @@ function guessIconForName(name: string): string {
 	return "AppWindow";
 }
 
+const WS_PRESET_ICONS = [
+	"Sparkles",
+	"Music",
+	"Wrench",
+	"Code",
+	"Gamepad2",
+	"Layers",
+	"Folder",
+	"Globe",
+	"Terminal",
+	"Camera",
+	"Video",
+	"Monitor",
+	"Briefcase",
+	"Activity",
+	"Settings",
+	"Bell",
+	"Star",
+	"Zap",
+	"Cpu",
+	"FileText",
+	"Compass",
+	"Scissors",
+	"Volume2"
+];
+
 export interface MouseTabProps {
 	mouseRadialEnabled: boolean;
 	toggleMouseRadial: () => void;
@@ -256,6 +282,8 @@ export function MouseTab({
 	const [newItemCustomIconUrl, setNewItemCustomIconUrl] = useState("");
 	const [editingItemId, setEditingItemId] = useState<string | null>(null);
 	const customIconFileRef = useRef<HTMLInputElement | null>(null);
+	const wsIconFileInputRef = useRef<HTMLInputElement | null>(null);
+	const [showWsIconPicker, setShowWsIconPicker] = useState(false);
 
 	const handleCustomIconFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
 		const file = e.target.files?.[0];
@@ -277,6 +305,48 @@ export function MouseTab({
 		};
 		reader.readAsDataURL(file);
 		e.target.value = "";
+	};
+
+	const handleWsCustomIconFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+		const file = e.target.files?.[0];
+		if (!file) return;
+
+		const reader = new FileReader();
+		reader.onload = async () => {
+			const dataUri = reader.result as string;
+			try {
+				const cacheKey = `ws_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+				const optimized = await invoke<string>("set_custom_icon", {
+					cacheKey,
+					iconData: dataUri
+				});
+				const updated = workspaces.map((ws, idx) =>
+					idx === selectedWsIndex ? { ...ws, customIconUrl: optimized } : ws
+				);
+				saveWorkspaces(updated);
+			} catch {
+				const updated = workspaces.map((ws, idx) =>
+					idx === selectedWsIndex ? { ...ws, customIconUrl: dataUri } : ws
+				);
+				saveWorkspaces(updated);
+			}
+		};
+		reader.readAsDataURL(file);
+		e.target.value = "";
+	};
+
+	const handleSelectWsIcon = (iconName: string) => {
+		const updated = workspaces.map((ws, idx) =>
+			idx === selectedWsIndex ? { ...ws, icon: iconName, customIconUrl: undefined } : ws
+		);
+		saveWorkspaces(updated);
+	};
+
+	const handleClearWsCustomIcon = () => {
+		const updated = workspaces.map((ws, idx) =>
+			idx === selectedWsIndex ? { ...ws, customIconUrl: undefined } : ws
+		);
+		saveWorkspaces(updated);
 	};
 
 	// Installed Apps Picker & Native Icon Cache
@@ -751,7 +821,15 @@ export function MouseTab({
 												}).catch(() => {});
 											}}
 										>
-											<WsIcon size={12} strokeWidth={1.9} />
+											{ws.customIconUrl ? (
+												<img
+													src={ws.customIconUrl}
+													alt=""
+													style={{ width: 13, height: 13, objectFit: "contain", borderRadius: 2 }}
+												/>
+											) : (
+												<WsIcon size={12} strokeWidth={1.9} />
+											)}
 											<span>{ws.name}</span>
 											<span className="zn-ws-pill-count">{ws.items.length}</span>
 										</button>
