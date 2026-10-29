@@ -64,6 +64,7 @@ interface NotchTabProps {
 	setPrayerAlertTypeValue: (val: string) => void;
 	prayerPreAlert: boolean;
 	togglePrayerPreAlert: () => void;
+	setPrayerCoordsValue: (lat: string, lon: string, city?: string, country?: string) => void;
 	timerSoundEnabled: boolean;
 	toggleTimerSound: () => void;
 	musicModeEnabled: boolean;
@@ -134,6 +135,7 @@ export function NotchTab({
 	setPrayerAlertTypeValue,
 	prayerPreAlert,
 	togglePrayerPreAlert,
+	setPrayerCoordsValue,
 	timerSoundEnabled,
 	toggleTimerSound,
 	musicModeEnabled,
@@ -219,46 +221,74 @@ export function NotchTab({
 	};
 
 	const handleDetectDeviceLocation = () => {
-		if (!navigator.geolocation) {
-			setGpsStatusMsg("Geolocation is not supported by your browser or system.");
-			return;
-		}
 		setDetectingGps(true);
 		setGpsStatusMsg(null);
+
+		const fallbackToIp = async (prefixMsg?: string) => {
+			try {
+				const res = await fetch("http://ip-api.com/json/?fields=status,country,city,lat,lon");
+				if (res.ok) {
+					const data = await res.json();
+					if (data.status === "success" && data.lat && data.lon) {
+						const city = data.city || "";
+						const country = data.country || "";
+						setPrayerCoordsValue(String(data.lat), String(data.lon), city, country);
+						const label = [city, country].filter(Boolean).join(", ");
+						setGpsStatusMsg(`Location acquired via network: ${label || `${data.lat.toFixed(2)}°, ${data.lon.toFixed(2)}°`}`);
+						return;
+					}
+				}
+			} catch {}
+
+			try {
+				const res = await fetch("https://ipapi.co/json/");
+				if (res.ok) {
+					const data = await res.json();
+					if (data.latitude && data.longitude) {
+						const city = data.city || "";
+						const country = data.country_name || "";
+						setPrayerCoordsValue(String(data.latitude), String(data.longitude), city, country);
+						const label = [city, country].filter(Boolean).join(", ");
+						setGpsStatusMsg(`Location acquired via network: ${label || `${data.latitude.toFixed(2)}°, ${data.longitude.toFixed(2)}°`}`);
+						return;
+					}
+				}
+			} catch {}
+
+			setGpsStatusMsg(prefixMsg ? `${prefixMsg} Could not resolve network location.` : "Could not determine location automatically.");
+		};
+
+		if (!navigator.geolocation) {
+			fallbackToIp("GPS not supported.").finally(() => setDetectingGps(false));
+			return;
+		}
 
 		navigator.geolocation.getCurrentPosition(
 			async (pos) => {
 				const { latitude, longitude } = pos.coords;
+				let foundCity = "";
+				let foundCountry = "";
 				try {
-					const res = await fetch(
-						`https://geocoding-api.open-meteo.com/v1/search?name=&latitude=${latitude}&longitude=${longitude}&count=1&format=json`
-					);
-					let label = `${latitude.toFixed(2)}°, ${longitude.toFixed(2)}°`;
-					if (res.ok) {
-						const data = await res.json();
-						if (data?.results?.[0]?.name) {
-							label = `${data.results[0].name}${data.results[0].country ? `, ${data.results[0].country}` : ""}`;
+					const ipRes = await fetch("http://ip-api.com/json/?fields=status,country,city,lat,lon");
+					if (ipRes.ok) {
+						const ipData = await ipRes.json();
+						if (ipData?.status === "success" && ipData.city) {
+							foundCity = ipData.city;
+							foundCountry = ipData.country || "";
 						}
 					}
-					localStorage.setItem("bloom-prayer-lat", String(latitude));
-					localStorage.setItem("bloom-prayer-lon", String(longitude));
-					window.dispatchEvent(new Event("storage"));
-					setGpsStatusMsg(`Location acquired: ${label}`);
-				} catch {
-					setGpsStatusMsg(`Coordinates acquired: ${latitude.toFixed(2)}°, ${longitude.toFixed(2)}°`);
-				} finally {
-					setDetectingGps(false);
-				}
-			},
-			(err) => {
+				} catch {}
+
+				setPrayerCoordsValue(String(latitude), String(longitude), foundCity, foundCountry);
+				const label = [foundCity, foundCountry].filter(Boolean).join(", ");
+				setGpsStatusMsg(`Location acquired: ${label || `${latitude.toFixed(2)}°, ${longitude.toFixed(2)}°`}`);
 				setDetectingGps(false);
-				if (err.code === 1) {
-					setGpsStatusMsg("Windows location permission is disabled. Falling back to IP-based detection.");
-				} else {
-					setGpsStatusMsg("Could not retrieve GPS location. Falling back to IP-based detection.");
-				}
 			},
-			{ enableHighAccuracy: true, timeout: 8000 }
+			async () => {
+				await fallbackToIp("GPS unavailable.");
+				setDetectingGps(false);
+			},
+			{ enableHighAccuracy: true, timeout: 6000 }
 		);
 	};
 

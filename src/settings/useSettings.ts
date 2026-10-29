@@ -57,6 +57,12 @@ export function useSettings() {
 	const [prayerNotchPopup, setPrayerNotchPopup] = useState(
 		() => localStorage.getItem("bloom-prayer-notch-popup") !== "false"
 	);
+	const [prayerLat, setPrayerLat] = useState<string>(
+		() => localStorage.getItem("bloom-prayer-lat") || ""
+	);
+	const [prayerLon, setPrayerLon] = useState<string>(
+		() => localStorage.getItem("bloom-prayer-lon") || ""
+	);
 	const [notificationsEnabled, setNotificationsEnabled] = useState(
 		() => localStorage.getItem("bloom-notifications-enabled") !== "false"
 	);
@@ -433,6 +439,8 @@ export function useSettings() {
 			apply(getVal("bloom-prayer-alert-type"), setPrayerAlertType, (v) => v);
 			apply(getVal("bloom-prayer-pre-alert"), setPrayerPreAlert, readBool);
 			apply(getVal("bloom-prayer-notch-popup"), setPrayerNotchPopup, readBool);
+			apply(getVal("bloom-prayer-lat"), setPrayerLat, (v) => v);
+			apply(getVal("bloom-prayer-lon"), setPrayerLon, (v) => v);
 			apply(getVal("bloom-notifications-enabled"), setNotificationsEnabled, readBool);
 			apply(getVal("bloom-notifications-silent"), setNotificationsSilent, readBool);
 			apply(getVal("bloom-notifications-notch-enabled"), setNotificationsNotchEnabled, readBool);
@@ -577,6 +585,8 @@ export function useSettings() {
 		"bloom-prayer-alert-type": setPrayerAlertType,
 		"bloom-prayer-pre-alert": setPrayerPreAlert,
 		"bloom-prayer-notch-popup": setPrayerNotchPopup,
+		"bloom-prayer-lat": setPrayerLat,
+		"bloom-prayer-lon": setPrayerLon,
 		"bloom-notifications-enabled": setNotificationsEnabled,
 		"bloom-notifications-silent": setNotificationsSilent,
 		"bloom-notifications-notch-enabled": setNotificationsNotchEnabled,
@@ -821,6 +831,21 @@ export function useSettings() {
 		const next = !prayerNotchPopup;
 		setPrayerNotchPopup(next);
 		saveSetting("bloom-prayer-notch-popup", String(next));
+	};
+
+	const setPrayerCoordsValue = (lat: string, lon: string, city?: string, country?: string) => {
+		setPrayerLat(lat);
+		setPrayerLon(lon);
+		saveSetting("bloom-prayer-lat", lat);
+		saveSetting("bloom-prayer-lon", lon);
+		if (city !== undefined && city.trim()) {
+			setPrayerCity(city);
+			saveSetting("bloom-prayer-city", city);
+		}
+		if (country !== undefined && country.trim()) {
+			setPrayerCountry(country);
+			saveSetting("bloom-prayer-country", country);
+		}
 	};
 
 	const toggleNotifications = () => {
@@ -1476,6 +1501,9 @@ export function useSettings() {
 		togglePrayerPreAlert,
 		prayerNotchPopup,
 		togglePrayerNotchPopup,
+		prayerLat,
+		prayerLon,
+		setPrayerCoordsValue,
 		timerSoundEnabled,
 		toggleTimerSound,
 		musicModeEnabled,
