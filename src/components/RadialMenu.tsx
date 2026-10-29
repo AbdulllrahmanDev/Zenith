@@ -1316,7 +1316,7 @@ export default function RadialMenu({
 
 	const echoActive = launchEcho !== null;
 	const isRoot = folderStack.length === 0;
-	const areaMode = selectionMode !== "cursor" && areaWedges;
+	const areaMode = areaWedges;
 	const numberBadgesOn = numberLaunch && numberLabels;
 
 	return (
