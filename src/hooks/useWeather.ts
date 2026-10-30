@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, type ComponentType } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { detectLocation } from "../utils/locationService";
 import {
 	Sun,
 	Moon,
@@ -126,9 +127,9 @@ async function resolveLocation(): Promise<ResolvedLocation> {
 	// 1. Check saved coordinates from the backend settings file.
 	try {
 		const settings = (await invoke("load_settings").catch(() => ({}))) as Record<string, any>;
-		const savedLat = settings["bloom-weather-lat"];
-		const savedLon = settings["bloom-weather-lon"];
-		const savedCity = settings["bloom-weather-city"] || localStorage.getItem("bloom-weather-city");
+		const savedLat = settings["zenith-weather-lat"] ?? settings["bloom-weather-lat"];
+		const savedLon = settings["zenith-weather-lon"] ?? settings["bloom-weather-lon"];
+		const savedCity = settings["zenith-weather-city"] || settings["bloom-weather-city"] || localStorage.getItem("zenith-weather-city") || localStorage.getItem("bloom-weather-city");
 
 		if (savedLat && savedLon) {
 			return {
@@ -138,39 +139,22 @@ async function resolveLocation(): Promise<ResolvedLocation> {
 			};
 		}
 	} catch {
-		// continue to IP geolocation
+		// continue to location detection
 	}
 
-	// 2. Try IP-based geolocation
+	// 2. High-speed, secure, legal multi-tier detection
 	try {
-		const res = await fetch("https://ipapi.co/json/");
-		if (res.ok) {
-			const data = await res.json();
-			const lat = data.latitude || data.lat;
-			const lon = data.longitude || data.lon;
-			if (lat && lon) {
-				return { lat, lon, city: data.city || undefined };
-			}
+		const detected = await detectLocation();
+		if (detected) {
+			return {
+				lat: detected.latitude,
+				lon: detected.longitude,
+				city: detected.city
+			};
 		}
-	} catch {
-		// try fallback
-	}
+	} catch {}
 
-	// 3. Fallback IP geolocation. ip-api.com's free tier is HTTP-only: the
-	// https:// endpoint answers 403 unless the request carries a paid key.
-	try {
-		const res = await fetch("http://ip-api.com/json/?fields=status,lat,lon,city,country");
-		if (res.ok) {
-			const data = await res.json();
-			if (data.lat && data.lon) {
-				return { lat: data.lat, lon: data.lon, city: data.city || undefined };
-			}
-		}
-	} catch {
-		// fall through to default
-	}
-
-	// 4. Default to Delhi
+	// 3. Fallback to Delhi
 	return { lat: DELHI_LAT, lon: DELHI_LON, city: "Delhi" };
 }
 

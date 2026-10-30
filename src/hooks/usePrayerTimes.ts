@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import { useSettingsSync } from "./useSettingsSync";
 import { PRAYER_NAMES_AR } from "../utils/prayerContent";
+import { detectLocation, geocodeCity } from "../utils/locationService";
 import {
 	PRE_ALERT_MINUTES,
 	buildTimingsUrl,
@@ -85,26 +86,7 @@ async function fetchJson(url: string): Promise<unknown> {
 	}
 }
 
-/** Manual place when set, otherwise the IP location, otherwise the last one that worked. */
-async function getCurrentGpsPosition(timeoutMs = 5000): Promise<{ latitude: number; longitude: number } | null> {
-	if (!("geolocation" in navigator)) return null;
-	return new Promise((resolve) => {
-		const timer = setTimeout(() => resolve(null), timeoutMs);
-		navigator.geolocation.getCurrentPosition(
-			(pos) => {
-				clearTimeout(timer);
-				resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
-			},
-			() => {
-				clearTimeout(timer);
-				resolve(null);
-			},
-			{ enableHighAccuracy: true, timeout: timeoutMs }
-		);
-	});
-}
-
-/** Manual place when set, otherwise GPS/IP location, otherwise the last one that worked. */
+/** Manual place when set, otherwise detected location, otherwise the last one that worked. */
 async function resolvePlace(
 	mode: "auto" | "manual",
 	city: string,
@@ -112,86 +94,44 @@ async function resolvePlace(
 	options?: { forceGps?: boolean; savedLat?: number | null; savedLon?: number | null }
 ): Promise<Place | null> {
 	if (mode === "manual" && city.trim()) {
-		return { city: city.trim(), country: country.trim(), label: [city.trim(), country.trim()].filter(Boolean).join(" · ") };
+		// If manual city is specified, try geocoding it to obtain exact coordinates
+		const geocoded = await geocodeCity(city.trim());
+		if (geocoded) {
+			const finalCountry = country.trim() || geocoded.country || "";
+			const label = [city.trim(), finalCountry].filter(Boolean).join(" · ");
+			const place: Place = {
+				city: city.trim(),
+				country: finalCountry,
+				latitude: geocoded.latitude,
+				longitude: geocoded.longitude,
+				label
+			};
+			localStorage.setItem(STORAGE_KEY_PLACE, JSON.stringify(place));
+			return place;
+		}
+
+		return {
+			city: city.trim(),
+			country: country.trim(),
+			label: [city.trim(), country.trim()].filter(Boolean).join(" · ")
+		};
 	}
 
-	// 1. Try GPS if forceGps requested
-	if (options?.forceGps) {
-		const gps = await getCurrentGpsPosition(5000);
-		if (gps) {
-			let label = `${gps.latitude.toFixed(2)}°, ${gps.longitude.toFixed(2)}°`;
-			let foundCity = "";
-			let foundCountry = "";
-			try {
-				const ipRes = (await fetchJson("http://ip-api.com/json/?fields=status,country,city,lat,lon")) as {
-					status?: string;
-					city?: string;
-					country?: string;
-				};
-				if (ipRes?.status === "success" && ipRes.city) {
-					foundCity = ipRes.city;
-					foundCountry = ipRes.country || "";
-					label = [foundCity, foundCountry].filter(Boolean).join(" · ");
-				}
-			} catch {}
-			const place: Place = {
-				latitude: gps.latitude,
-				longitude: gps.longitude,
-				city: foundCity,
-				country: foundCountry,
-				label
-			};
-			localStorage.setItem(STORAGE_KEY_PLACE, JSON.stringify(place));
-			return place;
-		}
+	// 1. Automatic multi-tier detection (High-speed legal IP -> Timezone geocoding -> GPS)
+	const detected = await detectLocation({ allowGps: options?.forceGps });
+	if (detected) {
+		const place: Place = {
+			city: detected.city,
+			country: detected.country,
+			latitude: detected.latitude,
+			longitude: detected.longitude,
+			label: detected.label
+		};
+		localStorage.setItem(STORAGE_KEY_PLACE, JSON.stringify(place));
+		return place;
 	}
 
-	// 2. Fast IP geolocation via ip-api.com
-	try {
-		const ip = (await fetchJson("http://ip-api.com/json/?fields=status,country,city,lat,lon")) as {
-			status?: string;
-			city?: string;
-			country?: string;
-			lat?: number;
-			lon?: number;
-		};
-		if (ip?.status === "success" && ip.city) {
-			const label = [ip.city, ip.country].filter(Boolean).join(" · ");
-			const place: Place = {
-				city: ip.city,
-				country: ip.country || "",
-				latitude: ip.lat,
-				longitude: ip.lon,
-				label
-			};
-			localStorage.setItem(STORAGE_KEY_PLACE, JSON.stringify(place));
-			return place;
-		}
-	} catch {}
-
-	// 3. Fallback to ipapi.co
-	try {
-		const ip = (await fetchJson("https://ipapi.co/json/")) as {
-			city?: string;
-			country_name?: string;
-			latitude?: number;
-			longitude?: number;
-		};
-		if (ip?.city) {
-			const label = [ip.city, ip.country_name].filter(Boolean).join(" · ");
-			const place: Place = {
-				city: ip.city,
-				country: ip.country_name || "",
-				latitude: ip.latitude,
-				longitude: ip.longitude,
-				label
-			};
-			localStorage.setItem(STORAGE_KEY_PLACE, JSON.stringify(place));
-			return place;
-		}
-	} catch {}
-
-	// 4. Fallback to saved coordinates from settings
+	// 2. Fallback to saved coordinates from settings
 	if (
 		typeof options?.savedLat === "number" &&
 		typeof options?.savedLon === "number" &&
@@ -210,7 +150,7 @@ async function resolvePlace(
 		return place;
 	}
 
-	// 5. Fall through to last known place
+	// 3. Fall through to last known place
 	return readJson<Place>(STORAGE_KEY_PLACE);
 }
 

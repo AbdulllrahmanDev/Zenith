@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useState, useRef } from "react";
 import { triggerTestAthan, triggerTestNotification } from "../hooks/usePrayerTimes";
+import { detectLocation } from "../utils/locationService";
 import { SettingRow } from "./SettingRow";
 import { StatusWidgetConfig } from "../components/StatusWidgetConfig";
 import type { WidgetConfig } from "./types";
@@ -220,76 +221,25 @@ export function NotchTab({
 		setPrayerCityValue(cityName);
 	};
 
-	const handleDetectDeviceLocation = () => {
+	const handleDetectDeviceLocation = async () => {
 		setDetectingGps(true);
 		setGpsStatusMsg(null);
 
-		const fallbackToIp = async (prefixMsg?: string) => {
-			try {
-				const res = await fetch("http://ip-api.com/json/?fields=status,country,city,lat,lon");
-				if (res.ok) {
-					const data = await res.json();
-					if (data.status === "success" && data.lat && data.lon) {
-						const city = data.city || "";
-						const country = data.country || "";
-						setPrayerCoordsValue(String(data.lat), String(data.lon), city, country);
-						const label = [city, country].filter(Boolean).join(", ");
-						setGpsStatusMsg(`Location acquired via network: ${label || `${data.lat.toFixed(2)}°, ${data.lon.toFixed(2)}°`}`);
-						return;
-					}
-				}
-			} catch {}
-
-			try {
-				const res = await fetch("https://ipapi.co/json/");
-				if (res.ok) {
-					const data = await res.json();
-					if (data.latitude && data.longitude) {
-						const city = data.city || "";
-						const country = data.country_name || "";
-						setPrayerCoordsValue(String(data.latitude), String(data.longitude), city, country);
-						const label = [city, country].filter(Boolean).join(", ");
-						setGpsStatusMsg(`Location acquired via network: ${label || `${data.latitude.toFixed(2)}°, ${data.longitude.toFixed(2)}°`}`);
-						return;
-					}
-				}
-			} catch {}
-
-			setGpsStatusMsg(prefixMsg ? `${prefixMsg} Could not resolve network location.` : "Could not determine location automatically.");
-		};
-
-		if (!navigator.geolocation) {
-			fallbackToIp("GPS not supported.").finally(() => setDetectingGps(false));
-			return;
+		try {
+			const detected = await detectLocation({ allowGps: true });
+			if (detected) {
+				const city = detected.city || "";
+				const country = detected.country || "";
+				setPrayerCoordsValue(String(detected.latitude), String(detected.longitude), city, country);
+				setGpsStatusMsg(`Location acquired: ${detected.label}`);
+			} else {
+				setGpsStatusMsg("Could not resolve location automatically.");
+			}
+		} catch {
+			setGpsStatusMsg("Error detecting location.");
+		} finally {
+			setDetectingGps(false);
 		}
-
-		navigator.geolocation.getCurrentPosition(
-			async (pos) => {
-				const { latitude, longitude } = pos.coords;
-				let foundCity = "";
-				let foundCountry = "";
-				try {
-					const ipRes = await fetch("http://ip-api.com/json/?fields=status,country,city,lat,lon");
-					if (ipRes.ok) {
-						const ipData = await ipRes.json();
-						if (ipData?.status === "success" && ipData.city) {
-							foundCity = ipData.city;
-							foundCountry = ipData.country || "";
-						}
-					}
-				} catch {}
-
-				setPrayerCoordsValue(String(latitude), String(longitude), foundCity, foundCountry);
-				const label = [foundCity, foundCountry].filter(Boolean).join(", ");
-				setGpsStatusMsg(`Location acquired: ${label || `${latitude.toFixed(2)}°, ${longitude.toFixed(2)}°`}`);
-				setDetectingGps(false);
-			},
-			async () => {
-				await fallbackToIp("GPS unavailable.");
-				setDetectingGps(false);
-			},
-			{ enableHighAccuracy: true, timeout: 6000 }
-		);
 	};
 
 	const handleToggleTestAthan = () => {
@@ -657,7 +607,7 @@ export function NotchTab({
 								desc={
 									gpsStatusMsg
 										? gpsStatusMsg
-										: "Detects device GPS location (or falls back to IP network)"
+										: "Detects your location automatically and securely"
 								}
 							>
 								<button
@@ -665,10 +615,10 @@ export function NotchTab({
 									className="settings-btn-detect"
 									onClick={handleDetectDeviceLocation}
 									disabled={detectingGps}
-									title="Request device location"
+									title="Detect current location"
 								>
 									<RotateCcw size={11} className={detectingGps ? "animate-spin" : ""} />
-									<span>{detectingGps ? "Detecting..." : "Detect Device GPS"}</span>
+									<span>{detectingGps ? "Detecting..." : "Auto-Detect Location"}</span>
 								</button>
 							</SettingRow>
 						)}
