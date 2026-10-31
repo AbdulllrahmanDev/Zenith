@@ -4110,7 +4110,7 @@ pub fn register_appbar(window: tauri::WebviewWindow) {
                 SHAppBarMessage, ABE_TOP, ABM_NEW, ABM_QUERYPOS, ABM_REMOVE, ABM_SETPOS, APPBARDATA,
             };
             use windows::Win32::UI::WindowsAndMessaging::{
-                GetWindowLongPtrW, GetWindowRect, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE,
+                GetWindowLongPtrW, GetWindowRect, RegisterWindowMessageW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE,
                 SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOZORDER, WS_EX_NOACTIVATE as WS_EX_NA,
                 WS_EX_TOOLWINDOW,
             };
@@ -4120,10 +4120,11 @@ pub fn register_appbar(window: tauri::WebviewWindow) {
             ex_style |= (WS_EX_TOOLWINDOW.0 | WS_EX_NA.0) as usize;
             let _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as isize);
 
+            let callback_message = RegisterWindowMessageW(windows::core::w!("ZenithNotchAppBar"));
             let mut abd = APPBARDATA {
                 cbSize: std::mem::size_of::<APPBARDATA>() as u32,
                 hWnd: hwnd,
-                uCallbackMessage: 0x8041, // WM_APP + 0x41, reserved for the notch AppBar
+                uCallbackMessage: if callback_message != 0 { callback_message } else { 0x8041 },
                 ..Default::default()
             };
 
