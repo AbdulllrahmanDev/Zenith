@@ -1701,7 +1701,7 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                                                         .lock()
                                                         .ok()
                                                         .and_then(|m| m.get(label).copied())
-                                                        .or_else(|| *NOTCH_RECT.lock().ok().and_then(|g| *g));
+                                                        .or_else(|| NOTCH_RECT.lock().ok().and_then(|g| *g));
 
                                                     if let Some(nr) = nr_opt {
                                                         let n_left = notch_win_rect.left + (nr.x as f64 * notch_scale) as i32;

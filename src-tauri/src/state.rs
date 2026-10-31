@@ -23,9 +23,12 @@ pub static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
 
 pub static DOCK_RECT: Mutex<Option<IntRect>> = Mutex::new(None);
 pub static NOTCH_RECT: Mutex<Option<IntRect>> = Mutex::new(None);
-pub static NOTCH_RECTS: Mutex<std::collections::HashMap<String, IntRect>> = Mutex::new(std::collections::HashMap::new());
-pub static NOTCH_HOVERED_MAP: Mutex<std::collections::HashMap<String, bool>> = Mutex::new(std::collections::HashMap::new());
-pub static NOTCH_VISIBLE_MAP: Mutex<std::collections::HashMap<String, bool>> = Mutex::new(std::collections::HashMap::new());
+pub static NOTCH_RECTS: std::sync::LazyLock<Mutex<HashMap<String, IntRect>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+pub static NOTCH_HOVERED_MAP: std::sync::LazyLock<Mutex<HashMap<String, bool>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+pub static NOTCH_VISIBLE_MAP: std::sync::LazyLock<Mutex<HashMap<String, bool>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 pub static DOCK_IS_HOVERED: AtomicBool = AtomicBool::new(false);
 pub static NOTCH_IS_HOVERED: AtomicBool = AtomicBool::new(false);
 /// Frontend-reported whether the notch is actually on screen. While false in
