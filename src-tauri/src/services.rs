@@ -4085,11 +4085,27 @@ pub fn sync_overlays(app: &AppHandle) {
     // Full-screen overlay — notches render at left/right edges via CSS
     // The window covers the entire primary monitor so it never needs repositioning
     if let Some(ov_win) = app.get_webview_window("overlay") {
-        if let Ok(Some(monitor)) = ov_win.primary_monitor() {
+        if let Some(monitor) = crate::utils::get_target_monitor(app, "zenith-notch-display") {
             let size = monitor.size();
             let pos = monitor.position();
             let _ = ov_win.set_position(tauri::PhysicalPosition::new(pos.x, pos.y));
             let _ = ov_win.set_size(tauri::PhysicalSize::new(size.width, size.height));
+            if let Ok(hwnd) = ov_win.hwnd() {
+                unsafe {
+                    use windows::Win32::UI::WindowsAndMessaging::{
+                        SetWindowPos, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOZORDER,
+                    };
+                    let _ = SetWindowPos(
+                        hwnd,
+                        None,
+                        pos.x,
+                        pos.y,
+                        size.width as i32,
+                        size.height as i32,
+                        SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                    );
+                }
+            }
         }
         if let Ok(hwnd) = ov_win.hwnd() {
             unsafe {
@@ -4103,7 +4119,7 @@ pub fn sync_overlays(app: &AppHandle) {
 }
 
 pub fn register_appbar(window: tauri::WebviewWindow) {
-    if let Ok(Some(monitor)) = window.app_handle().primary_monitor() {
+    if let Some(monitor) = crate::utils::get_target_monitor(window.app_handle(), "zenith-notch-display") {
         let m_size = monitor.size();
         let m_pos = monitor.position();
         let hwnd = window.hwnd().unwrap();
@@ -4207,7 +4223,7 @@ pub fn register_appbar(window: tauri::WebviewWindow) {
         tauri::async_runtime::spawn(async move {
             for _ in 0..10 {
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                if let Ok(Some(_monitor)) = w.app_handle().primary_monitor() {
+                if crate::utils::get_target_monitor(w.app_handle(), "zenith-notch-display").is_some() {
                     // Reconcile rather than register directly: the notch mode
                     // may have changed while waiting for the monitor.
                     reconcile_main_appbar(w.app_handle());

@@ -556,6 +556,8 @@ export function useSettings() {
 
 	// ── Sync settings from other windows ──
 	useSettingsSync({
+		"bloom-dock-display": setDockDisplay,
+		"bloom-notch-display": setNotchDisplay,
 		"bloom-dock-mode": setDockMode,
 		"bloom-dock-edge-delay": setDockEdgeDelay,
 		"bloom-notch-mode": setNotchMode,

@@ -632,6 +632,20 @@ pub fn reposition_displays(app: AppHandle) {
                 let _ = main_win.set_size(tauri::PhysicalSize::new(m_size.width, target_height));
                 let _ = main_win.show();
                 if let Ok(hwnd) = main_win.hwnd() {
+                    unsafe {
+                        use windows::Win32::UI::WindowsAndMessaging::{
+                            SetWindowPos, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOZORDER,
+                        };
+                        let _ = SetWindowPos(
+                            hwnd,
+                            None,
+                            m_pos.x,
+                            m_pos.y,
+                            m_size.width as i32,
+                            target_height as i32,
+                            SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                        );
+                    }
                     crate::utils::re_assert_topmost(hwnd);
                 }
             }
@@ -3711,6 +3725,12 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
         || key == "zenith-dock-display"
         || key == "bloom-dock-display"
     {
+        if let Some(main_win) = app.get_webview_window("main") {
+            if let Ok(hwnd) = main_win.hwnd() {
+                crate::services::unregister_appbar_native(hwnd);
+                crate::state::MAIN_APPBAR_REGISTERED.store(false, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
         reposition_displays(app.clone());
         re_register_appbars(&app, &settings);
     }
