@@ -20,7 +20,15 @@ const LOCAL_ONLY_KEYS = new Set([
 ]);
 
 // What this window's first render saw: useState initializers read localStorage.
-const mirroredAtStartup = Object.keys(localStorage).filter((key) => key.startsWith("bloom-"));
+const mirroredAtStartup = Object.keys(localStorage).filter(
+	(key) => key.startsWith("bloom-") || key.startsWith("zenith-")
+);
+
+function getAlternateKey(key: string): string | null {
+	if (key.startsWith("zenith-")) return "bloom-" + key.slice("zenith-".length);
+	if (key.startsWith("bloom-")) return "zenith-" + key.slice("bloom-".length);
+	return null;
+}
 
 /**
  * localStorage mirrors settings.json so windows can paint before settings
@@ -36,21 +44,29 @@ export async function reloadIfMirrorWasStale(settings: Record<string, unknown> |
 			if (!LOCAL_ONLY_KEYS.has(k) && v !== null && v !== undefined) {
 				try {
 					localStorage.setItem(k, String(v));
+					const alt = getAlternateKey(k);
+					if (alt) localStorage.setItem(alt, String(v));
 				} catch {}
 			}
 		}
 	}
-	const fileKeys = Object.keys(settings ?? {}).filter(
-		(key) => key.startsWith("bloom-") || key.startsWith("zenith-")
+	const fileKeys = new Set(
+		Object.keys(settings ?? {}).filter(
+			(key) => key.startsWith("bloom-") || key.startsWith("zenith-")
+		)
 	);
-	const stale = mirroredAtStartup.filter(
-		(key) => !fileKeys.includes(key) && !LOCAL_ONLY_KEYS.has(key)
-	);
+	const stale = mirroredAtStartup.filter((key) => {
+		if (LOCAL_ONLY_KEYS.has(key)) return false;
+		if (fileKeys.has(key)) return false;
+		const alt = getAlternateKey(key);
+		if (alt && fileKeys.has(alt)) return false;
+		return true;
+	});
 	if (stale.length === 0) return false;
 	// A missing or unreadable settings.json also loads as {}. Then localStorage
 	// is still the only copy (installs from before settings.json), so keep it.
 	if (
-		fileKeys.length === 0 &&
+		fileKeys.size === 0 &&
 		!(await invoke<boolean>("settings_file_readable").catch(() => false))
 	) {
 		return false;

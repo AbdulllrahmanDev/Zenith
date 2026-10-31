@@ -1029,9 +1029,14 @@ function App() {
 				if (await reloadIfMirrorWasStale(settings)) return;
 				if (cancelled) return;
 				const getVal = (key: string, fallback: string | null = null) => {
-					const val = settings[key];
+					const altKey = key.startsWith("bloom-")
+						? "zenith-" + key.slice("bloom-".length)
+						: key.startsWith("zenith-")
+						? "bloom-" + key.slice("zenith-".length)
+						: key;
+					const val = settings[key] ?? settings[altKey];
 					if (val !== undefined && val !== null) return String(val);
-					const local = localStorage.getItem(key);
+					const local = localStorage.getItem(key) ?? localStorage.getItem(altKey);
 					if (local !== null) return local;
 					return fallback;
 				};
