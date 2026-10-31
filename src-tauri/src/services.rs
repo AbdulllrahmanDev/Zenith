@@ -4084,6 +4084,11 @@ pub fn sync_overlays(app: &AppHandle) {
             let _ = ov_win.set_size(tauri::PhysicalSize::new(size.width, size.height));
         }
         if let Ok(hwnd) = ov_win.hwnd() {
+            unsafe {
+                use windows::Win32::UI::WindowsAndMessaging::SetWindowTextW;
+                use windows::core::w;
+                let _ = SetWindowTextW(hwnd, w!(""));
+            }
             re_assert_topmost(hwnd);
         }
     }

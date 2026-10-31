@@ -2526,8 +2526,12 @@ pub fn close_radial_menu(app: AppHandle) {
         if let Ok(hwnd) = win.hwnd() {
             crate::utils::set_click_through(hwnd, true);
             crate::services::MH_LAST_OV_IGNORE.store(1, Ordering::Relaxed);
+            unsafe {
+                use windows::Win32::Graphics::Gdi::{CreateRectRgn, SetWindowRgn};
+                let rgn = CreateRectRgn(0, 0, 0, 0);
+                let _ = SetWindowRgn(hwnd, Some(rgn), false);
+            }
         }
-        let _ = win.hide();
     }
 }
 
@@ -2560,7 +2564,13 @@ pub async fn launch_radial_item(
         }
         if echo_ms.unwrap_or(0) == 0 {
             let _ = app.emit("radial-close", ());
-            let _ = win.hide();
+            if let Ok(hwnd) = win.hwnd() {
+                unsafe {
+                    use windows::Win32::Graphics::Gdi::{CreateRectRgn, SetWindowRgn};
+                    let rgn = CreateRectRgn(0, 0, 0, 0);
+                    let _ = SetWindowRgn(hwnd, Some(rgn), false);
+                }
+            }
         }
     }
 
@@ -2764,7 +2774,13 @@ pub fn set_splash_fullscreen(app: AppHandle, fullscreen: bool) {
             }
             let _ = win.show();
         } else {
-            let _ = win.hide();
+            if let Ok(hwnd) = win.hwnd() {
+                unsafe {
+                    use windows::Win32::Graphics::Gdi::{CreateRectRgn, SetWindowRgn};
+                    let rgn = CreateRectRgn(0, 0, 0, 0);
+                    let _ = SetWindowRgn(hwnd, Some(rgn), false);
+                }
+            }
             crate::services::sync_overlays(&app);
         }
     }

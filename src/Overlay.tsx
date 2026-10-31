@@ -7,7 +7,6 @@ import { useSettingsSync } from "./hooks/useSettingsSync";
 import { useTrailingThrottle } from "./hooks/useTrailingThrottle";
 import { getVersion } from "@tauri-apps/api/app";
 import { reloadIfMirrorWasStale } from "./hooks/settingsMirror";
-import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { MixerIcon, SpeakerIcon } from "./icons";
 import "./Overlay.css";
 import { EdgeSurface } from "./components/EdgeSurface";
@@ -1002,7 +1001,6 @@ function OverlayApp() {
 				clearTimeout(hideWindowTimeoutRef.current);
 				hideWindowTimeoutRef.current = null;
 			}
-			getCurrentWebviewWindow().hide().catch(() => {});
 		});
 
 		return () => {
@@ -1104,26 +1102,20 @@ function OverlayApp() {
 	useEffect(() => {
 		const syncWindow = async () => {
 			try {
-				const appWindow = getCurrentWebviewWindow();
 				if (hideWindowTimeoutRef.current) {
 					clearTimeout(hideWindowTimeoutRef.current);
 					hideWindowTimeoutRef.current = null;
 				}
 
 				if (mode === "idle") {
-					// Wait for exit animation to finish before hiding
-					hideWindowTimeoutRef.current = setTimeout(async () => {
-						await appWindow.hide();
-					}, 400);
+					// Window is clipped to empty region via sendOverlayRegion([])
+					// Keeping it shown at OS level prevents Windows 11 titlebar flicker
 				} else if (mode === "radial") {
 					// Rust `show_overlay_for_radial` already positioned the window on the
-					// target monitor and cleared WS_EX_TRANSPARENT. Do NOT call
-					// sync_overlay_position here, or it would re-apply WS_EX_TRANSPARENT!
-					// Rust show_overlay_for_radial already displayed the window with SW_SHOWNA (do not call show() here to prevent focus stealing)
+					// target monitor and cleared WS_EX_TRANSPARENT.
 				} else {
-					// Position the window first, then show
+					// Position the window first
 					await invoke("sync_overlay_position");
-					await appWindow.show();
 				}
 			} catch (e) {
 				console.error("Window management error:", e);

@@ -487,10 +487,15 @@ fn main() {
                                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
                             );
                         }
+                        use windows::Win32::Graphics::Gdi::{CreateRectRgn, SetWindowRgn};
+                        use windows::Win32::UI::WindowsAndMessaging::{SetWindowTextW, ShowWindow, SW_SHOWNA};
+                        use windows::core::w;
+                        let _ = SetWindowTextW(hwnd, w!(""));
+                        let rgn = CreateRectRgn(0, 0, 0, 0);
+                        let _ = SetWindowRgn(hwnd, Some(rgn), false);
+                        let _ = ShowWindow(hwnd, SW_SHOWNA);
                     }
                 }
-                let _ = ov_win.show();
-                let _ = ov_win.hide();
                 let overlay_handle = app.handle().clone();
                 ov_win.on_window_event(move |e| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = e {
