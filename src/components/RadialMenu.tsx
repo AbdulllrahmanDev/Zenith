@@ -633,6 +633,7 @@ export default function RadialMenu({
 	const gestureConsumedRef = useRef(false);
 	const launchEchoTimerRef = useRef<number | null>(null);
 	const launchEchoSeqRef = useRef(0);
+	const dismissTimerRef = useRef<number | null>(null);
 	const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
 
 	// Dwell refs
@@ -760,7 +761,11 @@ export default function RadialMenu({
 		}
 		setIsExiting(true);
 		setBloom(false);
-		window.setTimeout(() => {
+		if (dismissTimerRef.current !== null) {
+			window.clearTimeout(dismissTimerRef.current);
+		}
+		dismissTimerRef.current = window.setTimeout(() => {
+			dismissTimerRef.current = null;
 			invoke("close_radial_menu").catch(() => {});
 			onClose();
 		}, 120);
@@ -956,6 +961,7 @@ export default function RadialMenu({
 		moved: boolean;
 	} | null>(null);
 	const releaseHubDragRef = useRef<() => void>(() => {});
+	const swallowCleanupRef = useRef<(() => void) | null>(null);
 
 	const beginHubDrag = useCallback(
 		(event: React.MouseEvent) => {
@@ -993,15 +999,26 @@ export default function RadialMenu({
 				if (!drag || e.button !== 0) return;
 				hubDragRef.current = null;
 				releaseHubDragRef.current();
+			swallowCleanupRef.current?.();
 				if (!drag.moved) return;
 				e.stopPropagation();
+				swallowCleanupRef.current?.();
 				const swallow = (ev: MouseEvent) => {
 					ev.preventDefault();
 					ev.stopPropagation();
-					window.removeEventListener("click", swallow, true);
+					cleanSwallow();
 				};
 				window.addEventListener("click", swallow, true);
-				window.setTimeout(() => window.removeEventListener("click", swallow, true), 250);
+				let timerId: number | null = window.setTimeout(cleanSwallow, 250);
+				function cleanSwallow() {
+					window.removeEventListener("click", swallow, true);
+					if (timerId !== null) {
+						window.clearTimeout(timerId);
+						timerId = null;
+					}
+					swallowCleanupRef.current = null;
+				}
+				swallowCleanupRef.current = cleanSwallow;
 
 				const pt = { x: e.clientX, y: e.clientY };
 				lastPointerRef.current = pt;
@@ -1023,8 +1040,20 @@ export default function RadialMenu({
 		() => () => {
 			hubDragRef.current = null;
 			releaseHubDragRef.current();
+			swallowCleanupRef.current?.();
 			cancelDwell();
-			if (launchEchoTimerRef.current !== null) window.clearTimeout(launchEchoTimerRef.current);
+			if (launchEchoTimerRef.current !== null) {
+				window.clearTimeout(launchEchoTimerRef.current);
+				launchEchoTimerRef.current = null;
+			}
+			if (dismissTimerRef.current !== null) {
+				window.clearTimeout(dismissTimerRef.current);
+				dismissTimerRef.current = null;
+			}
+			if (peekTimerRef.current !== null) {
+				window.clearTimeout(peekTimerRef.current);
+				peekTimerRef.current = null;
+			}
 		},
 		[cancelDwell]
 	);

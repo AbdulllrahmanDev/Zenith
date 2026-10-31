@@ -520,8 +520,10 @@ fn get_monitor_model_name(adapter_device_name: &str) -> Option<String> {
     use windows::core::HSTRING;
     unsafe {
         let adapter = HSTRING::from(adapter_device_name);
-        let mut monitor_dev = DISPLAY_DEVICEW::default();
-        monitor_dev.cb = std::mem::size_of::<DISPLAY_DEVICEW>() as u32;
+        let mut monitor_dev = DISPLAY_DEVICEW {
+            cb: std::mem::size_of::<DISPLAY_DEVICEW>() as u32,
+            ..Default::default()
+        };
         if EnumDisplayDevicesW(
             windows::core::PCWSTR(adapter.as_ptr()),
             0,
@@ -3679,10 +3681,8 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
 
     let alt_key = if let Some(rest) = key.strip_prefix("zenith-") {
         Some(format!("bloom-{rest}"))
-    } else if let Some(rest) = key.strip_prefix("bloom-") {
-        Some(format!("zenith-{rest}"))
     } else {
-        None
+        key.strip_prefix("bloom-").map(|rest| format!("zenith-{rest}"))
     };
 
     // Broadcast so all windows sync
@@ -4403,7 +4403,7 @@ fn apply_imported_settings(app: &AppHandle, settings: &str) -> Result<(), String
         );
     }
 
-    if imported.get("zenith-scale").is_some() {
+    if imported.contains_key("zenith-scale") {
         re_register_appbars(app, &imported);
     }
 
@@ -4506,8 +4506,10 @@ pub fn setup_settings_watcher(app: AppHandle) {
 
             let mut notify_buffer = [0u8; 4096];
             let mut bytes_returned = 0u32;
-            let mut overlapped = OVERLAPPED::default();
-            overlapped.hEvent = h_event;
+            let mut overlapped = OVERLAPPED {
+                hEvent: h_event,
+                ..Default::default()
+            };
 
             loop {
                 let success = ReadDirectoryChangesW(

@@ -880,13 +880,12 @@ pub fn setup_audio_visualization(app_handle: AppHandle) {
                                         {
                                             let mut total_mag = 0.0f32;
                                             let mut count = 0u32;
-                                            for bin in bin_start..bin_end {
-                                                if bin >= FFT_SIZE / 2 {
-                                                    break;
+                                            let end = bin_end.min(FFT_SIZE / 2);
+                                            if bin_start < end {
+                                                for val in &fft_input[bin_start..end] {
+                                                    total_mag += val.norm();
+                                                    count += 1;
                                                 }
-                                                let mag = fft_input[bin].norm();
-                                                total_mag += mag;
-                                                count += 1;
                                             }
                                             let avg_mag = total_mag / count.max(1) as f32;
                                             let mut scaled_mag = avg_mag;
@@ -1943,7 +1942,7 @@ pub fn setup_brightness_worker() {
         let locator: IWbemLocator = match CoCreateInstance(&WbemLocator, None, CLSCTX_ALL) {
             Ok(l) => l,
             Err(_) => {
-                let _ = CoUninitialize();
+                CoUninitialize();
                 return;
             }
         };
@@ -1960,7 +1959,7 @@ pub fn setup_brightness_worker() {
         ) {
             Ok(s) => s,
             Err(_) => {
-                let _ = CoUninitialize();
+                CoUninitialize();
                 return;
             }
         };
@@ -2077,7 +2076,7 @@ pub fn setup_brightness_worker() {
             // 2. Desktop external monitor via Physical Monitor API (DXVA2 DDC/CI)
             set_physical_monitors_brightness(brightness);
         }
-        let _ = CoUninitialize();
+        CoUninitialize();
     });
 }
 
@@ -2183,8 +2182,10 @@ fn volume_mixer_physical_rect_for(_app: &AppHandle) -> Option<(i32, i32, i32, i3
     }
     let hwnd = HWND(overlay_hwnd as *mut _);
     let hmon = unsafe { windows::Win32::Graphics::Gdi::MonitorFromWindow(hwnd, windows::Win32::Graphics::Gdi::MONITOR_DEFAULTTONEAREST) };
-    let mut mon_info = windows::Win32::Graphics::Gdi::MONITORINFO::default();
-    mon_info.cbSize = std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32;
+    let mut mon_info = windows::Win32::Graphics::Gdi::MONITORINFO {
+        cbSize: std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32,
+        ..Default::default()
+    };
     let mon_ok = unsafe { windows::Win32::Graphics::Gdi::GetMonitorInfoW(hmon, &mut mon_info) }.as_bool();
     let (pos_x, pos_y) = if mon_ok {
         (mon_info.rcMonitor.left, mon_info.rcMonitor.top)
@@ -2222,8 +2223,10 @@ fn setup_volume_mixer_watchdog(app_handle: AppHandle) {
         }
         let at_left_edge = {
             let hmon = unsafe { windows::Win32::Graphics::Gdi::MonitorFromPoint(pt, windows::Win32::Graphics::Gdi::MONITOR_DEFAULTTOPRIMARY) };
-            let mut mon_info = windows::Win32::Graphics::Gdi::MONITORINFO::default();
-            mon_info.cbSize = std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32;
+            let mut mon_info = windows::Win32::Graphics::Gdi::MONITORINFO {
+                cbSize: std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32,
+                ..Default::default()
+            };
             if unsafe { windows::Win32::Graphics::Gdi::GetMonitorInfoW(hmon, &mut mon_info) }.as_bool() {
                 let rc = mon_info.rcMonitor;
                 pt.x <= rc.left + 8 && pt.y >= rc.top && pt.y <= rc.bottom
@@ -2829,8 +2832,10 @@ fn update_main_interaction(
         let _ = unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowRect(hwnd, &mut win_rect) };
 
         let hmon = unsafe { windows::Win32::Graphics::Gdi::MonitorFromWindow(hwnd, windows::Win32::Graphics::Gdi::MONITOR_DEFAULTTONEAREST) };
-        let mut mon_info = windows::Win32::Graphics::Gdi::MONITORINFO::default();
-        mon_info.cbSize = std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32;
+        let mut mon_info = windows::Win32::Graphics::Gdi::MONITORINFO {
+            cbSize: std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32,
+            ..Default::default()
+        };
         let mon_ok = unsafe { windows::Win32::Graphics::Gdi::GetMonitorInfoW(hmon, &mut mon_info) }.as_bool();
         let mon_rc = if mon_ok { mon_info.rcMonitor } else { win_rect };
 
@@ -3020,8 +3025,10 @@ fn update_dock_interaction(
         let _ = unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowRect(hwnd, &mut win_rect) };
 
         let hmon = unsafe { windows::Win32::Graphics::Gdi::MonitorFromWindow(hwnd, windows::Win32::Graphics::Gdi::MONITOR_DEFAULTTONEAREST) };
-        let mut mon_info = windows::Win32::Graphics::Gdi::MONITORINFO::default();
-        mon_info.cbSize = std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32;
+        let mut mon_info = windows::Win32::Graphics::Gdi::MONITORINFO {
+            cbSize: std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32,
+            ..Default::default()
+        };
         let mon_ok = unsafe { windows::Win32::Graphics::Gdi::GetMonitorInfoW(hmon, &mut mon_info) }.as_bool();
         let mon_rc = if mon_ok { mon_info.rcMonitor } else { win_rect };
 
@@ -3446,15 +3453,16 @@ unsafe extern "system" fn mouse_hook_proc(
                             }
                         }
                     }
-                } else if MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed) {
-                    if btn == MouseBtn::Right && is_down {
-                        // Right-click cancels and closes
-                        let app_clone = app.clone();
-                        std::thread::spawn(move || {
-                            let _ = app_clone.emit("radial-cancel", ());
-                        });
-                        return windows::Win32::Foundation::LRESULT(1);
-                    }
+                } else if MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed)
+                    && btn == MouseBtn::Right
+                    && is_down
+                {
+                    // Right-click cancels and closes
+                    let app_clone = app.clone();
+                    std::thread::spawn(move || {
+                        let _ = app_clone.emit("radial-cancel", ());
+                    });
+                    return windows::Win32::Foundation::LRESULT(1);
                 }
             }
         }
@@ -4547,18 +4555,13 @@ pub unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> B
                 return true.into();
             }
 
-            // Filter out system containers and background stuff
-            if title == "Program Manager"
-                || title == "Zenith"
-                || title == "Zenith Dock"
-                || title == "Zenith"
-                || title == "Zenith Dock"
-            {
-                return true.into();
-            }
-
             let mut process_id = 0u32;
             GetWindowThreadProcessId(hwnd, Some(&mut process_id));
+
+            // Filter out our own windows and system containers
+            if process_id == std::process::id() || title == "Program Manager" {
+                return true.into();
+            }
 
             if let Ok(process_handle) =
                 OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process_id)
@@ -4682,7 +4685,7 @@ pub unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> B
                     let is_browser_pwa = is_browser_host
                         && window_aumid
                             .as_deref()
-                            .map_or(false, crate::commands::is_browser_pwa_aumid);
+                            .is_some_and(crate::commands::is_browser_pwa_aumid);
 
                     let final_name = if ((is_browser_host
                         && (is_browser_pwa || window_aumid.is_none()))
@@ -5230,6 +5233,63 @@ mod tests {
         assert!(!notch_mode_reserves_work_area(Some("auto-hide")));
         // Unset defaults to fixed, matching SETTINGS.md
         assert!(notch_mode_reserves_work_area(None));
+    }
+
+    #[test]
+    #[ignore = "Interactive Win32 experiment testing live shell AppBar registration"]
+    fn test_appbar_experiment() {
+        use windows::Win32::UI::WindowsAndMessaging::*;
+        use windows::Win32::UI::Shell::*;
+        use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+        use windows::Win32::Foundation::{HWND, WPARAM, LPARAM, LRESULT};
+        use windows::core::w;
+
+        unsafe extern "system" fn test_wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+            DefWindowProcA(hwnd, msg, wparam, lparam)
+        }
+
+        unsafe {
+            let h_inst = GetModuleHandleW(None).unwrap_or_default().into();
+            let class_name = windows::core::PCSTR(c"ZenithTestAppBarClass".as_ptr() as *const u8);
+            let wnd_class = WNDCLASSEXA {
+                cbSize: std::mem::size_of::<WNDCLASSEXA>() as u32,
+                lpfnWndProc: Some(test_wndproc),
+                hInstance: h_inst,
+                lpszClassName: class_name,
+                ..Default::default()
+            };
+            let _ = RegisterClassExA(&wnd_class);
+
+            let hwnd = CreateWindowExA(
+                WINDOW_EX_STYLE(WS_EX_TOOLWINDOW.0 | WS_EX_NOACTIVATE.0),
+                class_name,
+                windows::core::PCSTR::null(),
+                WS_POPUP,
+                0, 0, 1920, 420,
+                None, None, Some(h_inst), None,
+            ).unwrap();
+
+            let _ = ShowWindow(hwnd, SW_SHOW);
+
+            let tray_hwnd = FindWindowA(windows::core::PCSTR(c"Shell_TrayWnd".as_ptr() as *const u8), windows::core::PCSTR::null()).unwrap_or_default();
+            eprintln!("TRAY HWND: {:?}", tray_hwnd);
+
+            let msg = RegisterWindowMessageW(w!("ZenithNotchAppBar"));
+            let mut abd = APPBARDATA {
+                cbSize: std::mem::size_of::<APPBARDATA>() as u32,
+                hWnd: hwnd,
+                uCallbackMessage: msg,
+                ..Default::default()
+            };
+
+            let res = SHAppBarMessage(ABM_NEW, &mut abd);
+            let err = windows::Win32::Foundation::GetLastError();
+            eprintln!("TEST RESULT: res={res}, msg={msg}, err={err:?}");
+            if res != 0 {
+                let _ = SHAppBarMessage(ABM_REMOVE, &mut abd);
+            }
+            let _ = DestroyWindow(hwnd);
+        }
     }
 
     #[test]
