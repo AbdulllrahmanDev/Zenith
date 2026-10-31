@@ -3670,14 +3670,7 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let settings = crate::utils::save_setting_file(&path, key.clone(), value.clone())?;
-    let settings = if key == "zenith-notch-mode" {
-        crate::utils::save_setting_file(&path, "bloom-notch-mode".into(), value.clone()).unwrap_or(settings)
-    } else if key == "bloom-notch-mode" {
-        crate::utils::save_setting_file(&path, "zenith-notch-mode".into(), value.clone()).unwrap_or(settings)
-    } else {
-        settings
-    };
+    let mut settings = crate::utils::save_setting_file(&path, key.clone(), value.clone())?;
 
     let alt_key = if let Some(rest) = key.strip_prefix("zenith-") {
         Some(format!("bloom-{rest}"))
@@ -3685,18 +3678,23 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
         key.strip_prefix("bloom-").map(|rest| format!("zenith-{rest}"))
     };
 
-    // Broadcast so all windows sync
+    // If an alternate prefix key already exists in settings, keep it synchronized
+    if let Some(ref alt) = alt_key {
+        if settings.contains_key(alt) {
+            settings = crate::utils::save_setting_file(&path, alt.clone(), value.clone()).unwrap_or(settings);
+        }
+    }
+
+    // Broadcast so all windows sync (using the new value for both keys to avoid stale overrides)
     let _ = app.emit(
         "settings-changed",
-        serde_json::json!({ "key": &key, "value": &settings[&key] }),
+        serde_json::json!({ "key": &key, "value": &value }),
     );
     if let Some(ref alt) = alt_key {
-        if let Some(alt_val) = settings.get(alt) {
-            let _ = app.emit(
-                "settings-changed",
-                serde_json::json!({ "key": alt, "value": alt_val }),
-            );
-        }
+        let _ = app.emit(
+            "settings-changed",
+            serde_json::json!({ "key": alt, "value": &value }),
+        );
     }
 
     if key == "zenith-scale" || key == "bloom-scale" {
