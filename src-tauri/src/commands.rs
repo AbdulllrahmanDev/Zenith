@@ -29,7 +29,11 @@ pub async fn set_dock_hovered(hovered: bool) {
 }
 
 #[tauri::command]
-pub async fn set_notch_hovered(app: AppHandle, hovered: bool) {
+pub async fn set_notch_hovered(window: tauri::WebviewWindow, app: AppHandle, hovered: bool) {
+    let label = window.label().to_string();
+    if let Ok(mut map) = crate::state::NOTCH_HOVERED_MAP.lock() {
+        map.insert(label, hovered);
+    }
     NOTCH_IS_HOVERED.store(hovered, Ordering::Relaxed);
     // Re-evaluate right away. During a native drag the webview never sees the
     // pointer leave, so waiting for the next mouse move can leave the notch
@@ -38,7 +42,11 @@ pub async fn set_notch_hovered(app: AppHandle, hovered: bool) {
 }
 
 #[tauri::command]
-pub async fn set_notch_visible(visible: bool) {
+pub async fn set_notch_visible(window: tauri::WebviewWindow, visible: bool) {
+    let label = window.label().to_string();
+    if let Ok(mut map) = crate::state::NOTCH_VISIBLE_MAP.lock() {
+        map.insert(label, visible);
+    }
     NOTCH_IS_VISIBLE.store(visible, Ordering::Relaxed);
 }
 
@@ -129,9 +137,15 @@ pub async fn update_dock_rect(rect: IntRect) {
 }
 
 #[tauri::command]
-pub async fn update_notch_rect(rect: IntRect) {
-    if let Ok(mut r) = NOTCH_RECT.lock() {
-        *r = Some(rect);
+pub async fn update_notch_rect(window: tauri::WebviewWindow, rect: IntRect) {
+    let label = window.label().to_string();
+    if let Ok(mut map) = crate::state::NOTCH_RECTS.lock() {
+        map.insert(label.clone(), rect);
+    }
+    if label == "main" {
+        if let Ok(mut r) = NOTCH_RECT.lock() {
+            *r = Some(rect);
+        }
     }
 }
 
@@ -611,6 +625,20 @@ pub fn reposition_displays(app: AppHandle) {
                 let _ = win.set_size(tauri::PhysicalSize::new(m_size.width, target_height));
                 let _ = win.show();
                 if let Ok(hwnd) = win.hwnd() {
+                    unsafe {
+                        use windows::Win32::UI::WindowsAndMessaging::{
+                            SetWindowPos, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOZORDER,
+                        };
+                        let _ = SetWindowPos(
+                            hwnd,
+                            None,
+                            m_pos.x,
+                            m_pos.y,
+                            m_size.width as i32,
+                            target_height as i32,
+                            SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                        );
+                    }
                     crate::utils::re_assert_topmost(hwnd);
                 }
             }

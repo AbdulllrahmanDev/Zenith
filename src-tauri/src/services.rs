@@ -1376,6 +1376,7 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
         let mut last_visible = true;
         let mut last_dock_overlap: Option<bool> = None;
         let mut last_notch_overlap: Option<bool> = None;
+        let mut notch_overlap_per_window: std::collections::HashMap<String, bool> = std::collections::HashMap::new();
         let mut last_dock_maximized: Option<bool> = None;
         let mut last_fg_maximized = false;
         let mut last_hwnd = HWND(std::ptr::null_mut());
@@ -1548,6 +1549,27 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                     if is_known_shell {
                         should_overlap = false;
                         current_is_fs = false;
+                        let shell_hmon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+                        if let Ok(notch_hwnds) = crate::state::NOTCH_HWNDS.lock() {
+                            for (label, hwnd_val) in notch_hwnds.iter() {
+                                let notch_hwnd = HWND(*hwnd_val as *mut _);
+                                let notch_hmon = MonitorFromWindow(notch_hwnd, MONITOR_DEFAULTTONEAREST);
+                                if shell_hmon == notch_hmon {
+                                    let prev = notch_overlap_per_window.get(label).copied();
+                                    if prev != Some(false) || last_emit.elapsed() >= Duration::from_secs(3) {
+                                        notch_overlap_per_window.insert(label.clone(), false);
+                                        let _ = handle_visibility.emit("notch-overlap", serde_json::json!({
+                                            "target": label,
+                                            "overlapped": false
+                                        }));
+                                        let _ = handle_visibility.emit_to(label, "notch-overlap", serde_json::json!({
+                                            "target": label,
+                                            "overlapped": false
+                                        }));
+                                    }
+                                }
+                            }
+                        }
                     } else {
                         // Current hwnd is now guaranteed to be visible, non-iconic and non-cloaked
                         use windows::Win32::UI::WindowsAndMessaging::{
@@ -1656,6 +1678,60 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                                                     && rect.top < trigger_y - 4
                                                 {
                                                     should_notch_overlap = true;
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Multi-monitor notch overlap: evaluate overlap per monitor
+                                    if let Ok(notch_hwnds) = crate::state::NOTCH_HWNDS.lock() {
+                                        for (label, hwnd_val) in notch_hwnds.iter() {
+                                            let notch_hwnd = HWND(*hwnd_val as *mut _);
+                                            let notch_hmon = MonitorFromWindow(notch_hwnd, MONITOR_DEFAULTTONEAREST);
+
+                                            if h_monitor == notch_hmon {
+                                                let mut this_notch_overlap = false;
+                                                if is_maximized || is_matches_screen || is_client_fullscreen {
+                                                    this_notch_overlap = true;
+                                                } else {
+                                                    let mut notch_win_rect = RECT::default();
+                                                    let _ = GetWindowRect(notch_hwnd, &mut notch_win_rect);
+                                                    let notch_scale = windows::Win32::UI::HiDpi::GetDpiForWindow(notch_hwnd) as f64 / 96.0;
+                                                    let nr_opt = crate::state::NOTCH_RECTS
+                                                        .lock()
+                                                        .ok()
+                                                        .and_then(|m| m.get(label).copied())
+                                                        .or_else(|| *NOTCH_RECT.lock().ok().and_then(|g| *g));
+
+                                                    if let Some(nr) = nr_opt {
+                                                        let n_left = notch_win_rect.left + (nr.x as f64 * notch_scale) as i32;
+                                                        let n_right = n_left + (nr.width as f64 * notch_scale) as i32;
+                                                        let res_h = (36.0 * notch_scale) as i32;
+                                                        let trigger_y = screen_rect.top + res_h;
+
+                                                        if rect.left < n_right - 4
+                                                            && rect.right > n_left + 4
+                                                            && rect.top < trigger_y - 4
+                                                        {
+                                                            this_notch_overlap = true;
+                                                        }
+                                                    }
+                                                }
+
+                                                let prev = notch_overlap_per_window.get(label).copied();
+                                                if prev != Some(this_notch_overlap) || last_emit.elapsed() >= Duration::from_secs(3) {
+                                                    notch_overlap_per_window.insert(label.clone(), this_notch_overlap);
+                                                    let _ = handle_visibility.emit("notch-overlap", serde_json::json!({
+                                                        "target": label,
+                                                        "overlapped": this_notch_overlap
+                                                    }));
+                                                    let _ = handle_visibility.emit_to(label, "notch-overlap", serde_json::json!({
+                                                        "target": label,
+                                                        "overlapped": this_notch_overlap
+                                                    }));
+                                                    if label == "main" {
+                                                        should_notch_overlap = this_notch_overlap;
+                                                    }
                                                 }
                                             }
                                         }
@@ -2847,6 +2923,18 @@ fn update_main_interaction(
         } else {
             at_top_edge && top_edge_armed_for(app_handle, cursor, now, scale)
         };
+
+        let notch_rect = crate::state::NOTCH_RECTS
+            .lock()
+            .ok()
+            .and_then(|m| m.get(&label).copied())
+            .or(notch_rect);
+
+        let notch_visible = crate::state::NOTCH_VISIBLE_MAP
+            .lock()
+            .ok()
+            .and_then(|m| m.get(&label).copied())
+            .unwrap_or(notch_visible);
 
         let mut is_click_interactive = false;
         let mut in_notch_rect = false;
