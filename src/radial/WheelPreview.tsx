@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { useI18n } from "../i18n";
 import { radialScrimGradient } from "./radialScrim";
 import { ZenithLogo } from "./ZenithLogo";
 import { SmartIcon } from "./SmartIcon";
@@ -22,25 +23,30 @@ export interface WheelPreviewProps {
   interactive?: boolean;
 }
 
-const FALLBACK_ITEMS: RadialItem[] = [
-  { id: "1", label: "Browser", type: "url", target: "https://google.com", icon: "Globe" },
-  { id: "2", label: "Terminal", type: "app", target: "wt.exe", icon: "Terminal" },
-  { id: "3", label: "Explorer", type: "folder", target: "C:\\", icon: "Folder" },
-  { id: "4", label: "Settings", type: "system", target: "settings", icon: "Settings" },
-  { id: "5", label: "Media", type: "system", target: "media-toggle", icon: "Music" },
-  { id: "6", label: "Calculator", type: "app", target: "calc.exe", icon: "Calculator" },
-];
-
 export const WheelPreview: React.FC<WheelPreviewProps> = ({
   items,
   config,
   areaWedges = true,
-  workspaceName = "General",
+  workspaceName,
   size = 248,
   interactive = true,
 }) => {
+  const { t } = useI18n();
+  const m = t.mouse;
+  const fallbackItems = useMemo<RadialItem[]>(
+    () => [
+      { id: "1", label: m.demoItems.browser, type: "url", target: "https://google.com", icon: "Globe" },
+      { id: "2", label: m.demoItems.terminal, type: "app", target: "wt.exe", icon: "Terminal" },
+      { id: "3", label: m.demoItems.files, type: "folder", target: "C:\\", icon: "Folder" },
+      { id: "4", label: m.demoItems.settings, type: "system", target: "settings", icon: "Settings" },
+      { id: "5", label: m.demoItems.music, type: "system", target: "media-toggle", icon: "Music" },
+      { id: "6", label: m.systemActions.open_calc, type: "app", target: "calc.exe", icon: "Calculator" },
+    ],
+    [m]
+  );
   const fullConfig: RadialWheelConfig = { ...DEFAULT_WHEEL_CONFIG, ...config };
-  const previewItems = items.length > 0 ? items.slice(0, 12) : FALLBACK_ITEMS;
+  const previewItems = items.length > 0 ? items.slice(0, 12) : fallbackItems;
+  const resolvedWorkspaceName = workspaceName || m.previewWorkspaceFallback;
   const [hoveredIdx, setHoveredIdx] = useState<number>(0);
 
   const { actualMenuRadius, actualIconSize } = useMemo(
@@ -304,7 +310,7 @@ export const WheelPreview: React.FC<WheelPreviewProps> = ({
               pointerEvents: "none",
             }}
           >
-            {workspaceName}
+            {resolvedWorkspaceName}
           </div>
         )}
       </div>

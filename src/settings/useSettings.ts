@@ -6,6 +6,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import type { UpdateCheckResult } from "../updater";
 import { useSettingsSync } from "../hooks/useSettingsSync";
 import { reloadIfMirrorWasStale } from "../hooks/settingsMirror";
+import { getStoredLanguage, getTranslations } from "../i18n";
 import { hexToHsl } from "../theme";
 import {
 	addCustomFolder,
@@ -290,6 +291,64 @@ export function useSettings() {
 		() => localStorage.getItem("zenith-mouse-hover-sound") || "sub-tick"
 	);
 
+	// ── Translator state ──
+	const [translatorEnabled, setTranslatorEnabled] = useState(
+		() => localStorage.getItem("zenith-translator-enabled") !== "false"
+	);
+	const [translatorShortcut, setTranslatorShortcut] = useState(
+		() => localStorage.getItem("zenith-translator-shortcut") || "Ctrl+Alt+T"
+	);
+	const [translatorDisplayMode, setTranslatorDisplayMode] = useState<"popup" | "notch">(
+		() => (localStorage.getItem("zenith-translator-display-mode") === "notch" ? "notch" : "popup")
+	);
+	const [translatorPopupPosition, setTranslatorPopupPosition] = useState<"cursor" | "center">(
+		() => (localStorage.getItem("zenith-translator-popup-position") === "center" ? "center" : "cursor")
+	);
+	const [translatorShowInNotch, setTranslatorShowInNotch] = useState(
+		() => localStorage.getItem("zenith-translator-show-in-notch") !== "false"
+	);
+	const [translatorCaptureSelection, setTranslatorCaptureSelection] = useState(
+		() => localStorage.getItem("zenith-translator-capture-selection") !== "false"
+	);
+	const [translatorAutoTranslate, setTranslatorAutoTranslate] = useState(
+		() => localStorage.getItem("zenith-translator-auto-translate") !== "false"
+	);
+	const [translatorAutoCopy, setTranslatorAutoCopy] = useState(
+		() => localStorage.getItem("zenith-translator-auto-copy") === "true"
+	);
+	const [translatorSourceLang, setTranslatorSourceLang] = useState(
+		() => localStorage.getItem("zenith-translator-source-lang") || "auto"
+	);
+	const [translatorTargetLang, setTranslatorTargetLang] = useState(
+		() => localStorage.getItem("zenith-translator-target-lang") || "ar"
+	);
+	const [translatorSmartSwap, setTranslatorSmartSwap] = useState(
+		() => localStorage.getItem("zenith-translator-smart-swap") !== "false"
+	);
+	const [translatorSecondaryLang, setTranslatorSecondaryLang] = useState(
+		() => localStorage.getItem("zenith-translator-secondary-lang") || "en"
+	);
+	const [translatorProvider, setTranslatorProvider] = useState<"free" | "gemini" | "openai" | "groq" | "custom">(() => {
+		const p = localStorage.getItem("zenith-translator-provider");
+		return p === "gemini" || p === "openai" || p === "groq" || p === "custom" ? p : "free";
+	});
+	const [translatorApiKey, setTranslatorApiKey] = useState(
+		() => localStorage.getItem("zenith-translator-api-key") || ""
+	);
+	const [translatorModel, setTranslatorModel] = useState(
+		() => localStorage.getItem("zenith-translator-model") || ""
+	);
+	const [translatorCustomEndpoint, setTranslatorCustomEndpoint] = useState(
+		() => localStorage.getItem("zenith-translator-custom-endpoint") || ""
+	);
+	const [translatorTone, setTranslatorTone] = useState<"natural" | "formal" | "casual" | "concise" | "technical">(() => {
+		const t = localStorage.getItem("zenith-translator-tone");
+		return t === "formal" || t === "casual" || t === "concise" || t === "technical" ? t : "natural";
+	});
+	const [translatorCustomPrompt, setTranslatorCustomPrompt] = useState(
+		() => localStorage.getItem("zenith-translator-custom-prompt") || ""
+	);
+
 	const [lowBatteryThreshold, setLowBatteryThreshold] = useState(20);
 	const [updateStatus, setUpdateStatus] = useState<
 		"idle" | "checking" | "available" | "uptodate" | "error" | "downloading" | "installing"
@@ -450,6 +509,29 @@ export function useSettings() {
 			apply(getVal("bloom-theme-opacity"), setThemeOpacity, parseFloat);
 			apply(getVal("bloom-theme-saturation"), setThemeSaturation, parseFloat);
 			apply(getVal("bloom-theme-brightness"), setThemeBrightness, parseFloat);
+
+			apply(getVal("zenith-translator-enabled"), setTranslatorEnabled, readBool);
+			apply(getVal("zenith-translator-shortcut"), setTranslatorShortcut, (v) => v || "Ctrl+Alt+T");
+			apply(getVal("zenith-translator-display-mode"), setTranslatorDisplayMode, (v) => (v === "notch" ? "notch" : "popup"));
+			apply(getVal("zenith-translator-popup-position"), setTranslatorPopupPosition, (v) => (v === "center" ? "center" : "cursor"));
+			apply(getVal("zenith-translator-show-in-notch"), setTranslatorShowInNotch, readBool);
+			apply(getVal("zenith-translator-capture-selection"), setTranslatorCaptureSelection, readBool);
+			apply(getVal("zenith-translator-auto-translate"), setTranslatorAutoTranslate, readBool);
+			apply(getVal("zenith-translator-auto-copy"), setTranslatorAutoCopy, readBool);
+			apply(getVal("zenith-translator-source-lang"), setTranslatorSourceLang, (v) => v || "auto");
+			apply(getVal("zenith-translator-target-lang"), setTranslatorTargetLang, (v) => v || "ar");
+			apply(getVal("zenith-translator-smart-swap"), setTranslatorSmartSwap, readBool);
+			apply(getVal("zenith-translator-secondary-lang"), setTranslatorSecondaryLang, (v) => v || "en");
+			apply(getVal("zenith-translator-provider"), setTranslatorProvider, (v) =>
+				v === "gemini" || v === "openai" || v === "groq" || v === "custom" ? v : "free"
+			);
+			apply(getVal("zenith-translator-api-key"), setTranslatorApiKey, (v) => v);
+			apply(getVal("zenith-translator-model"), setTranslatorModel, (v) => v);
+			apply(getVal("zenith-translator-custom-endpoint"), setTranslatorCustomEndpoint, (v) => v);
+			apply(getVal("zenith-translator-tone"), setTranslatorTone, (v) =>
+				v === "formal" || v === "casual" || v === "concise" || v === "technical" ? v : "natural"
+			);
+			apply(getVal("zenith-translator-custom-prompt"), setTranslatorCustomPrompt, (v) => v);
 
 			const widgetsVal = getVal("bloom-status-widgets");
 			if (widgetsVal) {
@@ -651,7 +733,29 @@ export function useSettings() {
 		"zenith-mouse-always-show-labels": setMouseAlwaysShowLabels,
 		"zenith-mouse-show-workspace-pill": setMouseShowWorkspacePill,
 		"zenith-mouse-open-sound": setMouseOpenSound,
-		"zenith-mouse-hover-sound": setMouseHoverSound
+		"zenith-mouse-hover-sound": setMouseHoverSound,
+
+		// Translator Settings Sync
+		"zenith-translator-enabled": setTranslatorEnabled,
+		"zenith-translator-shortcut": (v) => setTranslatorShortcut(v || "Ctrl+Alt+T"),
+		"zenith-translator-display-mode": (v: unknown) => setTranslatorDisplayMode(v === "notch" ? "notch" : "popup"),
+		"zenith-translator-popup-position": (v: unknown) => setTranslatorPopupPosition(v === "center" ? "center" : "cursor"),
+		"zenith-translator-show-in-notch": setTranslatorShowInNotch,
+		"zenith-translator-capture-selection": setTranslatorCaptureSelection,
+		"zenith-translator-auto-translate": setTranslatorAutoTranslate,
+		"zenith-translator-auto-copy": setTranslatorAutoCopy,
+		"zenith-translator-source-lang": (v) => setTranslatorSourceLang(v || "auto"),
+		"zenith-translator-target-lang": (v) => setTranslatorTargetLang(v || "ar"),
+		"zenith-translator-smart-swap": setTranslatorSmartSwap,
+		"zenith-translator-secondary-lang": (v) => setTranslatorSecondaryLang(v || "en"),
+		"zenith-translator-provider": (v: unknown) =>
+			setTranslatorProvider(v === "gemini" || v === "openai" || v === "groq" || v === "custom" ? v : "free"),
+		"zenith-translator-api-key": setTranslatorApiKey,
+		"zenith-translator-model": setTranslatorModel,
+		"zenith-translator-custom-endpoint": setTranslatorCustomEndpoint,
+		"zenith-translator-tone": (v: unknown) =>
+			setTranslatorTone(v === "formal" || v === "casual" || v === "concise" || v === "technical" ? v : "natural"),
+		"zenith-translator-custom-prompt": setTranslatorCustomPrompt
 	});
 
 	// ── Listen for system accent changes (adaptive theme) ──
@@ -1350,6 +1454,87 @@ export function useSettings() {
 		saveSetting("bloom-theme-brightness", String(value));
 	};
 
+	// ── Translator handlers ──
+	const toggleTranslatorEnabled = () => {
+		const next = !translatorEnabled;
+		setTranslatorEnabled(next);
+		saveSetting("zenith-translator-enabled", String(next));
+	};
+	const changeTranslatorShortcut = (value: string) => {
+		const trimmed = value.trim() || "Ctrl+Alt+T";
+		setTranslatorShortcut(trimmed);
+		saveSetting("zenith-translator-shortcut", trimmed);
+	};
+	const changeTranslatorDisplayMode = (mode: "popup" | "notch") => {
+		setTranslatorDisplayMode(mode);
+		saveSetting("zenith-translator-display-mode", mode);
+	};
+	const changeTranslatorPopupPosition = (pos: "cursor" | "center") => {
+		setTranslatorPopupPosition(pos);
+		saveSetting("zenith-translator-popup-position", pos);
+	};
+	const toggleTranslatorShowInNotch = () => {
+		const next = !translatorShowInNotch;
+		setTranslatorShowInNotch(next);
+		saveSetting("zenith-translator-show-in-notch", String(next));
+	};
+	const toggleTranslatorCaptureSelection = () => {
+		const next = !translatorCaptureSelection;
+		setTranslatorCaptureSelection(next);
+		saveSetting("zenith-translator-capture-selection", String(next));
+	};
+	const toggleTranslatorAutoTranslate = () => {
+		const next = !translatorAutoTranslate;
+		setTranslatorAutoTranslate(next);
+		saveSetting("zenith-translator-auto-translate", String(next));
+	};
+	const toggleTranslatorAutoCopy = () => {
+		const next = !translatorAutoCopy;
+		setTranslatorAutoCopy(next);
+		saveSetting("zenith-translator-auto-copy", String(next));
+	};
+	const changeTranslatorSourceLang = (langCode: string) => {
+		setTranslatorSourceLang(langCode);
+		saveSetting("zenith-translator-source-lang", langCode);
+	};
+	const changeTranslatorTargetLang = (langCode: string) => {
+		setTranslatorTargetLang(langCode);
+		saveSetting("zenith-translator-target-lang", langCode);
+	};
+	const toggleTranslatorSmartSwap = () => {
+		const next = !translatorSmartSwap;
+		setTranslatorSmartSwap(next);
+		saveSetting("zenith-translator-smart-swap", String(next));
+	};
+	const changeTranslatorSecondaryLang = (langCode: string) => {
+		setTranslatorSecondaryLang(langCode);
+		saveSetting("zenith-translator-secondary-lang", langCode);
+	};
+	const changeTranslatorProvider = (provider: "free" | "gemini" | "openai" | "groq" | "custom") => {
+		setTranslatorProvider(provider);
+		saveSetting("zenith-translator-provider", provider);
+	};
+	const changeTranslatorApiKey = (apiKey: string) => {
+		setTranslatorApiKey(apiKey);
+		saveSetting("zenith-translator-api-key", apiKey);
+	};
+	const changeTranslatorModel = (model: string) => {
+		setTranslatorModel(model);
+		saveSetting("zenith-translator-model", model);
+	};
+	const changeTranslatorCustomEndpoint = (endpoint: string) => {
+		setTranslatorCustomEndpoint(endpoint);
+		saveSetting("zenith-translator-custom-endpoint", endpoint);
+	};
+	const changeTranslatorTone = (tone: "natural" | "formal" | "casual" | "concise" | "technical") => {
+		setTranslatorTone(tone);
+		saveSetting("zenith-translator-tone", tone);
+	};
+	const changeTranslatorCustomPrompt = (prompt: string) => {
+		setTranslatorCustomPrompt(prompt);
+		saveSetting("zenith-translator-custom-prompt", prompt);
+	};
+
 	// ── City search ──
 	const selectCity = async (city: {
 		name: string;
@@ -1381,16 +1566,14 @@ export function useSettings() {
 	// ── Reset to defaults ──
 	const resetToDefaults = async () => {
 		try {
+			const t = getTranslations(getStoredLanguage()).general;
 			const { ask } = await import("@tauri-apps/plugin-dialog");
-			const confirmed = await ask(
-				"All settings return to their defaults and Zenith restarts. Pinned apps and custom icons are kept.",
-				{
-					title: "Reset Zenith to Defaults",
-					kind: "warning",
-					okLabel: "Reset and Restart",
-					cancelLabel: "Cancel"
-				}
-			);
+			const confirmed = await ask(t.resetConfirmMessage, {
+				title: t.resetConfirmTitle,
+				kind: "warning",
+				okLabel: t.resetConfirmOk,
+				cancelLabel: t.resetConfirmCancel
+			});
 			if (!confirmed) return;
 
 			await invoke("reset_settings");
@@ -1656,6 +1839,44 @@ export function useSettings() {
 		handleMouseOpenSoundChange,
 		mouseHoverSound,
 		handleMouseHoverSoundChange,
+
+		// Translator
+		translatorEnabled,
+		toggleTranslatorEnabled,
+		translatorShortcut,
+		changeTranslatorShortcut,
+		translatorDisplayMode,
+		changeTranslatorDisplayMode,
+		translatorPopupPosition,
+		changeTranslatorPopupPosition,
+		translatorShowInNotch,
+		toggleTranslatorShowInNotch,
+		translatorCaptureSelection,
+		toggleTranslatorCaptureSelection,
+		translatorAutoTranslate,
+		toggleTranslatorAutoTranslate,
+		translatorAutoCopy,
+		toggleTranslatorAutoCopy,
+		translatorSourceLang,
+		changeTranslatorSourceLang,
+		translatorTargetLang,
+		changeTranslatorTargetLang,
+		translatorSmartSwap,
+		toggleTranslatorSmartSwap,
+		translatorSecondaryLang,
+		changeTranslatorSecondaryLang,
+		translatorProvider,
+		changeTranslatorProvider,
+		translatorApiKey,
+		changeTranslatorApiKey,
+		translatorModel,
+		changeTranslatorModel,
+		translatorCustomEndpoint,
+		changeTranslatorCustomEndpoint,
+		translatorTone,
+		changeTranslatorTone,
+		translatorCustomPrompt,
+		changeTranslatorCustomPrompt,
 
 		// Notifications
 		notificationsEnabled,

@@ -33,19 +33,84 @@ const MASK_VK: u16 = 0xE8;
 
 /// Raw handle of the installed keyboard hook, 0 while none is installed.
 static KEYBOARD_HOOK: AtomicIsize = AtomicIsize::new(0);
+/// Packed translator hotkey:
+/// bit 0 = enabled, bits 1..=4 = ctrl/alt/shift/win, bits 16..=31 = vk.
+static TRANSLATOR_HOTKEY_PACKED: AtomicU32 = AtomicU32::new(0);
+/// Guards key auto-repeat while the translator shortcut is held down.
+static TRANSLATOR_HOTKEY_HELD: AtomicBool = AtomicBool::new(false);
 
-/// Win+1-9 is the only feature that needs a global keyboard hook: Explorer
-/// already registers those hotkeys, so `RegisterHotKey` can't claim them.
-/// Volume and brightness keys are left to Windows, and Zenith's overlays follow
-/// the resulting changes instead. The hook only exists while Win+1-9 is in use
-/// (the dock replaces the taskbar and the setting is on); the rest of the time
-/// Zenith doesn't see the keyboard at all.
+fn pack_translator_hotkey(spec: crate::translator::HotkeySpec) -> u32 {
+    let mut val: u32 = 1;
+    if spec.ctrl {
+        val |= 1 << 1;
+    }
+    if spec.alt {
+        val |= 1 << 2;
+    }
+    if spec.shift {
+        val |= 1 << 3;
+    }
+    if spec.win {
+        val |= 1 << 4;
+    }
+    val | ((spec.vk as u32) << 16)
+}
+
+pub fn refresh_translator_hotkey(app: &AppHandle) {
+    let enabled = crate::utils::get_setting_str(app, "zenith-translator-enabled")
+        .map(|v| v != "false")
+        .unwrap_or(true);
+    if !enabled {
+        TRANSLATOR_HOTKEY_PACKED.store(0, Ordering::Relaxed);
+        return;
+    }
+    let shortcut = crate::utils::get_setting_str(app, "zenith-translator-shortcut")
+        .unwrap_or_else(|| "Ctrl+Alt+T".to_string());
+    let packed = crate::translator::parse_hotkey(&shortcut)
+        .map(pack_translator_hotkey)
+        .unwrap_or(0);
+    TRANSLATOR_HOTKEY_PACKED.store(packed, Ordering::Relaxed);
+}
+
+fn translator_hotkey_enabled() -> bool {
+    TRANSLATOR_HOTKEY_PACKED.load(Ordering::Relaxed) & 1 != 0
+}
+
+fn modifier_physically_down(vk: i32) -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+    unsafe { (GetAsyncKeyState(vk) as u16 & 0x8000) != 0 }
+}
+
+fn translator_modifiers_match(packed: u32) -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{VK_CONTROL, VK_MENU, VK_SHIFT};
+    let need_ctrl = (packed & (1 << 1)) != 0;
+    let need_alt = (packed & (1 << 2)) != 0;
+    let need_shift = (packed & (1 << 3)) != 0;
+    let need_win = (packed & (1 << 4)) != 0;
+
+    let ctrl_down = modifier_physically_down(VK_CONTROL.0 as i32);
+    let alt_down = modifier_physically_down(VK_MENU.0 as i32);
+    let shift_down = modifier_physically_down(VK_SHIFT.0 as i32);
+    let win_down = win_key_physically_down();
+
+    ctrl_down == need_ctrl
+        && alt_down == need_alt
+        && shift_down == need_shift
+        && win_down == need_win
+}
+
+/// Win+1-9 and Zenith's configurable Translator shortcut share this low-level
+/// keyboard hook so Explorer or foreground apps don't block global hotkeys.
+/// The hook only runs while at least one of those features is active.
 pub fn setup_keyboard_hook(app_handle: AppHandle) {
     let _ = KEYBOARD_HOOK_APP_HANDLE.set(app_handle.clone());
+    refresh_translator_hotkey(&app_handle);
     std::thread::spawn(move || {
         // Exiting removes the hook with the process; never touch it mid-shutdown.
         while !SHUTTING_DOWN.load(Ordering::Relaxed) {
-            let wanted = NATIVE_TASKBAR_HIDDEN.load(Ordering::Relaxed) && dock_win_number_enabled();
+            refresh_translator_hotkey(&app_handle);
+            let wanted = (NATIVE_TASKBAR_HIDDEN.load(Ordering::Relaxed) && dock_win_number_enabled())
+                || translator_hotkey_enabled();
             if wanted != (KEYBOARD_HOOK.load(Ordering::Relaxed) != 0) {
                 // A low-level hook runs on the thread that installed it, which
                 // needs a message loop, so install and remove it on the main thread.
@@ -163,6 +228,24 @@ fn emit_dock_win_number(index: u8) {
     });
 }
 
+fn trigger_translator_from_hook() {
+    let Some(app) = KEYBOARD_HOOK_APP_HANDLE.get().cloned() else {
+        return;
+    };
+    std::thread::spawn(move || {
+        let capture_enabled = crate::utils::get_setting_str(&app, "zenith-translator-capture-selection")
+            .map(|v| v != "false")
+            .unwrap_or(true);
+        let captured = if capture_enabled {
+            crate::translator::capture_selected_text()
+        } else {
+            None
+        };
+        let captured_selection = captured.is_some();
+        crate::commands::trigger_translator_surface(&app, captured, captured_selection);
+    });
+}
+
 unsafe extern "system" fn keyboard_hook_proc(
     code: i32,
     wparam: windows::Win32::Foundation::WPARAM,
@@ -178,8 +261,8 @@ unsafe extern "system" fn keyboard_hook_proc(
         let is_down = wparam.0 == WM_KEYDOWN as usize || wparam.0 == WM_SYSKEYDOWN as usize;
         let is_up = wparam.0 == WM_KEYUP as usize || wparam.0 == WM_SYSKEYUP as usize;
 
-        // Only physical presses drive the Win+Number replacement; injected
-        // events (our own Start taps and mask key) must not re-enter it.
+        // Only physical presses drive hotkeys; injected events (Start taps,
+        // mask key, and our Ctrl+C selection capture) must pass untouched.
         if (kb.flags.0 & LLKHF_INJECTED.0) == 0 {
             if vk_code == VK_LWIN || vk_code == VK_RWIN {
                 if is_down {
@@ -191,28 +274,50 @@ unsafe extern "system" fn keyboard_hook_proc(
                     WIN_KEY_DOWN.store(false, Ordering::Relaxed);
                     WIN_NUMBER_HELD.store(0, Ordering::Relaxed);
                 }
-            } else if WIN_KEY_DOWN.load(Ordering::Relaxed) {
-                if let Some(index) = win_number_index(vk_code.0) {
-                    let slot = index + 1;
+            } else {
+                let packed = TRANSLATOR_HOTKEY_PACKED.load(Ordering::Relaxed);
+                let target_vk = (packed >> 16) as u16;
+                if (packed & 1) != 0 && vk_code.0 == target_vk {
                     if is_up {
-                        let _ = WIN_NUMBER_HELD.compare_exchange(
-                            slot,
-                            0,
-                            Ordering::Relaxed,
-                            Ordering::Relaxed,
-                        );
-                    } else if is_down {
-                        if !win_key_physically_down() {
-                            WIN_KEY_DOWN.store(false, Ordering::Relaxed);
-                            WIN_NUMBER_HELD.store(0, Ordering::Relaxed);
-                        } else if NATIVE_TASKBAR_HIDDEN.load(Ordering::Relaxed)
-                            && dock_win_number_enabled()
-                        {
-                            if WIN_NUMBER_HELD.swap(slot, Ordering::Relaxed) != slot {
+                        TRANSLATOR_HOTKEY_HELD.store(false, Ordering::Relaxed);
+                    } else if is_down
+                        && !crate::translator::TRANSLATOR_RECORDING_HOTKEY
+                            .load(Ordering::Relaxed)
+                        && translator_modifiers_match(packed)
+                    {
+                        if !TRANSLATOR_HOTKEY_HELD.swap(true, Ordering::Relaxed) {
+                            if (packed & (1 << 4)) != 0 {
                                 send_start_menu_mask();
-                                emit_dock_win_number(index);
                             }
-                            return windows::Win32::Foundation::LRESULT(1);
+                            trigger_translator_from_hook();
+                        }
+                        return windows::Win32::Foundation::LRESULT(1);
+                    }
+                }
+
+                if WIN_KEY_DOWN.load(Ordering::Relaxed) {
+                    if let Some(index) = win_number_index(vk_code.0) {
+                        let slot = index + 1;
+                        if is_up {
+                            let _ = WIN_NUMBER_HELD.compare_exchange(
+                                slot,
+                                0,
+                                Ordering::Relaxed,
+                                Ordering::Relaxed,
+                            );
+                        } else if is_down {
+                            if !win_key_physically_down() {
+                                WIN_KEY_DOWN.store(false, Ordering::Relaxed);
+                                WIN_NUMBER_HELD.store(0, Ordering::Relaxed);
+                            } else if NATIVE_TASKBAR_HIDDEN.load(Ordering::Relaxed)
+                                && dock_win_number_enabled()
+                            {
+                                if WIN_NUMBER_HELD.swap(slot, Ordering::Relaxed) != slot {
+                                    send_start_menu_mask();
+                                    emit_dock_win_number(index);
+                                }
+                                return windows::Win32::Foundation::LRESULT(1);
+                            }
                         }
                     }
                 }
@@ -4700,7 +4805,7 @@ pub unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> B
                         || (window_class == "#32770" && dialog_has_tab_control(hwnd));
 
                     // Filter out Zenith itself (except the Settings window) and some common background processes
-                    if (lowercase_path.contains("zenith.exe") && title != "Settings")
+                    if (lowercase_path.contains("zenith.exe") && title != "Settings" && title != "الإعدادات")
                         || lowercase_path.contains("conhost.exe")
                         || (lowercase_path.contains("explorer.exe") && !is_explorer_window)
                         || lowercase_path.contains("shellexperiencehost.exe")

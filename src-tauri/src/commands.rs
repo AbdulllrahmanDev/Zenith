@@ -2504,6 +2504,7 @@ pub fn hide_native_osd() {
 
 #[tauri::command]
 pub fn open_settings_window(app: AppHandle) {
+    sync_language_from_cache(&app);
     if let Some(win) = app.get_webview_window("settings") {
         unsafe {
             use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
@@ -3739,7 +3740,11 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
         );
     }
 
-    if key == "zenith-scale" || key == "bloom-scale" {
+    if key == "zenith-language" || key == "bloom-language" {
+        apply_language(&app, value.as_str());
+    } else if key == "zenith-translator-enabled" || key == "zenith-translator-shortcut" {
+        crate::services::refresh_translator_hotkey(&app);
+    } else if key == "zenith-scale" || key == "bloom-scale" {
         re_register_appbars(&app, &settings);
     } else if key == "zenith-notch-mode" || key == "bloom-notch-mode" {
         let mode_val = settings
@@ -4452,6 +4457,7 @@ fn apply_imported_settings(app: &AppHandle, settings: &str) -> Result<(), String
     if imported.contains_key("zenith-scale") {
         re_register_appbars(app, &imported);
     }
+    sync_language_from_cache(app);
 
     Ok(())
 }
@@ -4487,6 +4493,8 @@ pub fn reset_settings(app: AppHandle) -> Result<(), String> {
     crate::utils::replace_settings_cache(settings);
     drop(_guard);
 
+
+    apply_language(&app, None);
     // Mirror the external-edit watcher so every open window drops the removed
     // keys from localStorage. The caller restarts Zenith right after, but this
     // keeps the reset correct even if a window lingers.
@@ -4612,12 +4620,18 @@ pub fn setup_settings_watcher(app: AppHandle) {
                 if let Some((changed, removed)) = changes {
                     // Both file and cache locks are released before emitting.
                     for (key, value) in &changed {
+                        if key == "zenith-language" || key == "bloom-language" {
+                            apply_language(&app, value.as_str());
+                        }
                         let _ = app.emit(
                             "settings-external-changed",
                             serde_json::json!({ "key": key, "value": value }),
                         );
                     }
                     for key in removed {
+                        if key == "zenith-language" || key == "bloom-language" {
+                            apply_language(&app, None);
+                        }
                         let _ = app.emit(
                             "settings-external-changed",
                             serde_json::json!({ "key": key, "value": null }),
@@ -5066,4 +5080,243 @@ pub async fn activate_tray_icon(tray_id: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || crate::tray::interact(&tray_id, false))
         .await
         .map_err(|e| e.to_string())?
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LocalizedUiStrings {
+    pub settings_window_title: &'static str,
+    pub open_settings: &'static str,
+    pub restart_zenith: &'static str,
+    pub quit_zenith: &'static str,
+}
+
+pub fn localized_strings(lang: Option<&str>) -> LocalizedUiStrings {
+    match lang {
+        Some("ar") => LocalizedUiStrings {
+            settings_window_title: "الإعدادات",
+            open_settings: "فتح الإعدادات",
+            restart_zenith: "إعادة تشغيل Zenith",
+            quit_zenith: "إغلاق Zenith",
+        },
+        _ => LocalizedUiStrings {
+            settings_window_title: "Settings",
+            open_settings: "Open Settings",
+            restart_zenith: "Restart Zenith",
+            quit_zenith: "Quit Zenith",
+        },
+    }
+}
+
+pub fn apply_language(app: &AppHandle, lang: Option<&str>) {
+    let strings = localized_strings(lang);
+    if let Some(handles) = crate::state::TRAY_MENU_HANDLES.get() {
+        let _ = handles.settings.set_text(strings.open_settings);
+        let _ = handles.restart.set_text(strings.restart_zenith);
+        let _ = handles.quit.set_text(strings.quit_zenith);
+    }
+    if let Some(win) = app.get_webview_window("settings") {
+        let _ = win.set_title(strings.settings_window_title);
+    }
+}
+
+pub fn sync_language_from_cache(app: &AppHandle) {
+    let lang = crate::utils::get_setting_str(app, "zenith-language");
+    apply_language(app, lang.as_deref());
+}
+
+static PENDING_TRANSLATOR_TRIGGER: std::sync::Mutex<Option<crate::translator::TranslatorTriggerPayload>> =
+    std::sync::Mutex::new(None);
+
+fn current_cursor_point() -> (i32, i32) {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+    let mut pt = POINT::default();
+    unsafe {
+        if GetCursorPos(&mut pt).is_ok() {
+            return (pt.x, pt.y);
+        }
+    }
+    (0, 0)
+}
+
+fn open_translator_window_at(
+    app: &AppHandle,
+    cursor_x: Option<i32>,
+    cursor_y: Option<i32>,
+) -> Result<(), String> {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    };
+
+    let win = app
+        .get_webview_window("translator")
+        .ok_or_else(|| "Translator window not available".to_string())?;
+
+    let (cx, cy) = match (cursor_x, cursor_y) {
+        (Some(x), Some(y)) => (x, y),
+        _ => current_cursor_point(),
+    };
+
+    let mut work = windows::Win32::Foundation::RECT {
+        left: 0,
+        top: 0,
+        right: 1920,
+        bottom: 1080,
+    };
+    unsafe {
+        let hmon = MonitorFromPoint(POINT { x: cx, y: cy }, MONITOR_DEFAULTTONEAREST);
+        let mut mi = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if GetMonitorInfoW(hmon, &mut mi).as_bool() {
+            work = mi.rcWork;
+        }
+    }
+
+    let size = win.outer_size().unwrap_or(tauri::PhysicalSize {
+        width: 440,
+        height: 500,
+    });
+    let win_w = size.width as i32;
+    let win_h = size.height as i32;
+
+    let pos_mode = crate::utils::get_setting_str(app, "zenith-translator-popup-position")
+        .unwrap_or_else(|| "cursor".to_string());
+
+    let (raw_x, raw_y) = if pos_mode == "center" {
+        (
+            work.left + ((work.right - work.left) - win_w) / 2,
+            work.top + ((work.bottom - work.top) - win_h) / 2,
+        )
+    } else {
+        (cx + 12, cy + 16)
+    };
+
+    let max_x = (work.right - win_w - 12).max(work.left + 12);
+    let max_y = (work.bottom - win_h - 12).max(work.top + 12);
+    let final_x = raw_x.clamp(work.left + 12, max_x);
+    let final_y = raw_y.clamp(work.top + 12, max_y);
+
+    let _ = win.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
+        x: final_x,
+        y: final_y,
+    }));
+    let _ = win.unminimize();
+    let _ = win.show();
+    let _ = win.set_always_on_top(true);
+    let _ = win.set_focus();
+    Ok(())
+}
+
+pub fn trigger_translator_surface(
+    app: &AppHandle,
+    text: Option<String>,
+    captured_selection: bool,
+) {
+    let (cursor_x, cursor_y) = current_cursor_point();
+    let display_mode = crate::utils::get_setting_str(app, "zenith-translator-display-mode")
+        .unwrap_or_else(|| "popup".to_string());
+
+    let payload = crate::translator::TranslatorTriggerPayload {
+        text: text.unwrap_or_default(),
+        captured_selection,
+        cursor_x,
+        cursor_y,
+    };
+
+    if let Ok(mut guard) = PENDING_TRANSLATOR_TRIGGER.lock() {
+        *guard = Some(payload.clone());
+    }
+
+    if display_mode == "notch" {
+        let _ = app.emit_to("main", "translator-trigger", &payload);
+    } else {
+        let _ = open_translator_window_at(app, Some(cursor_x), Some(cursor_y));
+        let _ = app.emit_to("translator", "translator-trigger", &payload);
+    }
+}
+
+#[tauri::command]
+pub async fn translate_text(
+    req: crate::translator::TranslateRequest,
+) -> Result<crate::translator::TranslateResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || crate::translator::translate_blocking(&req))
+        .await
+        .map_err(|e| format!("Translator task failed: {}", e))?
+}
+
+#[tauri::command]
+pub fn open_translator_window(app: AppHandle) -> Result<(), String> {
+    open_translator_window_at(&app, None, None)
+}
+
+#[tauri::command]
+pub fn hide_translator_window(app: AppHandle) {
+    if let Some(win) = app.get_webview_window("translator") {
+        let _ = win.hide();
+    }
+}
+
+#[tauri::command]
+pub fn take_pending_translator_trigger() -> Option<crate::translator::TranslatorTriggerPayload> {
+    PENDING_TRANSLATOR_TRIGGER
+        .lock()
+        .ok()
+        .and_then(|mut g| g.take())
+}
+
+#[tauri::command]
+pub fn set_translator_shortcut_recording(recording: bool) {
+    crate::translator::TRANSLATOR_RECORDING_HOTKEY.store(recording, Ordering::Relaxed);
+}
+
+#[tauri::command]
+pub fn set_notch_keyboard_focus(app: AppHandle, focus: bool) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetWindowLongPtrW, SetForegroundWindow, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE,
+    };
+
+    if let Some(main_win) = app.get_webview_window("main") {
+        if let Ok(hwnd) = main_win.hwnd() {
+            if focus {
+                unsafe {
+                    let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as usize;
+                    let new_ex = ex & !(WS_EX_NOACTIVATE.0 as usize);
+                    SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_ex as isize);
+                    let _ = SetForegroundWindow(hwnd);
+                }
+                let _ = main_win.set_focus();
+            } else {
+                crate::utils::re_assert_topmost(hwnd);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod localization_tests {
+    use super::localized_strings;
+
+    #[test]
+    fn defaults_to_english() {
+        let s = localized_strings(None);
+        assert_eq!(s.settings_window_title, "Settings");
+        assert_eq!(s.open_settings, "Open Settings");
+        assert_eq!(s.restart_zenith, "Restart Zenith");
+        assert_eq!(s.quit_zenith, "Quit Zenith");
+
+        assert_eq!(localized_strings(Some("en")).settings_window_title, "Settings");
+        assert_eq!(localized_strings(Some("fr")).settings_window_title, "Settings");
+    }
+
+    #[test]
+    fn supports_arabic() {
+        let s = localized_strings(Some("ar"));
+        assert_eq!(s.settings_window_title, "الإعدادات");
+        assert_eq!(s.open_settings, "فتح الإعدادات");
+        assert_eq!(s.restart_zenith, "إعادة تشغيل Zenith");
+        assert_eq!(s.quit_zenith, "إغلاق Zenith");
+    }
 }

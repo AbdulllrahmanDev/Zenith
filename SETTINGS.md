@@ -160,6 +160,29 @@ Edit `settings.json` with any text editor while Zenith is running. Changes are a
 | `bloom-theme-brightness` | float string                                     | `"0.15"`    | Background brightness for custom/adaptive themes (0.0 to 1.0).                                                                                              |
 | `bloom-corners-enabled`  | `"true"` / `"false"`                             | `"false"`   | Render rounded screen corner overlays on top edges.                                                                                                         |
 
+### Translator
+
+| Key                                    | Type                                                  | Default        | Description                                                                                                       |
+| -------------------------------------- | ----------------------------------------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `zenith-translator-enabled`            | `"true"` / `"false"`                                  | `"true"`       | Enable the global Translator keyboard shortcut listener.                                                          |
+| `zenith-translator-shortcut`           | shortcut string                                       | `"Ctrl+Alt+T"` | Global keyboard shortcut to trigger the Translator and capture selected text.                                     |
+| `zenith-translator-display-mode`       | `"popup"` / `"notch"`                                 | `"popup"`      | Where the Translator opens on global shortcut: floating popup window or expanded Notch panel.                     |
+| `zenith-translator-popup-position`     | `"cursor"` / `"center"`                               | `"cursor"`     | Floating popup placement: beside the mouse cursor or centered on the active monitor.                              |
+| `zenith-translator-show-in-notch`      | `"true"` / `"false"`                                  | `"true"`       | Include Translator in the Notch panel switcher.                                                                   |
+| `zenith-translator-capture-selection`  | `"true"` / `"false"`                                  | `"true"`       | Copy selected text from the foreground window automatically when triggered via shortcut.                            |
+| `zenith-translator-auto-translate`     | `"true"` / `"false"`                                  | `"true"`       | Automatically translate captured text as soon as the Translator opens.                                            |
+| `zenith-translator-auto-copy`          | `"true"` / `"false"`                                  | `"false"`      | Copy translated output back to the clipboard automatically when complete.                                         |
+| `zenith-translator-source-lang`        | language code / `"auto"`                              | `"auto"`       | Input source language or automatic detection.                                                                     |
+| `zenith-translator-target-lang`        | language code                                         | `"ar"`         | Primary destination language for translations.                                                                    |
+| `zenith-translator-smart-swap`         | `"true"` / `"false"`                                  | `"true"`       | Automatically switch target to `zenith-translator-secondary-lang` when captured text matches the target language. |
+| `zenith-translator-secondary-lang`     | language code                                         | `"en"`         | Fallback destination language when smart swap triggers.                                                           |
+| `zenith-translator-provider`           | `"free"` / `"gemini"` / `"openai"` / `"groq"` / `"custom"` | `"free"`  | Translation engine (built-in free quick translate or AI provider).                                                |
+| `zenith-translator-api-key`            | string                                                | `""`           | API key for Gemini, OpenAI, Groq, or custom OpenAI-compatible endpoints.                                          |
+| `zenith-translator-model`              | string                                                | `""`           | Optional model override; empty uses the provider default.                                                         |
+| `zenith-translator-custom-endpoint`    | URL string                                            | `""`           | Base or chat completions URL for custom OpenAI-compatible providers.                                              |
+| `zenith-translator-tone`               | `"natural"` / `"formal"` / `"casual"` / `"concise"` / `"technical"` | `"natural"` | Register/tone instruction applied to AI translation prompts.                                             |
+| `zenith-translator-custom-prompt`      | string                                                | `""`           | Additional custom instructions appended to AI translation prompts.                                                |
+
 ### Status Widgets
 
 | Key                    | Type        | Default                                    | Description                                                                                                 |
@@ -178,6 +201,7 @@ Example:
 
 | Key                            | Type                 | Default   | Description                                                                                          |
 | ------------------------------ | -------------------- | --------- | ---------------------------------------------------------------------------------------------------- |
+| `zenith-language`               | `"en"` / `"ar"`      | `"en"`    | Application UI language (`"en"` for English, `"ar"` for Arabic).                                     |
 | `zenith-scale`                  | float string         | `"1.0"`   | UI scale factor (0.8 to 1.3). Changing this re-registers AppBars to resize the reserved screen area. |
 | `zenith-low-battery-threshold`  | integer string       | `"20"`    | Battery percentage that triggers the low-battery alert pulse (5 to 50, step 5).                      |
 | `zenith-auto-update`            | `"true"` / `"false"` | `"false"` | Check for and download updates automatically on startup.                                             |

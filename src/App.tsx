@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { getVersion } from "@tauri-apps/api/app";
+import { useI18n } from "./i18n";
 import type { UpdateCheckResult } from "./updater";
 import { batteryTooltip, type BatteryDetails } from "./batteryTooltip";
 import {
@@ -41,6 +42,11 @@ import { BluetoothPanel } from "./components/BluetoothPanel";
 import { PrayerTimesPanel } from "./components/PrayerTimesPanel";
 import { AthanNotchBanner } from "./components/AthanNotchBanner";
 import { NotificationPanel } from "./components/NotificationPanel";
+import {
+	TranslatorPanel,
+	type TranslatorTriggerEnvelope
+} from "./components/TranslatorPanel";
+import type { TranslatorTriggerPayload } from "./utils/translator";
 import { usePrayerTimes, formatPrayerTime } from "./hooks/usePrayerTimes";
 import {
 	Cpu,
@@ -70,8 +76,8 @@ import {
  *   Dragging files onto the notch also opens the shelf. Wheel/swipe switches
  *   between tool panels, including when a live activity occupies the pill.
  */
-type NotchPanel = "calendar" | "command-center" | "prayer";
-const NOTCH_PANELS: readonly NotchPanel[] = ["calendar", "command-center", "prayer"];
+type NotchPanel = "calendar" | "command-center" | "prayer" | "translator";
+const NOTCH_PANELS: readonly NotchPanel[] = ["calendar", "command-center", "prayer", "translator"];
 const asNotchPanel = (value: unknown): NotchPanel | null =>
 	NOTCH_PANELS.includes(value as NotchPanel) ? (value as NotchPanel) : null;
 
@@ -443,7 +449,8 @@ type BloomMode =
 	| "shelf"
 	| "wifi"
 	| "bluetooth"
-	| "notifications";
+	| "notifications"
+	| "translator";
 
 // The shelf is a short-lived stash: one row, newest first, oldest evicted.
 const SHELF_MAX_ITEMS = 10;
@@ -501,6 +508,9 @@ const TitleMarquee = ({ title }: { title: string }) => {
 };
 
 function App() {
+	const { t, lang, dir } = useI18n();
+	const nu = t.notchUi;
+
 	useEffect(() => {
 		return initTheme();
 	}, []);
@@ -934,6 +944,12 @@ function App() {
 	const [settingsPrayerEnabled, setSettingsPrayerEnabled] = useState(
 		() => localStorage.getItem("bloom-prayer-enabled") !== "false"
 	);
+	const [settingsTranslatorNotchEnabled, setSettingsTranslatorNotchEnabled] = useState(
+		() => localStorage.getItem("zenith-translator-show-in-notch") !== "false"
+	);
+	const [translatorTrigger, setTranslatorTrigger] = useState<TranslatorTriggerEnvelope | null>(
+		null
+	);
 
 	const [notificationsEnabled, setNotificationsEnabled] = useState(
 		() => localStorage.getItem("bloom-notifications-enabled") !== "false"
@@ -1045,6 +1061,9 @@ function App() {
 				setSettingsWeatherEnabled(getVal("bloom-weather-enabled", "true") !== "false");
 				setSettingsCalendarEnabled(getVal("bloom-calendar-enabled", "true") !== "false");
 				setSettingsPrayerEnabled(getVal("bloom-prayer-enabled", "true") !== "false");
+				setSettingsTranslatorNotchEnabled(
+					getVal("zenith-translator-show-in-notch", "true") !== "false"
+				);
 				setSettingsTimerSoundEnabled(getVal("bloom-timer-sound-enabled", "true") !== "false");
 				setSettingsMusicModeEnabled(getVal("bloom-music-mode-enabled", "true") !== "false");
 				setRememberPanelEnabled(
@@ -1222,7 +1241,8 @@ function App() {
 				} catch {}
 			},
 			"bloom-show-update-indicator": (value) => setShowUpdateIndicator(String(value) === "true"),
-			"bloom-time-format-24h": setTimeFormat24h
+			"bloom-time-format-24h": setTimeFormat24h,
+			"zenith-translator-show-in-notch": setSettingsTranslatorNotchEnabled
 		},
 		[windowLabel]
 	);
@@ -1590,7 +1610,8 @@ function App() {
 			prev === "status" ||
 			prev === "shelf" ||
 			prev === "wifi" ||
-			prev === "bluetooth"
+			prev === "bluetooth" ||
+			prev === "translator"
 				? restingModeRef.current
 				: prev
 		);
@@ -1705,7 +1726,7 @@ function App() {
 		if (item.type === "text") {
 			if (!item.text) return;
 			writeText(item.text)
-				.then(() => showShelfNotice("Copied to clipboard"))
+				.then(() => showShelfNotice(nu.shelfCopied))
 				.catch((e) => console.error("[shelf] copy failed:", e));
 			return;
 		}
@@ -1717,10 +1738,10 @@ function App() {
 				// failure (e.g. no association) must not remove it.
 				const alive = await invoke<string[]>("shelf_prune", { paths: [path] }).catch(() => null);
 				if (alive && alive.length === 0) {
-					showShelfNotice("File no longer exists — removed from shelf");
+					showShelfNotice(nu.shelfPruned);
 					removeShelfItem(item.id);
 				} else {
-					showShelfNotice("Couldn't open the file");
+					showShelfNotice(nu.shelfOpenError);
 				}
 			});
 		}
@@ -1846,6 +1867,7 @@ function App() {
 	function panelAvailable(panel: NotchPanel) {
 		if (panel === "calendar") return settingsCalendarEnabled;
 		if (panel === "prayer") return settingsPrayerEnabled;
+		if (panel === "translator") return settingsTranslatorNotchEnabled;
 		return true;
 	}
 
@@ -1975,15 +1997,15 @@ function App() {
 	const timerDisplaySeconds =
 		timerSeconds > 0 || isTimerFinished ? timerSeconds : lastDurationSeconds;
 	const primaryTimerLabel = isTimerRunning
-		? "Pause"
+		? nu.timerPause
 		: timerSeconds > 0
-			? "Resume"
+			? nu.timerResume
 			: isTimerFinished
-				? "Restart"
-				: "Start";
+				? nu.timerRestart
+				: nu.timerStart;
 	const timerEndTime =
 		timerSeconds > 0 && !isTimerFinished
-			? new Date(Date.now() + timerSeconds * 1000).toLocaleTimeString([], {
+			? new Date(Date.now() + timerSeconds * 1000).toLocaleTimeString(lang === "ar" ? "ar-EG" : "en-US", {
 					hour: "2-digit",
 					minute: "2-digit",
 					hour12: !timeFormat24h
@@ -2141,6 +2163,36 @@ function App() {
 			setBloomMode(isOpen ? openingPanel() : collapsedMode);
 		}
 	}, [settingsPrayerEnabled, bloomMode, isOpen]);
+
+	// Reset bloom mode when translator Notch switcher option is disabled
+	useEffect(() => {
+		if (!settingsTranslatorNotchEnabled && bloomMode === "translator") {
+			setBloomMode(isOpen ? openingPanel() : collapsedMode);
+		}
+	}, [settingsTranslatorNotchEnabled, bloomMode, isOpen]);
+
+	// Open Notch directly into Translator when triggered via global hotkey in Notch display mode.
+	useEffect(() => {
+		if (windowLabel !== "main") return;
+		const unlisten = listen<TranslatorTriggerPayload>("translator-trigger", (event) => {
+			setTranslatorTrigger({ seq: Date.now(), payload: event.payload });
+			setIsOpen(true);
+			setIsHovered(true);
+			setBloomMode("translator");
+			setNotchPinned(true);
+			void invoke("set_notch_keyboard_focus", { focus: true });
+		});
+		return () => {
+			unlisten.then((fn) => fn());
+		};
+	}, [windowLabel, setNotchPinned]);
+
+	// Restore WS_EX_NOACTIVATE whenever leaving the Notch translator or collapsing the Notch.
+	useEffect(() => {
+		if (!isOpen || bloomMode !== "translator") {
+			void invoke("set_notch_keyboard_focus", { focus: false });
+		}
+	}, [isOpen, bloomMode]);
 
 	// Leave the music view when music is turned off or the player ends its media
 	// session: an open notch falls back to the remembered panel.
@@ -2743,11 +2795,12 @@ function App() {
 	// Render a status widget by ID
 	const renderStatusWidget = (id: string) => {
 		switch (id) {
-			case "weather":
+			case "weather": {
 				if (!settingsWeatherEnabled || temperature === null) return null;
+				const localizedCondition = t.weather.codes[weatherCondition] ?? weatherCondition;
 				return statusWidget(
 					"weather",
-					cityName ? `${weatherCondition} — ${cityName}` : weatherCondition,
+					cityName ? `${localizedCondition} — ${cityName}` : localizedCondition,
 					<>
 						<WeatherIcon size={12} strokeWidth={2.2} />
 						<span className="label">
@@ -2755,13 +2808,15 @@ function App() {
 						</span>
 					</>
 				);
+			}
 			case "battery":
 				return statusWidget(
 					"battery",
 					batteryTooltip(
 						batteryDetails,
 						{ level: batteryLevel, charging: isCharging },
-						batterySaverEnabled
+						batterySaverEnabled,
+						lang
 					),
 					<>
 						<BatteryIcon
@@ -2776,7 +2831,7 @@ function App() {
 			case "cpu":
 				return statusWidget(
 					"cpu",
-					"CPU Usage",
+					nu.statusTooltips.cpu,
 					<>
 						<Cpu size={12} strokeWidth={2} />
 						<span className="label">{cpuUsage}%</span>
@@ -2785,7 +2840,7 @@ function App() {
 			case "ram":
 				return statusWidget(
 					"ram",
-					"RAM Usage",
+					nu.statusTooltips.ram,
 					<>
 						<MemoryStick size={12} strokeWidth={2} />
 						<span className="label">{Math.round(ramUsage)}%</span>
@@ -2794,7 +2849,7 @@ function App() {
 			case "disk":
 				return statusWidget(
 					"disk",
-					"Free Disk Space",
+					nu.statusTooltips.disk,
 					<>
 						<HardDrive size={12} strokeWidth={2} />
 						<span className="label">{diskSpace}GB</span>
@@ -2803,7 +2858,7 @@ function App() {
 			case "net":
 				return statusWidget(
 					"net",
-					"Network Speed",
+					nu.statusTooltips.net,
 					<>
 						<ArrowUpDown size={12} strokeWidth={2} />
 						<span className="label">
@@ -2840,6 +2895,7 @@ function App() {
 		if (bloomMode === "announcement" && announcement && !announcementDismissed) return 380;
 		if (isCalendarMode) return 480;
 		if (bloomMode === "prayer" && isOpen) return 480;
+		if (bloomMode === "translator" && isOpen) return 480;
 		if (bloomMode === "shelf") return 380;
 		if (bloomMode === "command-center" && isOpen) return 350;
 		if (bloomMode === "wifi" || bloomMode === "bluetooth" || bloomMode === "notifications") return 350;
@@ -2874,6 +2930,7 @@ function App() {
 		// Sized to the calendar's week-row count plus the timer's fixed content.
 		if (bloomMode === "calendar") return calendarMonthRows >= 6 ? 305 : 273;
 		if (bloomMode === "prayer") return isOpen ? 273 : 36;
+		if (bloomMode === "translator") return isOpen ? 295 : 36;
 		// Shelf expands on mode alone (no hover needed: there is no cursor
 		// hover during an OS drag) and is sized to exactly one row of tiles,
 		// plus room for the scrollbar once the tiles overflow it.
@@ -3223,7 +3280,7 @@ function App() {
 																		invoke("open_sound_settings").catch(() => {});
 																	}}
 																	whileTap={{ scale: 0.9 }}
-																	title="Audio Output"
+																	title={nu.audioOutput}
 																>
 																	<HeadphonesIcon size={20} style={{ opacity: 0.5 }} />
 																</motion.button>
@@ -3399,7 +3456,7 @@ function App() {
 															>
 																<GreenDownArrowIcon />
 																<span className="label" style={{ color: "#32D74B" }}>
-																	Update Available
+																	{nu.updateAvailable}
 																</span>
 															</motion.div>
 														) : (
@@ -3421,10 +3478,10 @@ function App() {
 																	style={{ color: showLowBatteryPulse ? "#FF453A" : "inherit" }}
 																>
 																	{showLowBatteryPulse
-																		? "Low Battery"
+																		? nu.lowBattery
 																		: isCharging
-																			? "Charging"
-																			: "On Battery"}{" "}
+																			? nu.charging
+																			: nu.onBattery}{" "}
 																	• {batteryLevel}%
 																</span>
 															</motion.div>
@@ -3570,7 +3627,7 @@ function App() {
 																			)}
 																			<button
 																				className={`album-art album-art-activity${!isPlaying ? " paused" : ""}`}
-																				aria-label="Open music"
+																				aria-label={nu.musicBubbleAria()}
 																				onClick={(e) => {
 																					e.stopPropagation();
 																					openNotch("music");
@@ -3707,6 +3764,7 @@ function App() {
 									{!showAthanBanner && bloomMode === "command-center" && (
 										<motion.div
 											className="command-center-content-minimal"
+											dir={dir}
 											onClick={(e) => e.stopPropagation()}
 											initial={{ opacity: 0 }}
 											animate={{ opacity: 1 }}
@@ -3723,27 +3781,27 @@ function App() {
 														toggleWifi();
 													}}
 													onContextMenu={handleWifiRightClick}
-													title="Left-click to toggle, Right-click for networks"
+													title={nu.wifiTitle}
 												>
 													<div className="cc-pill-icon-wrapper">
 														<WifiIcon enabled={wifiEnabled} connected={wifiConnected} />
 													</div>
 													<div className="cc-pill-info">
-														<span className="cc-pill-title">Wi-Fi</span>
+														<span className="cc-pill-title">{nu.wifi}</span>
 														<span className="cc-pill-status">
 															{wifiStatus === null
 																? "…"
 																: !wifiEnabled
-																	? "Off"
+																	? t.common.off
 																	: wifiConnected
-																		? (wifiStatus?.ssid ?? "Connected")
-																		: "Not connected"}
+																		? (wifiStatus?.ssid ?? t.common.connected)
+																		: t.common.notConnected}
 														</span>
 													</div>
 													<button
 														className="cc-pill-more"
-														aria-label="Wi-Fi networks"
-														title="Wi-Fi networks"
+														aria-label={nu.wifiNetworks}
+														title={nu.wifiNetworks}
 														onClick={(e) => {
 															e.stopPropagation();
 															setBloomMode("wifi");
@@ -3757,19 +3815,19 @@ function App() {
 												<div
 													className={`cc-pill-tile ${dockMode === "fixed" ? "active" : ""}`}
 													onClick={toggleDockModeSetting}
-													title="Cycle dock mode: Fixed / Smart / Peek"
+													title={nu.dockModeTitle}
 												>
 													<div className="cc-pill-icon-wrapper">
 														<DockIcon />
 													</div>
 													<div className="cc-pill-info">
-														<span className="cc-pill-title">Dock Mode</span>
+														<span className="cc-pill-title">{nu.dockMode}</span>
 														<span className="cc-pill-status">
 															{dockMode === "fixed"
-																? "Fixed"
+																? t.dock.modeFixed
 																: dockMode === "smart"
-																	? "Smart"
-																	: "Peek"}
+																	? t.dock.modeSmart
+																	: t.dock.modePeek}
 														</span>
 													</div>
 												</div>
@@ -3782,27 +3840,27 @@ function App() {
 														toggleBluetooth();
 													}}
 													onContextMenu={handleBluetoothRightClick}
-													title="Left-click to toggle, Right-click for devices"
+													title={nu.bluetoothTitle}
 												>
 													<div className="cc-pill-icon-wrapper">
 														<BluetoothIcon />
 													</div>
 													<div className="cc-pill-info">
-														<span className="cc-pill-title">Bluetooth</span>
+														<span className="cc-pill-title">{nu.bluetooth}</span>
 														<span className="cc-pill-status">
 															{!bluetoothEnabled
-																? "Off"
+																? t.common.off
 																: btConnectedNames.length === 1
 																	? btConnectedNames[0]
 																	: btConnectedNames.length > 1
-																		? `${btConnectedNames.length} connected`
-																		: "On"}
+																		? nu.bluetoothConnectedCount(btConnectedNames.length)
+																		: t.common.on}
 														</span>
 													</div>
 													<button
 														className="cc-pill-more"
-														aria-label="Bluetooth devices"
-														title="Bluetooth devices"
+														aria-label={nu.bluetoothDevices}
+														title={nu.bluetoothDevices}
 														onClick={(e) => {
 															e.stopPropagation();
 															setBloomMode("bluetooth");
@@ -3816,19 +3874,19 @@ function App() {
 												<div
 													className={`cc-pill-tile ${notchMode === "fixed" ? "active" : ""}`}
 													onClick={toggleNotchModeSetting}
-													title="Cycle notch mode: Fixed / Smart / Peek"
+													title={nu.notchModeTitle}
 												>
 													<div className="cc-pill-icon-wrapper">
 														<NotchIcon />
 													</div>
 													<div className="cc-pill-info">
-														<span className="cc-pill-title">Notch Mode</span>
+														<span className="cc-pill-title">{nu.notchMode}</span>
 														<span className="cc-pill-status">
 															{notchMode === "fixed"
-																? "Fixed"
+																? t.notch.modeFixed
 																: notchMode === "smart"
-																	? "Smart"
-																	: "Peek"}
+																	? t.notch.modeSmart
+																	: t.notch.modePeek}
 														</span>
 													</div>
 												</div>
@@ -3842,7 +3900,7 @@ function App() {
 														e.stopPropagation();
 														setDndActive((prev) => !prev);
 													}}
-													title={`Focus / DND: ${dndActive ? "On" : "Off"}`}
+													title={nu.focusDnd(dndActive)}
 												>
 													<MoonIcon />
 												</button>
@@ -3852,7 +3910,7 @@ function App() {
 														e.stopPropagation();
 														openBatterySaverSettings();
 													}}
-													title={`Energy Saver: ${batterySaverEnabled ? "On" : "Off"} — Click to open Settings`}
+													title={nu.energySaver(batterySaverEnabled)}
 												>
 													<BatterySaverIcon />
 												</button>
@@ -3862,7 +3920,7 @@ function App() {
 														e.stopPropagation();
 														openSystemTray(e);
 													}}
-													title="System Tray"
+													title={nu.systemTray}
 												>
 													<TrayIcon />
 												</button>
@@ -3877,7 +3935,7 @@ function App() {
 														e.stopPropagation();
 														invoke("open_notification_center");
 													}}
-													title="Notifications: Left-click for Notch panel, Right-click for Windows Action Center"
+													title={nu.notificationsBtnTitle}
 												>
 													<BellIcon />
 												</button>
@@ -3887,7 +3945,7 @@ function App() {
 														e.stopPropagation();
 														openSettingsWindow();
 													}}
-													title="Zenith Settings"
+													title={nu.zenithSettings}
 												>
 													<SettingsIcon />
 												</button>
@@ -3897,7 +3955,7 @@ function App() {
 														e.stopPropagation();
 														invoke("restart_zenith");
 													}}
-													title="Restart Zenith"
+													title={nu.restartZenith}
 												>
 													<ReloadIcon />
 												</button>
@@ -3909,7 +3967,7 @@ function App() {
 												<div className="cc-classic-slider-row">
 													<div className="cc-classic-slider-label">
 														<VolumeLowIcon style={{ opacity: 0.5 }} />
-														<span>Volume</span>
+														<span>{nu.volume}</span>
 													</div>
 													<div className="cc-classic-slider-track">
 														<input
@@ -3937,7 +3995,7 @@ function App() {
 												<div className="cc-classic-slider-row">
 													<div className="cc-classic-slider-label">
 														<BrightnessLowIcon />
-														<span>Brightness</span>
+														<span>{nu.brightness}</span>
 													</div>
 													<div className="cc-classic-slider-track">
 														<input
@@ -3968,6 +4026,7 @@ function App() {
 									{!showAthanBanner && bloomMode === "announcement" && announcement && !announcementDismissed && (
 										<motion.div
 											className={`announcement-content severity-${announcement.severity}`}
+											dir={dir}
 											onClick={(e) => e.stopPropagation()}
 											initial={{ opacity: 0 }}
 											animate={{ opacity: 1 }}
@@ -3986,7 +4045,7 @@ function App() {
 												<button
 													className="announcement-close"
 													onClick={dismissAnnouncement}
-													title="Dismiss"
+													title={t.common.dismiss}
 												>
 													<X size={13} strokeWidth={2.2} />
 												</button>
@@ -3999,7 +4058,7 @@ function App() {
 													className="announcement-link"
 													onClick={() => openUrl(announcement.url!)}
 												>
-													Learn more
+													{t.common.learnMore}
 												</button>
 											)}
 										</motion.div>
@@ -4011,6 +4070,7 @@ function App() {
 									{!showAthanBanner && settingsCalendarEnabled && isCalendarMode && (
 										<motion.div
 											className="calendar-timer-content split-view"
+											dir={dir}
 											onClick={(e) =>
 												e.stopPropagation()
 											} /* Block mode switches when clicking inside */
@@ -4028,19 +4088,21 @@ function App() {
 													<div className="timer-main">
 														<div className="timer-status">
 															{isEditingTimer
-																? "Set duration"
+																? nu.timerSetDuration
 																: isTimerFinished
-																	? "Time's up"
+																	? nu.timerTimesUp
 																	: timerEndTime
-																		? `${timerState === "paused" ? "Paused · " : ""}ends ${timerEndTime}`
-																		: "Click to edit"}
+																		? timerState === "paused"
+																			? nu.timerPausedEnds(timerEndTime)
+																			: nu.timerEnds(timerEndTime)
+																		: nu.timerClickToEdit}
 														</div>
 
 														<div className={`timer-clock-row ${isEditingTimer ? "editing" : ""}`}>
 															<div
 																className={`timer-clock ${isEditingTimer && !timerEditValid ? "invalid" : ""}`}
 																onClick={beginTimerEdit}
-																title={isTimerRunning ? undefined : "Click to set a duration"}
+																title={isTimerRunning ? undefined : nu.timerClickToEdit}
 															>
 																{minuteDigitItems.map(({ digit, key }) => (
 																	<RollDigit key={key} value={digit} compact={clockCompact} />
@@ -4057,7 +4119,7 @@ function App() {
 																	className="timer-edit-input"
 																	type="text"
 																	inputMode="numeric"
-																	aria-label="Set timer duration"
+																	aria-label={nu.timerAriaLabel}
 																	value={formatTimerDigits(timerEditDigits)}
 																	onChange={(e) =>
 																		setTimerEditDigits(
@@ -4093,7 +4155,7 @@ function App() {
 															onClick={resetTimer}
 															className="timer-btn-reset"
 															disabled={timerSeconds === 0 && !isTimerFinished}
-															title="Reset"
+															title={nu.timerReset}
 														>
 															<RotateCcw size={14} strokeWidth={2.5} />
 														</button>
@@ -4133,11 +4195,39 @@ function App() {
 									)}
 								</AnimatePresence>
 
+								{/* Translator Panel */}
+								<AnimatePresence>
+									{bloomMode === "translator" && !showAthanBanner && (
+										<motion.div
+											key="translator-view"
+											style={{ width: "100%", height: "100%" }}
+											onClick={(e) => e.stopPropagation()}
+											initial={{ opacity: 0 }}
+											animate={{ opacity: 1 }}
+											exit={{ opacity: 0, filter: "blur(4px)", transition: { duration: 0.1 } }}
+											transition={{ type: "spring", stiffness: 400, damping: 30 }}
+										>
+											<TranslatorPanel
+												variant="notch"
+												triggerEvent={translatorTrigger}
+												onPinChange={setNotchPinned}
+												onClose={() => {
+													setNotchPinned(false);
+													void invoke("set_notch_keyboard_focus", { focus: false });
+													setIsOpen(false);
+													setBloomMode(collapsedMode);
+												}}
+											/>
+										</motion.div>
+									)}
+								</AnimatePresence>
+
 								{/* Shelf Panel */}
 								<AnimatePresence>
 									{!showAthanBanner && bloomMode === "shelf" && (
 										<motion.div
 											className="shelf-content"
+											dir={dir}
 											onClick={(e) => e.stopPropagation()}
 											onWheel={handleShelfWheel}
 											initial={{ opacity: 0 }}
@@ -4148,7 +4238,7 @@ function App() {
 											{shelfNotice && <div className="shelf-notice">{shelfNotice}</div>}
 											{shelfItems.length === 0 ? (
 												<div className="shelf-empty">
-													<span>Drop files or selected text here</span>
+													<span>{nu.shelfEmpty}</span>
 												</div>
 											) : (
 												<div
@@ -4228,12 +4318,12 @@ function App() {
 																	</div>
 																	<span className="shelf-tile-name">
 																		{item.type === "text"
-																			? `Text · ${item.text?.length ?? 0} chars`
+																			? nu.shelfTextChars(item.text?.length ?? 0)
 																			: item.name}
 																	</span>
 																	<button
 																		className="shelf-tile-remove"
-																		title="Remove from shelf"
+																		title={nu.shelfRemoveTitle}
 																		onClick={(e) => {
 																			e.stopPropagation();
 																			removeShelfItem(item.id);
@@ -4262,7 +4352,7 @@ function App() {
 							ref={shelfBubbleRef}
 							type="button"
 							className={`activity-bubble shelf-bubble ${isHovered ? "expanded" : ""}`}
-							aria-label={`Open shelf: ${shelfItems.length} item${shelfItems.length === 1 ? "" : "s"}`}
+							aria-label={nu.shelfBubbleAria(shelfItems.length)}
 							// Anchored at the pill's centre, offset past its left edge.
 							style={{ right: "50%" }}
 							initial={{ opacity: 0, scale: 0.4, x: 28, marginRight: getDynamicWidth() / 2 + 8 }}
@@ -4294,7 +4384,7 @@ function App() {
 							ref={musicBubbleRef}
 							type="button"
 							className={`activity-bubble ${isHovered ? "expanded" : ""}`}
-							aria-label={mediaInfo.title ? `Open music: ${mediaInfo.title}` : "Open music"}
+							aria-label={nu.musicBubbleAria(mediaInfo.title)}
 							// Anchored at the pill's centre, offset past its right edge.
 							style={{ left: "50%" }}
 							initial={{ opacity: 0, scale: 0.4, x: -28, marginLeft: getDynamicWidth() / 2 + 8 }}
@@ -4327,6 +4417,7 @@ function App() {
 }
 
 function Calendar() {
+	const { t, lang } = useI18n();
 	const [date] = useState(new Date());
 
 	const daysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
@@ -4334,7 +4425,7 @@ function Calendar() {
 
 	const currentMonth = date.getMonth();
 	const currentYear = date.getFullYear();
-	const monthName = date.toLocaleString("default", { month: "long" });
+	const monthName = date.toLocaleString(lang === "ar" ? "ar-EG" : "en-US", { month: "long" });
 
 	const totalDays = daysInMonth(currentYear, currentMonth);
 	const startDay = firstDayOfMonth(currentYear, currentMonth);
@@ -4366,7 +4457,7 @@ function Calendar() {
 				</span>
 			</div>
 			<div className="calendar-grid">
-				{["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+				{t.notchUi.calendarWeekdays.map((d, i) => (
 					<div key={`${d}-${i}`} className="day-name">
 						{d}
 					</div>

@@ -9,6 +9,7 @@ mod services;
 mod shelf;
 mod shelf_preview;
 mod state;
+mod translator;
 mod tray;
 mod types;
 mod updater;
@@ -238,7 +239,13 @@ fn main() {
             bluetooth::bluetooth_discovery,
             bluetooth::bluetooth_pair,
             bluetooth::bluetooth_pairing_respond,
-            bluetooth::bluetooth_unpair
+            bluetooth::bluetooth_unpair,
+            translate_text,
+            open_translator_window,
+            hide_translator_window,
+            take_pending_translator_trigger,
+            set_translator_shortcut_recording,
+            set_notch_keyboard_focus
         ])
         .setup(|app| {
             init_taskbar_marker(app.handle());
@@ -251,11 +258,18 @@ fn main() {
             {
                 use tauri::menu::{Menu, MenuItem};
                 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-                let quit_item = MenuItem::with_id(app, "quit", "Quit Zenith", true, None::<&str>)?;
+                let initial_lang = crate::utils::get_setting_str(app.handle(), "zenith-language");
+                let initial_strings = crate::commands::localized_strings(initial_lang.as_deref());
+                let quit_item = MenuItem::with_id(app, "quit", initial_strings.quit_zenith, true, None::<&str>)?;
                 let restart_item =
-                    MenuItem::with_id(app, "restart", "Restart Zenith", true, None::<&str>)?;
+                    MenuItem::with_id(app, "restart", initial_strings.restart_zenith, true, None::<&str>)?;
                 let settings_item =
-                    MenuItem::with_id(app, "settings", "Open Settings", true, None::<&str>)?;
+                    MenuItem::with_id(app, "settings", initial_strings.open_settings, true, None::<&str>)?;
+                let _ = crate::state::TRAY_MENU_HANDLES.set(crate::state::TrayMenuHandles {
+                    settings: settings_item.clone(),
+                    restart: restart_item.clone(),
+                    quit: quit_item.clone(),
+                });
                 let menu = Menu::with_items(app, &[&settings_item, &restart_item, &quit_item])?;
                 let ah = app.handle().clone();
                 let icon = app
@@ -549,8 +563,19 @@ fn main() {
             }
 
             if let Some(settings_win) = app.get_webview_window("settings") {
+                crate::commands::sync_language_from_cache(app.handle());
                 let win_clone = settings_win.clone();
                 settings_win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = win_clone.hide();
+                    }
+                });
+            }
+
+            if let Some(translator_win) = app.get_webview_window("translator") {
+                let win_clone = translator_win.clone();
+                translator_win.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
                         let _ = win_clone.hide();

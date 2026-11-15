@@ -16,14 +16,51 @@ export interface GeoLocationResult {
 }
 
 const STORAGE_KEY_CACHED_LOC = "zenith-last-resolved-location";
+export const LOCATION_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+export interface DetectLocationOptions {
+	allowGps?: boolean;
+	forceRefresh?: boolean;
+	timeoutMs?: number;
+}
+
+interface CachedLocationRecord extends GeoLocationResult {
+	updatedAt?: number;
+}
+
+let inflightAutoDetect: Promise<GeoLocationResult | null> | null = null;
 
 /**
  * Resolves the device location automatically using fast, legal, HTTPS-based methods.
  */
-export async function detectLocation(options?: {
-	allowGps?: boolean;
-	timeoutMs?: number;
-}): Promise<GeoLocationResult | null> {
+export async function detectLocation(
+	options?: DetectLocationOptions
+): Promise<GeoLocationResult | null> {
+	const forceRefresh = options?.forceRefresh === true;
+	const allowGps = options?.allowGps === true && forceRefresh;
+
+	// Return the 24-hour cached location unless the user manually forced a refresh.
+	if (!forceRefresh) {
+		const fresh = getFreshCachedLocation();
+		if (fresh) return fresh;
+		if (inflightAutoDetect) return inflightAutoDetect;
+	}
+
+	const run = resolveLocationFresh({ ...options, allowGps });
+	if (!forceRefresh) {
+		inflightAutoDetect = run;
+		try {
+			return await run;
+		} finally {
+			inflightAutoDetect = null;
+		}
+	}
+	return run;
+}
+
+async function resolveLocationFresh(
+	options?: DetectLocationOptions
+): Promise<GeoLocationResult | null> {
 	const timeout = options?.timeoutMs ?? 3500;
 
 	// 1. Try GPS if explicitly requested and available (with strict timeout)
@@ -173,8 +210,36 @@ export async function geocodeCity(
 
 function cacheLocation(loc: GeoLocationResult) {
 	try {
-		localStorage.setItem(STORAGE_KEY_CACHED_LOC, JSON.stringify(loc));
+		const record: CachedLocationRecord = { ...loc, updatedAt: Date.now() };
+		localStorage.setItem(STORAGE_KEY_CACHED_LOC, JSON.stringify(record));
 	} catch {}
+}
+
+export function getFreshCachedLocation(
+	maxAgeMs = LOCATION_CACHE_TTL_MS
+): GeoLocationResult | null {
+	try {
+		const raw = localStorage.getItem(STORAGE_KEY_CACHED_LOC);
+		if (!raw) return null;
+		const parsed = JSON.parse(raw) as CachedLocationRecord;
+		if (
+			typeof parsed?.latitude === "number" &&
+			typeof parsed?.longitude === "number" &&
+			typeof parsed?.updatedAt === "number" &&
+			Date.now() - parsed.updatedAt < maxAgeMs
+		) {
+			return {
+				latitude: parsed.latitude,
+				longitude: parsed.longitude,
+				city: parsed.city,
+				country: parsed.country,
+				region: parsed.region,
+				label: parsed.label,
+				source: "cache"
+			};
+		}
+	} catch {}
+	return null;
 }
 
 export function getCachedLocation(): GeoLocationResult | null {

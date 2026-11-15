@@ -123,7 +123,7 @@ async function fetchWeatherForCoords(
 	};
 }
 
-async function resolveLocation(): Promise<ResolvedLocation> {
+async function resolveLocation(forceRefresh = false): Promise<ResolvedLocation> {
 	// 1. Check saved coordinates from the backend settings file.
 	try {
 		const settings = (await invoke("load_settings").catch(() => ({}))) as Record<string, any>;
@@ -144,7 +144,7 @@ async function resolveLocation(): Promise<ResolvedLocation> {
 
 	// 2. High-speed, secure, legal multi-tier detection
 	try {
-		const detected = await detectLocation();
+		const detected = await detectLocation({ forceRefresh });
 		if (detected) {
 			return {
 				lat: detected.latitude,
@@ -197,11 +197,11 @@ export function useWeather(enabled: boolean) {
 
 	// Core fetch + refresh logic
 	const doFetch = useCallback(
-		async (showStaleOnError = true, coords?: { lat: number; lon: number }) => {
+		async (showStaleOnError = true, coords?: { lat: number; lon: number }, forceLocationRefresh = false) => {
 			if (!enabledRef.current) return;
 
 			try {
-				const location = coords ? { ...coords, city: undefined } : await resolveLocation();
+				const location = coords ? { ...coords, city: undefined } : await resolveLocation(forceLocationRefresh);
 				const result = await fetchWeatherForCoords(location.lat, location.lon, tempUnitRef.current);
 
 				setTemperature(result.temperature);
@@ -292,7 +292,7 @@ export function useWeather(enabled: boolean) {
 			if (payload && typeof payload === "object" && "lat" in payload && "lon" in payload) {
 				doFetch(false, { lat: (payload as any).lat, lon: (payload as any).lon });
 			} else {
-				doFetch(false);
+				doFetch(false, undefined, true);
 			}
 		});
 		return () => {

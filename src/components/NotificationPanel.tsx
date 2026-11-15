@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { ChevronLeft, Bell, BellOff, Check } from "lucide-react";
+import { useI18n } from "../i18n";
 import { triggerTestNotification } from "../hooks/usePrayerTimes";
 import "./QuickPanel.css";
 
@@ -24,6 +25,8 @@ export function NotificationPanel({
 	notificationsNotchEnabled,
 	onToggleNotchDelivery
 }: NotificationPanelProps) {
+	const { t, dir } = useI18n();
+	const n = t.quickPanels.notifications;
 	const [testSent, setTestSent] = useState(false);
 
 	const handleTest = useCallback(() => {
@@ -33,20 +36,20 @@ export function NotificationPanel({
 	}, []);
 
 	return (
-		<div className="qp" onClick={(e) => e.stopPropagation()}>
+		<div className="qp" dir={dir} onClick={(e) => e.stopPropagation()}>
 			{/* Header */}
 			<div className="qp-header">
-				<button className="qp-icon-btn" onClick={onBack} aria-label="Back to controls" title="Back">
+				<button className="qp-icon-btn" onClick={onBack} aria-label={t.quickPanels.backToControls} title={n.backTitle}>
 					<ChevronLeft />
 				</button>
-				<span className="qp-title">Notifications</span>
+				<span className="qp-title">{n.title}</span>
 				<button
 					className={`qp-switch ${notificationsEnabled ? "on" : ""}`}
 					role="switch"
 					aria-checked={notificationsEnabled}
-					aria-label="Notifications master switch"
+					aria-label={n.masterAria}
 					onClick={onToggleNotifications}
-					title={notificationsEnabled ? "Disable notifications" : "Enable notifications"}
+					title={notificationsEnabled ? n.disableTitle : n.enableTitle}
 				>
 					<span />
 				</button>
@@ -57,7 +60,7 @@ export function NotificationPanel({
 				{!notificationsEnabled ? (
 					<div className="qp-empty" style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "center", justifyContent: "center", height: "100%", opacity: 0.7 }}>
 						<BellOff size={24} strokeWidth={1.5} />
-						<span>Notifications are muted & turned off completely.</span>
+						<span>{n.offState}</span>
 					</div>
 				) : (
 					<>
@@ -74,11 +77,9 @@ export function NotificationPanel({
 							}}
 						>
 							<div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-								<span style={{ fontSize: 11, fontWeight: 600 }}>Show in Notch</span>
+								<span style={{ fontSize: 11, fontWeight: 600 }}>{n.showInNotch}</span>
 								<span style={{ fontSize: 9.5, opacity: 0.65 }}>
-									{notificationsNotchEnabled
-										? "Displayed in Notch (Windows toasts muted)"
-										: "Disabled in Notch (uses native Windows)"}
+									{notificationsNotchEnabled ? n.showInNotchOn : n.showInNotchOff}
 								</span>
 							</div>
 							<button
@@ -86,7 +87,7 @@ export function NotificationPanel({
 								role="switch"
 								aria-checked={notificationsNotchEnabled}
 								onClick={onToggleNotchDelivery}
-								title="Toggle Notch vs Windows notifications"
+								title={n.toggleDeliveryTitle}
 							>
 								<span />
 							</button>
@@ -105,9 +106,9 @@ export function NotificationPanel({
 							}}
 						>
 							<div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-								<span style={{ fontSize: 11, fontWeight: 600 }}>Silent Mode</span>
+								<span style={{ fontSize: 11, fontWeight: 600 }}>{n.silentMode}</span>
 								<span style={{ fontSize: 9.5, opacity: 0.65 }}>
-									{notificationsSilent ? "Sound muted" : "Sound enabled"}
+									{notificationsSilent ? n.soundMuted : n.soundEnabled}
 								</span>
 							</div>
 							<button
@@ -115,7 +116,7 @@ export function NotificationPanel({
 								role="switch"
 								aria-checked={notificationsSilent}
 								onClick={onToggleSilent}
-								title="Toggle silent mode"
+								title={n.toggleSilentTitle}
 							>
 								<span />
 							</button>
@@ -144,12 +145,12 @@ export function NotificationPanel({
 								{testSent ? (
 									<>
 										<Check size={13} strokeWidth={2.5} />
-										<span>Test Notification Sent!</span>
+										<span>{n.testSent}</span>
 									</>
 								) : (
 									<>
 										<Bell size={13} strokeWidth={2} />
-										<span>Test Notification</span>
+										<span>{n.testBtn}</span>
 									</>
 								)}
 							</button>
@@ -160,7 +161,7 @@ export function NotificationPanel({
 
 			{/* Footer: Link to full Settings */}
 			<button className="qp-footer" onClick={openSettingsWindow}>
-				Notification Settings
+				{n.moreSettings}
 			</button>
 		</div>
 	);

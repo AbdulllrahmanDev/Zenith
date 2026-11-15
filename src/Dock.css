@@ -783,3 +783,20 @@ body {
 	background: #888;
 	box-shadow: none;
 }
+
+[dir="rtl"] .submenu-arrow {
+	margin-left: 0;
+	margin-right: 10px;
+	display: inline-block;
+	transform: scaleX(-1);
+}
+
+[dir="rtl"] .submenu {
+	left: auto;
+	right: 100%;
+}
+
+[dir="rtl"] .submenu::before {
+	left: auto;
+	right: -20px;
+}

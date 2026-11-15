@@ -22,6 +22,7 @@ import { radialScrimGradient } from "../radial/radialScrim";
 import { ZenithLogo } from "../radial/ZenithLogo";
 import { SmartIcon } from "../radial/SmartIcon";
 import { getRadialIcon } from "../radial/iconMap";
+import { useI18n } from "../i18n";
 import {
 	computeRadialLayout,
 	getLabelPlacement,
@@ -418,6 +419,7 @@ export default function RadialMenu({
 	onClose,
 	onLaunchVolumeMixer
 }: RadialMenuProps) {
+	const { t, dir } = useI18n();
 	const cfg: RadialWheelConfig = useMemo(
 		() => ({
 			...DEFAULT_WHEEL_CONFIG,
@@ -1375,11 +1377,11 @@ export default function RadialMenu({
 
 			{/* Type-Ahead Filter Readout */}
 			{!echoActive && typeAhead && (
-				<div className="zn-radial-filter" role="status" aria-live="polite">
+				<div className="zn-radial-filter" role="status" aria-live="polite" dir={dir}>
 					<span className="zn-radial-filter-query">{typeAhead}</span>
 					<span className="zn-radial-filter-count">
 						{currentLevelItems.length === 0
-							? "No matches"
+							? t.radial.noMatches
 							: `${currentLevelItems.length} / ${rawLevelItems.length}`}
 					</span>
 				</div>
@@ -1619,6 +1621,7 @@ export default function RadialMenu({
 									padding: "6px 12px",
 									borderRadius: "999px",
 									whiteSpace: "nowrap",
+									direction: dir,
 									background: "rgba(4,5,7,0.92)",
 									border: "1px solid rgba(255,255,255,0.14)",
 									boxShadow: "0 0 0 1px rgba(0,0,0,0.45)"
@@ -1649,7 +1652,7 @@ export default function RadialMenu({
 										background: "rgba(255,255,255,0.09)"
 									}}
 								>
-									Back
+									{t.radial.back}
 								</span>
 							</div>
 						)}

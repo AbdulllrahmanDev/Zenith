@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import { useSettingsSync } from "./useSettingsSync";
-import { PRAYER_NAMES_AR } from "../utils/prayerContent";
+import { getStoredLanguage, getTranslations } from "../i18n";
 import { detectLocation, geocodeCity } from "../utils/locationService";
 import {
 	PRE_ALERT_MINUTES,
@@ -91,7 +91,7 @@ async function resolvePlace(
 	mode: "auto" | "manual",
 	city: string,
 	country: string,
-	options?: { forceGps?: boolean; savedLat?: number | null; savedLon?: number | null }
+	options?: { forceGps?: boolean; forceRefresh?: boolean; savedLat?: number | null; savedLon?: number | null }
 ): Promise<Place | null> {
 	if (mode === "manual" && city.trim()) {
 		// If manual city is specified, try geocoding it to obtain exact coordinates
@@ -118,7 +118,7 @@ async function resolvePlace(
 	}
 
 	// 1. Automatic multi-tier detection (High-speed legal IP -> Timezone geocoding -> GPS)
-	const detected = await detectLocation({ allowGps: options?.forceGps });
+	const detected = await detectLocation({ allowGps: options?.forceGps, forceRefresh: options?.forceRefresh });
 	if (detected) {
 		const place: Place = {
 			city: detected.city,
@@ -283,19 +283,21 @@ export function usePrayerTimes({ owner = false }: UsePrayerTimesOptions = {}) {
 			});
 			if (!policy.show) return;
 
-			const name = PRAYER_NAMES_AR[key];
+			const lang = getStoredLanguage();
+			const pt = getTranslations(lang).prayer;
+			const name = pt.names[key];
 			if (policy.channel === "notch") {
 				const payload: BannerPayload = { key, name, variant: kind === "exact" ? "athan" : "reminder" };
 				emit(EVT_BANNER, payload).catch(() => {});
 			} else if (kind === "exact") {
-				showNativeNotification(`حان الآن موعد صلاة ${name}`, `الله أكبر - حان الآن وقت أذان صلاة ${name}`).catch(
+				showNativeNotification(pt.notifications.exactTitle(name), pt.notifications.exactBody(name)).catch(
 					() => {}
 				);
 			} else {
-				const at = timings ? formatPrayerTime(timings[key], timeFormat24h, timeOffset) : "";
+				const at = timings ? formatPrayerTime(timings[key], timeFormat24h, timeOffset, lang) : "";
 				showNativeNotification(
-					`اقتربت صلاة ${name}`,
-					`متبقي ${PRE_ALERT_MINUTES} دقيقة على موعد أذان ${name}${at ? ` (${at})` : ""}`
+					pt.notifications.preTitle(name),
+					pt.notifications.preBody(name, PRE_ALERT_MINUTES, at)
 				).catch(() => {});
 			}
 
@@ -325,6 +327,7 @@ export function usePrayerTimes({ owner = false }: UsePrayerTimesOptions = {}) {
 			try {
 				const place = await resolvePlace(locationMode, city, country, {
 					forceGps: options?.reDetect,
+					forceRefresh: options?.force || options?.reDetect,
 					savedLat: latitude,
 					savedLon: longitude
 				});

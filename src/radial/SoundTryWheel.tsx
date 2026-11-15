@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Volume2 } from "lucide-react";
+import { useI18n } from "../i18n";
 import { ZenithLogo } from "./ZenithLogo";
 import { SmartIcon } from "./SmartIcon";
 import {
@@ -19,35 +20,39 @@ export interface SoundTryWheelProps {
   hoverColor?: string;
 }
 
-const DEMO_ITEMS: RadialItem[] = [
-  { id: "s1", label: "Browser", type: "url", target: "https://google.com", icon: "Globe" },
-  { id: "s2", label: "Terminal", type: "app", target: "wt.exe", icon: "Terminal" },
-  { id: "s3", label: "Files", type: "folder", target: "C:\\", icon: "Folder" },
-  { id: "s4", label: "Music", type: "system", target: "media-toggle", icon: "Music" },
-  { id: "s5", label: "Code", type: "app", target: "code", icon: "Code" },
-  { id: "s6", label: "Settings", type: "system", target: "settings", icon: "Settings" },
-];
-
 export const SoundTryWheel: React.FC<SoundTryWheelProps> = ({
   openSoundId,
   hoverSoundId,
   soundEnabled,
   hoverColor = "#FFFFFF",
 }) => {
+  const { t } = useI18n();
+  const m = t.mouse;
+  const demoItems = useMemo<RadialItem[]>(
+    () => [
+      { id: "s1", label: m.demoItems.browser, type: "url", target: "https://google.com", icon: "Globe" },
+      { id: "s2", label: m.demoItems.terminal, type: "app", target: "wt.exe", icon: "Terminal" },
+      { id: "s3", label: m.demoItems.files, type: "folder", target: "C:\\", icon: "Folder" },
+      { id: "s4", label: m.demoItems.music, type: "system", target: "media-toggle", icon: "Music" },
+      { id: "s5", label: m.demoItems.code, type: "app", target: "code", icon: "Code" },
+      { id: "s6", label: m.demoItems.settings, type: "system", target: "settings", icon: "Settings" },
+    ],
+    [m]
+  );
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const [hubPulse, setHubPulse] = useState(false);
 
   const { actualMenuRadius, actualIconSize } = useMemo(
     () =>
       computeRadialLayout({
-        numberOfApps: DEMO_ITEMS.length,
+        numberOfApps: demoItems.length,
         iconSizePx: 44,
         minGap: 10,
         menuRadius: 96,
         activationThreshold: 40,
         viewportSize: { width: 1200, height: 800 },
       }),
-    []
+    [demoItems.length]
   );
 
   const normHover = normalizeHoverColor(hoverColor);
@@ -55,7 +60,7 @@ export const SoundTryWheel: React.FC<SoundTryWheelProps> = ({
   const hubDiameter = 40;
   const sectorOuterRadius = actualMenuRadius + actualIconSize * 1.45;
   const falloffRadius = actualMenuRadius + actualIconSize * 0.78;
-  const stepDeg = 360 / DEMO_ITEMS.length;
+  const stepDeg = 360 / demoItems.length;
   const boxSize = 200;
   const scale = 0.68;
 
@@ -113,7 +118,7 @@ export const SoundTryWheel: React.FC<SoundTryWheelProps> = ({
           }}
         >
           <RadialSectors
-            count={DEMO_ITEMS.length}
+            count={demoItems.length}
             activeIndex={hoveredIdx}
             radiusInner={hubDiameter / 2 + 4}
             radiusOuter={sectorOuterRadius}
@@ -127,7 +132,7 @@ export const SoundTryWheel: React.FC<SoundTryWheelProps> = ({
           <button
             type="button"
             onClick={handleHubClick}
-            title="Click to test Open Sound"
+            title={m.soundTryOpenPrompt}
             style={{
               position: "absolute",
               left: 0,
@@ -152,7 +157,7 @@ export const SoundTryWheel: React.FC<SoundTryWheelProps> = ({
           </button>
 
           {/* Sector tiles */}
-          {DEMO_ITEMS.map((item, i) => {
+          {demoItems.map((item, i) => {
             const isActive = i === hoveredIdx;
             const angleDeg = i * stepDeg - 90;
             const rad = (angleDeg * Math.PI) / 180;
@@ -207,7 +212,7 @@ export const SoundTryWheel: React.FC<SoundTryWheelProps> = ({
         }}
       >
         <Volume2 size={13} />
-        <span>Hover tiles for hover voice · Click hub for open voice</span>
+        <span>{m.soundTryHint}</span>
       </div>
     </div>
   );

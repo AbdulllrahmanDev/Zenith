@@ -27,6 +27,7 @@ import {
 	Check
 } from "lucide-react";
 import { useState, useRef } from "react";
+import { useI18n } from "../i18n";
 import { triggerTestAthan, triggerTestNotification } from "../hooks/usePrayerTimes";
 import { detectLocation } from "../utils/locationService";
 import { SettingRow } from "./SettingRow";
@@ -171,6 +172,8 @@ export function NotchTab({
 	notificationsNotchEnabled,
 	toggleNotificationsNotch
 }: NotchTabProps) {
+	const { t, lang } = useI18n();
+	const n = t.notch;
 	const [testNotificationSent, setTestNotificationSent] = useState(false);
 	const [testingAthan, setTestingAthan] = useState(false);
 	const testAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -226,17 +229,17 @@ export function NotchTab({
 		setGpsStatusMsg(null);
 
 		try {
-			const detected = await detectLocation({ allowGps: true });
+			const detected = await detectLocation({ allowGps: true, forceRefresh: true });
 			if (detected) {
 				const city = detected.city || "";
 				const country = detected.country || "";
 				setPrayerCoordsValue(String(detected.latitude), String(detected.longitude), city, country);
-				setGpsStatusMsg(`Location acquired: ${detected.label}`);
+				setGpsStatusMsg(n.locationAcquired(detected.label));
 			} else {
-				setGpsStatusMsg("Could not resolve location automatically.");
+				setGpsStatusMsg(n.locationFailed);
 			}
 		} catch {
-			setGpsStatusMsg("Error detecting location.");
+			setGpsStatusMsg(n.locationError);
 		} finally {
 			setDetectingGps(false);
 		}
@@ -266,12 +269,12 @@ export function NotchTab({
 	};
 	return (
 		<>
-			<div className="setting-group-label">Notch</div>
+			<div className="setting-group-label">{n.notchGroup}</div>
 			<div className="setting-group">
 				<SettingRow
 					icon={Monitor}
-					label="Display"
-					desc={displays.length > 1 ? "Select display to show the notch" : "Only one display connected (Primary)"}
+					label={n.display}
+					desc={displays.length > 1 ? n.displayMultiDesc : n.displaySingleDesc}
 				>
 					<select
 						className="settings-select"
@@ -279,8 +282,8 @@ export function NotchTab({
 						disabled={displays.length <= 1}
 						onChange={(e) => setNotchDisplayValue(e.target.value)}
 					>
-						<option value="primary">Primary Display</option>
-						<option value="all">All Displays</option>
+						<option value="primary">{n.primaryDisplay}</option>
+						<option value="all">{n.allDisplays}</option>
 						{displays.length > 1 &&
 							displays.map((disp) => (
 								<option key={disp.id} value={disp.id}>
@@ -292,27 +295,23 @@ export function NotchTab({
 					</select>
 				</SettingRow>
 
-				<SettingRow icon={PanelTop} label="Notch Behavior" desc="Choose how the notch appears">
+				<SettingRow icon={PanelTop} label={n.notchBehavior} desc={n.notchBehaviorDesc}>
 					<select
 						className="settings-select"
 						value={notchMode}
 						onChange={(e) => setNotchModeValue(e.target.value)}
 					>
-						<option value="fixed">Fixed</option>
-						<option value="smart">Smart</option>
-						<option value="peek">Peek</option>
+						<option value="fixed">{n.modeFixed}</option>
+						<option value="smart">{n.modeSmart}</option>
+						<option value="peek">{n.modePeek}</option>
 					</select>
 				</SettingRow>
 
 				{notchMode !== "fixed" && (
 					<SettingRow
 						icon={Timer}
-						label="Peek Delay"
-						desc={
-							notchEdgeDelay === 0
-								? "Reveal instantly on top-edge contact"
-								: `Rest on the top edge for ${notchEdgeDelay}ms to reveal`
-						}
+						label={n.peekDelay}
+						desc={notchEdgeDelay === 0 ? n.peekDelayInstant : n.peekDelayMs(notchEdgeDelay)}
 					>
 						<input
 							type="range"
@@ -328,8 +327,8 @@ export function NotchTab({
 
 				<SettingRow
 					icon={PanelTop}
-					label="Remember Last Panel"
-					desc="Reopen the panel you last used; turn off to choose a fixed default"
+					label={n.rememberLastPanel}
+					desc={n.rememberLastPanelDesc}
 				>
 					<label className="toggle-switch">
 						<input type="checkbox" checked={notchRememberPanel} onChange={toggleNotchRememberPanel} />
@@ -338,7 +337,7 @@ export function NotchTab({
 				</SettingRow>
 
 				{!notchRememberPanel && (
-					<SettingRow icon={PanelTop} label="Default Panel" desc="Open this panel when you click the notch">
+					<SettingRow icon={PanelTop} label={n.defaultPanel} desc={n.defaultPanelDesc}>
 						<select
 							className="settings-select"
 							value={notchDefaultPanel}
@@ -346,14 +345,14 @@ export function NotchTab({
 								changeNotchDefaultPanel(e.target.value as "calendar" | "command-center" | "prayer")
 							}
 						>
-							<option value="calendar" disabled={!calendarEnabled}>Calendar</option>
-							<option value="command-center">Command Center</option>
-							<option value="prayer" disabled={!prayerEnabled}>Prayer Times</option>
+							<option value="calendar" disabled={!calendarEnabled}>{n.panelCalendar}</option>
+							<option value="command-center">{n.panelCommandCenter}</option>
+							<option value="prayer" disabled={!prayerEnabled}>{n.panelPrayer}</option>
 						</select>
 					</SettingRow>
 				)}
 
-				<SettingRow icon={Calendar} label="Calendar & Timer" desc="Enable productivity split-view">
+				<SettingRow icon={Calendar} label={n.calendarTimer} desc={n.calendarTimerDesc}>
 					<label className="toggle-switch">
 						<input type="checkbox" checked={calendarEnabled} onChange={toggleCalendar} />
 						<span className="slider"></span>
@@ -363,8 +362,8 @@ export function NotchTab({
 				{calendarEnabled && (
 					<SettingRow
 						icon={BellRing}
-						label="Timer Sound"
-						desc="Play a chime when the timer finishes"
+						label={n.timerSound}
+						desc={n.timerSoundDesc}
 					>
 						<label className="toggle-switch">
 							<input type="checkbox" checked={timerSoundEnabled} onChange={toggleTimerSound} />
@@ -373,7 +372,7 @@ export function NotchTab({
 					</SettingRow>
 				)}
 
-				<SettingRow icon={Music} label="Music Mode" desc="Interactive live music widget">
+				<SettingRow icon={Music} label={n.musicMode} desc={n.musicModeDesc}>
 					<label className="toggle-switch">
 						<input type="checkbox" checked={musicModeEnabled} onChange={toggleMusicMode} />
 						<span className="slider"></span>
@@ -384,8 +383,8 @@ export function NotchTab({
 					<>
 						<SettingRow
 							icon={Minimize2}
-							label="Compact Mode"
-							desc="Show visualizer & artwork when collapsed"
+							label={n.compactMode}
+							desc={n.compactModeDesc}
 						>
 							<label className="toggle-switch">
 								<input
@@ -397,27 +396,27 @@ export function NotchTab({
 							</label>
 						</SettingRow>
 
-						<SettingRow icon={LayoutList} label="Media Layout" desc="Choose expanded player style">
+						<SettingRow icon={LayoutList} label={n.mediaLayout} desc={n.mediaLayoutDesc}>
 							<div className="unit-toggle-minimal wide">
 								<span
 									className={mediaLayout === "classic" ? "active" : ""}
 									onClick={() => toggleMediaLayout("classic")}
 								>
-									Classic
+									{n.layoutClassic}
 								</span>
 								<span
 									className={mediaLayout === "compact" ? "active" : ""}
 									onClick={() => toggleMediaLayout("compact")}
 								>
-									Compact
+									{n.layoutCompact}
 								</span>
 							</div>
 						</SettingRow>
 
 						<SettingRow
 							icon={Sparkles}
-							label="Ambient Glow"
-							desc="Colored glow behind expanded album art"
+							label={n.ambientGlow}
+							desc={n.ambientGlowDesc}
 						>
 							<label className="toggle-switch">
 								<input type="checkbox" checked={mediaAmbienceEnabled} onChange={toggleAmbience} />
@@ -427,8 +426,8 @@ export function NotchTab({
 
 						<SettingRow
 							icon={Circle}
-							label="Compact Glow"
-							desc="Glow around collapsed thumbnail"
+							label={n.compactGlow}
+							desc={n.compactGlowDesc}
 							divider={false}
 						>
 							<label className="toggle-switch">
@@ -444,12 +443,12 @@ export function NotchTab({
 				)}
 			</div>
 
-			<div className="setting-group-label">Notifications</div>
+			<div className="setting-group-label">{n.notificationsGroup}</div>
 			<div className="setting-group">
 				<SettingRow
 					icon={notificationsEnabled ? Bell : BellOff}
-					label="Enable Notifications"
-					desc="Allow Zenith to deliver notifications and alerts"
+					label={n.enableNotifications}
+					desc={n.enableNotificationsDesc}
 				>
 					<label className="toggle-switch">
 						<input
@@ -463,8 +462,8 @@ export function NotchTab({
 
 				<SettingRow
 					icon={VolumeX}
-					label="Silent Mode"
-					desc="Display visual alerts without playing audio sounds"
+					label={n.silentMode}
+					desc={n.silentModeDesc}
 				>
 					<label className="toggle-switch">
 						<input
@@ -479,12 +478,8 @@ export function NotchTab({
 
 				<SettingRow
 					icon={PanelTop}
-					label="Show in Notch"
-					desc={
-						notificationsNotchEnabled
-							? "Alerts display in the Notch Dynamic Island (Windows popups suppressed)"
-							: "Alerts display via native Windows notifications"
-					}
+					label={n.showInNotch}
+					desc={notificationsNotchEnabled ? n.showInNotchOnDesc : n.showInNotchOffDesc}
 				>
 					<label className="toggle-switch">
 						<input
@@ -499,13 +494,13 @@ export function NotchTab({
 
 				<SettingRow
 					icon={testNotificationSent ? Check : BellRing}
-					label="Test Notification"
+					label={n.testNotification}
 					desc={
 						testNotificationSent
-							? "Test notification triggered!"
+							? n.testNotificationSentDesc
 							: notificationsNotchEnabled
-							? "Preview alert in the Notch"
-							: "Preview alert in Windows Action Center"
+							? n.testNotificationNotchDesc
+							: n.testNotificationWinDesc
 					}
 					action
 					divider={false}
@@ -535,24 +530,24 @@ export function NotchTab({
 						{testNotificationSent ? (
 							<>
 								<Check size={12} strokeWidth={2.5} />
-								<span>Sent!</span>
+								<span>{n.sent}</span>
 							</>
 						) : (
 							<>
 								<Bell size={12} strokeWidth={2} />
-								<span>Test Notification</span>
+								<span>{n.testNotification}</span>
 							</>
 						)}
 					</button>
 				</SettingRow>
 			</div>
 
-			<div className="setting-group-label">Shelf</div>
+			<div className="setting-group-label">{n.shelfGroup}</div>
 			<div className="setting-group">
 				<SettingRow
 					icon={Archive}
-					label="Keep Items"
-					desc="Keep shelf items after Zenith closes"
+					label={n.keepItems}
+					desc={n.keepItemsDesc}
 					divider={false}
 				>
 					<label className="toggle-switch">
@@ -562,12 +557,12 @@ export function NotchTab({
 				</SettingRow>
 			</div>
 
-			<div className="setting-group-label">Prayer Times</div>
+			<div className="setting-group-label">{n.prayerGroup}</div>
 			<div className="setting-group">
 				<SettingRow
 					icon={Moon}
-					label="Prayer Times & Athan"
-					desc="Show Islamic prayer times & live countdown split-view in the notch"
+					label={n.prayerEnable}
+					desc={n.prayerEnableDesc}
 				>
 					<label className="toggle-switch">
 						<input type="checkbox" checked={prayerEnabled} onChange={togglePrayer} />
@@ -580,11 +575,11 @@ export function NotchTab({
 						{/* Location Mode: Auto vs Manual */}
 						<SettingRow
 							icon={MapPin}
-							label="Location Mode"
+							label={n.locationMode}
 							desc={
 								prayerLocationMode === "auto"
-									? "Auto-detect location from device (GPS / IP)"
-									: "Select country and city manually"
+									? n.locationModeAutoDesc
+									: n.locationModeManualDesc
 							}
 						>
 							<select
@@ -594,8 +589,8 @@ export function NotchTab({
 									setPrayerLocationModeValue(e.target.value as "auto" | "manual")
 								}
 							>
-								<option value="auto">Auto-detect (GPS / IP)</option>
-								<option value="manual">Manual Selection</option>
+								<option value="auto">{n.locationAutoOpt}</option>
+								<option value="manual">{n.locationManualOpt}</option>
 							</select>
 						</SettingRow>
 
@@ -603,22 +598,18 @@ export function NotchTab({
 						{prayerLocationMode === "auto" && (
 							<SettingRow
 								icon={Navigation}
-								label="Device Location"
-								desc={
-									gpsStatusMsg
-										? gpsStatusMsg
-										: "Detects your location automatically and securely"
-								}
+								label={n.deviceLocation}
+								desc={gpsStatusMsg ? gpsStatusMsg : n.deviceLocationDefaultDesc}
 							>
 								<button
 									type="button"
 									className="settings-btn-detect"
 									onClick={handleDetectDeviceLocation}
 									disabled={detectingGps}
-									title="Detect current location"
+									title={n.detectLocationTitle}
 								>
 									<RotateCcw size={11} className={detectingGps ? "animate-spin" : ""} />
-									<span>{detectingGps ? "Detecting..." : "Auto-Detect Location"}</span>
+									<span>{detectingGps ? n.detecting : n.autoDetectBtn}</span>
 								</button>
 							</SettingRow>
 						)}
@@ -628,19 +619,15 @@ export function NotchTab({
 							<>
 								<SettingRow
 									icon={Globe}
-									label="Country"
-									desc={
-										customCountryMode
-											? "Type custom country name"
-											: "Select your country from the list"
-									}
+									label={n.country}
+									desc={customCountryMode ? n.countryCustomDesc : n.countryListDesc}
 								>
 									{customCountryMode ? (
 										<div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
 											<input
 												type="text"
 												className="settings-text-input"
-												placeholder="Enter country..."
+												placeholder={n.countryPlaceholder}
 												value={prayerCountry}
 												onChange={(e) => setPrayerCountryValue(e.target.value)}
 												style={{ width: "135px" }}
@@ -656,7 +643,7 @@ export function NotchTab({
 												}}
 												style={{ padding: "4px 8px" }}
 											>
-												List
+												{t.common.list}
 											</button>
 										</div>
 									) : (
@@ -667,27 +654,31 @@ export function NotchTab({
 											style={{ maxWidth: "190px" }}
 										>
 											<option value="" disabled>
-												Select Country...
+												{n.selectCountry}
 											</option>
 											{POPULAR_PRAYER_COUNTRIES.map((c) => (
 												<option key={c.country} value={c.country}>
-													{c.country} ({c.countryAr})
+													{lang === "ar" ? `${c.countryAr} (${c.country})` : `${c.country} (${c.countryAr})`}
 												</option>
 											))}
-											<option value="custom">Other / Custom...</option>
+											<option value="custom">{n.otherCustomCountry}</option>
 										</select>
 									)}
 								</SettingRow>
 
 								<SettingRow
 									icon={Building2}
-									label="City"
+									label={n.city}
 									desc={
 										!prayerCountry && !customCountryMode
-											? "Choose a country first to view cities"
+											? n.cityChooseCountryFirst
 											: customCityMode
-												? "Type custom city name"
-												: `Select city in ${prayerCountry}`
+												? n.cityCustomDesc
+												: n.citySelectInCountry(
+														lang === "ar" && matchedCountry
+															? matchedCountry.countryAr
+															: prayerCountry
+													)
 									}
 								>
 									{customCityMode || customCountryMode ? (
@@ -695,7 +686,7 @@ export function NotchTab({
 											<input
 												type="text"
 												className="settings-text-input"
-												placeholder="Enter city..."
+												placeholder={n.cityPlaceholder}
 												value={prayerCity}
 												onChange={(e) => setPrayerCityValue(e.target.value)}
 												style={{ width: "135px" }}
@@ -712,7 +703,7 @@ export function NotchTab({
 													}}
 													style={{ padding: "4px 8px" }}
 												>
-													List
+													{t.common.list}
 												</button>
 											)}
 										</div>
@@ -725,14 +716,14 @@ export function NotchTab({
 											style={{ maxWidth: "190px" }}
 										>
 											<option value="" disabled>
-												{matchedCountry ? "Select City..." : "Select Country First"}
+												{matchedCountry ? n.selectCity : n.selectCountryFirst}
 											</option>
 											{matchedCountry?.cities.map((city) => (
 												<option key={city.name} value={city.name}>
-													{city.name} ({city.nameAr})
+													{lang === "ar" ? `${city.nameAr} (${city.name})` : `${city.name} (${city.nameAr})`}
 												</option>
 											))}
-											<option value="custom">Other City...</option>
+											<option value="custom">{n.otherCity}</option>
 										</select>
 									)}
 								</SettingRow>
@@ -742,8 +733,8 @@ export function NotchTab({
 						{/* Calculation Method */}
 						<SettingRow
 							icon={Compass}
-							label="Calculation Method"
-							desc="Method used to calculate prayer angles"
+							label={n.calcMethod}
+							desc={n.calcMethodDesc}
 						>
 							<select
 								className="settings-select"
@@ -751,59 +742,59 @@ export function NotchTab({
 								onChange={(e) => setPrayerMethodValue(e.target.value)}
 								style={{ maxWidth: "190px" }}
 							>
-								<option value="4">Umm Al-Qura (Makkah)</option>
-								<option value="5">Egyptian General Authority</option>
-								<option value="3">Muslim World League (MWL)</option>
-								<option value="2">ISNA (North America)</option>
-								<option value="1">Univ. of Islamic Sciences (Karachi)</option>
-								<option value="13">Diyanet (Turkey)</option>
-								<option value="8">Gulf Region</option>
-								<option value="9">Kuwait</option>
-								<option value="10">Qatar</option>
+								<option value="4">{n.calcMethods["4"]}</option>
+								<option value="5">{n.calcMethods["5"]}</option>
+								<option value="3">{n.calcMethods["3"]}</option>
+								<option value="2">{n.calcMethods["2"]}</option>
+								<option value="1">{n.calcMethods["1"]}</option>
+								<option value="13">{n.calcMethods["13"]}</option>
+								<option value="8">{n.calcMethods["8"]}</option>
+								<option value="9">{n.calcMethods["9"]}</option>
+								<option value="10">{n.calcMethods["10"]}</option>
 							</select>
 						</SettingRow>
 
 						{/* Time Offset */}
 						<SettingRow
 							icon={Timer}
-							label="Time Offset"
-							desc="Adjust for daylight savings or timezone difference"
+							label={n.timeOffset}
+							desc={n.timeOffsetDesc}
 						>
 							<select
 								className="settings-select"
 								value={prayerTimeOffset}
 								onChange={(e) => setPrayerTimeOffsetValue(e.target.value)}
 							>
-								<option value="-120">-2 hours (-120m)</option>
-								<option value="-60">-1 hour (-60m)</option>
-								<option value="0">Default (0m)</option>
-								<option value="60">+1 hour (+60m)</option>
-								<option value="120">+2 hours (+120m)</option>
+								<option value="-120">{n.offsetNeg2}</option>
+								<option value="-60">{n.offsetNeg1}</option>
+								<option value="0">{n.offsetZero}</option>
+								<option value="60">{n.offsetPos1}</option>
+								<option value="120">{n.offsetPos2}</option>
 							</select>
 						</SettingRow>
 
 						{/* Athan Alert */}
 						<SettingRow
 							icon={Volume2}
-							label="Athan Alert"
-							desc="Choose how to be notified when prayer time arrives"
+							label={n.athanAlert}
+							desc={n.athanAlertDesc}
 						>
 							<select
 								className="settings-select"
 								value={prayerAlertType}
 								onChange={(e) => setPrayerAlertTypeValue(e.target.value)}
 							>
-								<option value="sound_notification">Athan Sound & Notification</option>
-								<option value="notification_only">Notification Only</option>
-								<option value="off">Off (Silent)</option>
+								<option value="sound_notification">{n.alertSoundNotification}</option>
+								<option value="notification_only">{n.alertNotificationOnly}</option>
+								<option value="off">{n.alertOff}</option>
 							</select>
 						</SettingRow>
 
 						{/* 15-Minute Pre-Alert */}
 						<SettingRow
 							icon={BellRing}
-							label="15-Minute Pre-Alert"
-							desc="Send a notification 15 minutes before prayer time"
+							label={n.preAlert}
+							desc={n.preAlertDesc}
 						>
 							<label className="toggle-switch">
 								<input
@@ -818,8 +809,8 @@ export function NotchTab({
 						{/* Test Athan Audio */}
 						<SettingRow
 							icon={Volume2}
-							label="Test Athan Audio"
-							desc="Preview the Athan call to prayer sound"
+							label={n.testAthan}
+							desc={n.testAthanDesc}
 							action
 							divider={false}
 							onClick={handleToggleTestAthan}
@@ -837,12 +828,12 @@ export function NotchTab({
 								{testingAthan ? (
 									<>
 										<Square size={10} fill="currentColor" />
-										<span>Stop Preview</span>
+										<span>{n.stopPreview}</span>
 									</>
 								) : (
 									<>
 										<Volume2 size={12} />
-										<span>Play Audio</span>
+										<span>{n.playAudio}</span>
 									</>
 								)}
 							</button>
@@ -851,12 +842,12 @@ export function NotchTab({
 				)}
 			</div>
 
-			<div className="setting-group-label">Weather</div>
+			<div className="setting-group-label">{n.weatherGroup}</div>
 			<div className="setting-group">
 				<SettingRow
 					icon={CloudSun}
-					label="Weather Status"
-					desc={cityName || "Auto-detect location"}
+					label={n.weatherStatus}
+					desc={cityName || n.weatherAutoDetect}
 				>
 					<div className="weather-controls">
 						<div className="unit-toggle-minimal" onClick={toggleTempUnit}>
@@ -875,7 +866,7 @@ export function NotchTab({
 						<div className="city-input-row">
 							<input
 								type="text"
-								placeholder="Search city..."
+								placeholder={n.searchCityPlaceholder}
 								value={cityName}
 								onChange={(e) => setCityName(e.target.value)}
 								onFocus={() => citySearchResults.length > 0 && setShowCityDropdown(true)}
@@ -897,7 +888,7 @@ export function NotchTab({
 										e.preventDefault();
 										handleCityClear();
 									}}
-									title="Clear city"
+									title={n.clearCityTitle}
 								>
 									<X size={10} strokeWidth={2.5} />
 								</button>
@@ -924,7 +915,7 @@ export function NotchTab({
 				)}
 			</div>
 
-			<div className="setting-group-label">Widgets</div>
+			<div className="setting-group-label">{n.widgetsGroup}</div>
 			<div className="setting-group">
 				<StatusWidgetConfig value={statusWidgets} onChange={handleWidgetsChange} />
 			</div>

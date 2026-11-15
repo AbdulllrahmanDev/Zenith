@@ -1,3 +1,5 @@
+import { getStoredLanguage, getTranslations, type AppLanguage } from "./i18n";
+
 /** Mirrors `BatteryDetails` in src-tauri/src/battery.rs. */
 export interface BatteryDetails {
 	present: boolean;
@@ -11,12 +13,13 @@ export interface BatteryDetails {
 }
 
 /** Durations as the taskbar writes them: "3 hr 12 min", "45 min", "1 hr". */
-export function formatDuration(seconds: number): string {
+export function formatDuration(seconds: number, lang: AppLanguage = getStoredLanguage()): string {
+	const bt = getTranslations(lang).battery;
 	const minutes = Math.max(1, Math.round(seconds / 60));
 	const hours = Math.floor(minutes / 60);
 	const rest = minutes % 60;
-	if (hours === 0) return `${rest} min`;
-	return rest === 0 ? `${hours} hr` : `${hours} hr ${rest} min`;
+	if (hours === 0) return bt.durationMin(rest);
+	return rest === 0 ? bt.durationHr(hours) : bt.durationHrMin(hours, rest);
 }
 
 /**
@@ -28,30 +31,35 @@ export function formatDuration(seconds: number): string {
 export function batteryTooltip(
 	details: BatteryDetails | null,
 	fallback: { level: number; charging: boolean },
-	energySaver: boolean
+	energySaver: boolean,
+	lang: AppLanguage = getStoredLanguage()
 ): string {
+	const bt = getTranslations(lang).battery;
 	const percent = details?.percent ?? fallback.level;
 	const charging = details ? details.charging : fallback.charging;
 	const pluggedIn = details ? details.plugged_in : fallback.charging;
 	const lines: string[] = [];
 
 	if (pluggedIn && percent >= 100 && !charging) {
-		lines.push(`Fully charged (${percent}%)`);
+		lines.push(bt.fullyChargedPct(percent));
 	} else if (pluggedIn) {
-		lines.push(`${percent}% available (plugged in${charging ? ", charging" : ", not charging"})`);
+		lines.push(bt.availablePluggedIn(percent, charging));
 	} else if (details?.seconds_left) {
-		lines.push(`${formatDuration(details.seconds_left)} (${percent}%) remaining`);
+		lines.push(bt.remainingWithDuration(formatDuration(details.seconds_left, lang), percent));
 	} else {
-		lines.push(`${percent}% remaining`);
+		lines.push(bt.remainingPct(percent));
 	}
 
 	if (charging && details?.seconds_to_full) {
-		lines.push(`About ${formatDuration(details.seconds_to_full)} until full`);
+		lines.push(bt.untilFull(formatDuration(details.seconds_to_full, lang)));
 	}
-	if (details?.power_mode) lines.push(`Power mode: ${details.power_mode}`);
-	if (energySaver) lines.push("Energy saver is on");
+	if (details?.power_mode) {
+		const modeLabel = bt.powerModes[details.power_mode] ?? details.power_mode;
+		lines.push(bt.powerMode(modeLabel));
+	}
+	if (energySaver) lines.push(bt.energySaverOn);
 	if (details?.health_percent != null) {
-		lines.push(`Battery health: ${details.health_percent}% of original capacity`);
+		lines.push(bt.health(details.health_percent));
 	}
 	return lines.join("\n");
 }

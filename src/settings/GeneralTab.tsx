@@ -1,5 +1,6 @@
-import { Power, Download, Clock, BatteryWarning, RefreshCw, RotateCcw, LogOut } from "lucide-react";
+import { Power, Download, Clock, BatteryWarning, RefreshCw, RotateCcw, LogOut, Languages } from "lucide-react";
 import { SettingRow } from "./SettingRow";
+import { useI18n, type AppLanguage } from "../i18n";
 
 interface GeneralTabProps {
 	autostart: boolean;
@@ -28,11 +29,33 @@ export function GeneralTab({
 	resetToDefaults,
 	quitBloom
 }: GeneralTabProps) {
+	const { lang, setLanguage, t } = useI18n();
+	const g = t.general;
+
 	return (
 		<>
-			<div className="setting-group-label">System</div>
+			<div className="setting-group-label">{g.languageGroup}</div>
 			<div className="setting-group">
-				<SettingRow icon={Power} label="Launch at Login" desc="Open Zenith automatically">
+				<SettingRow
+					icon={Languages}
+					label={g.languageLabel}
+					desc={g.languageDesc}
+					divider={false}
+				>
+					<select
+						className="settings-select"
+						value={lang}
+						onChange={(e) => setLanguage(e.target.value as AppLanguage)}
+					>
+						<option value="en">{g.langEnglish}</option>
+						<option value="ar">{g.langArabic}</option>
+					</select>
+				</SettingRow>
+			</div>
+
+			<div className="setting-group-label">{g.systemGroup}</div>
+			<div className="setting-group">
+				<SettingRow icon={Power} label={g.launchAtLogin} desc={g.launchAtLoginDesc}>
 					<label className="toggle-switch">
 						<input type="checkbox" checked={autostart} onChange={toggleAutostart} />
 						<span className="slider"></span>
@@ -41,8 +64,8 @@ export function GeneralTab({
 
 				<SettingRow
 					icon={Download}
-					label="Update Indicator"
-					desc="Show green dot when update available"
+					label={g.updateIndicator}
+					desc={g.updateIndicatorDesc}
 				>
 					<label className="toggle-switch">
 						<input type="checkbox" checked={showUpdateIndicator} onChange={toggleUpdateIndicator} />
@@ -50,7 +73,7 @@ export function GeneralTab({
 					</label>
 				</SettingRow>
 
-				<SettingRow icon={Clock} label="24-Hour Time" desc="Use 24-hour clock format">
+				<SettingRow icon={Clock} label={g.timeFormat24h} desc={g.timeFormat24hDesc}>
 					<label className="toggle-switch">
 						<input type="checkbox" checked={timeFormat24h} onChange={toggleTimeFormat24h} />
 						<span className="slider"></span>
@@ -59,8 +82,8 @@ export function GeneralTab({
 
 				<SettingRow
 					icon={BatteryWarning}
-					label="Low Battery Alert"
-					desc={`Trigger at ${lowBatteryThreshold}%`}
+					label={g.lowBatteryAlert}
+					desc={g.lowBatteryAlertDesc(lowBatteryThreshold)}
 					divider={false}
 				>
 					<input
@@ -75,27 +98,27 @@ export function GeneralTab({
 				</SettingRow>
 			</div>
 
-			<div className="setting-group-label">App</div>
+			<div className="setting-group-label">{g.appGroup}</div>
 			<div className="setting-group">
 				<SettingRow
 					icon={RotateCcw}
-					label="Reset to Defaults"
-					desc="Restore all settings and restart Zenith"
+					label={g.resetToDefaults}
+					desc={g.resetToDefaultsDesc}
 					action
 					danger
 					onClick={resetToDefaults}
 				/>
 				<SettingRow
 					icon={RefreshCw}
-					label="Restart Zenith"
-					desc="Reinitialize all components"
+					label={g.restartZenith}
+					desc={g.restartZenithDesc}
 					action
 					onClick={restartBloom}
 				/>
 				<SettingRow
 					icon={LogOut}
-					label="Quit Zenith"
-					desc="Exit application completely"
+					label={g.quitZenith}
+					desc={g.quitZenithDesc}
 					action
 					danger
 					onClick={quitBloom}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { useI18n } from "../i18n";
 import {
 	Bluetooth,
 	ChevronLeft,
@@ -78,6 +79,8 @@ interface BluetoothPanelProps {
 }
 
 export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: BluetoothPanelProps) {
+	const { t, dir } = useI18n();
+	const b = t.quickPanels.bluetooth;
 	const [devices, setDevices] = useState<BtDevice[] | null>(null);
 	const [selected, setSelected] = useState<string | null>(null);
 	const [busy, setBusy] = useState<string | null>(null);
@@ -150,7 +153,7 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 		try {
 			await invoke("bluetooth_set_connected", { id: device.id, connected });
 		} catch (e) {
-			setError({ id: device.id, text: errorText(e) });
+			setError({ id: device.id, text: b.errors[String(e)] ?? errorText(e) });
 		} finally {
 			setBusy(null);
 			void refresh();
@@ -163,7 +166,7 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 			await invoke("bluetooth_unpair", { id: device.id });
 			setSelected(null);
 		} catch (e) {
-			setError({ id: device.id, text: errorText(e) });
+			setError({ id: device.id, text: b.errors[String(e)] ?? errorText(e) });
 		} finally {
 			setBusy(null);
 			void refresh();
@@ -180,7 +183,7 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 			setAdding(false);
 			void refresh();
 		} catch (e) {
-			setError({ id: device.id, text: errorText(e) });
+			setError({ id: device.id, text: b.errors[String(e)] ?? errorText(e) });
 		} finally {
 			setPairing(null);
 			setPrompt(null);
@@ -194,9 +197,9 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 	};
 
 	const statusText = (d: BtDevice) => {
-		if (busy === d.id) return d.connected ? "Disconnecting…" : "Connecting…";
-		if (!d.connected) return "Not connected";
-		return d.battery !== null ? `Connected · ${d.battery}%` : "Connected";
+		if (busy === d.id) return d.connected ? b.disconnecting : b.connecting;
+		if (!d.connected) return b.notConnected;
+		return d.battery !== null ? b.connectedBattery(d.battery) : b.connected;
 	};
 
 	const renderPrompt = () => {
@@ -204,8 +207,7 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 		if (prompt.kind === "display") {
 			return (
 				<span className="qp-note">
-					Type <strong className="qp-pin">{prompt.pin}</strong> on the device, then press Enter on
-					it.
+					{b.typePinPromptPrefix} <strong className="qp-pin">{prompt.pin}</strong> {b.typePinPromptSuffix}
 				</span>
 			);
 		}
@@ -213,14 +215,14 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 			return (
 				<>
 					<span className="qp-note">
-						Does the device show <strong className="qp-pin">{prompt.pin}</strong>?
+						{b.confirmPinQuestion} <strong className="qp-pin">{prompt.pin}</strong>?
 					</span>
 					<div className="qp-btn-row">
 						<button className="qp-btn primary" onClick={() => answer(true)}>
-							Yes, pair
+							{b.yesPair}
 						</button>
 						<button className="qp-btn" onClick={() => answer(false)}>
-							No
+							{b.no}
 						</button>
 					</div>
 				</>
@@ -230,7 +232,7 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 			<>
 				<input
 					className="qp-input"
-					placeholder="PIN shown on the device"
+					placeholder={b.enterPinPlaceholder}
 					autoFocus
 					value={pin}
 					onChange={(e) => setPin(e.target.value)}
@@ -242,10 +244,10 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 				/>
 				<div className="qp-btn-row">
 					<button className="qp-btn primary" disabled={!pin} onClick={() => answer(true)}>
-						Pair
+						{b.pair}
 					</button>
 					<button className="qp-btn" onClick={() => answer(false)}>
-						Cancel
+						{t.common.cancel}
 					</button>
 				</div>
 			</>
@@ -257,7 +259,7 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 			return (
 				<div className="qp-empty">
 					<LoaderCircle className="qp-spin" />
-					<span>Looking for devices. Make sure yours is in pairing mode.</span>
+					<span>{b.looking}</span>
 				</div>
 			);
 		}
@@ -277,7 +279,7 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 								</span>
 								<span className="qp-row-text">
 									<span className="qp-row-name">{d.name}</span>
-									<span className="qp-row-sub">{isPairing ? "Pairing…" : "Click to pair"}</span>
+									<span className="qp-row-sub">{isPairing ? b.pairing : b.clickToPair}</span>
 								</span>
 								{isPairing && <LoaderCircle className="qp-row-badge qp-spin" />}
 							</button>
@@ -303,9 +305,9 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 		if (devices.length === 0) {
 			return (
 				<div className="qp-empty">
-					<span>No paired devices</span>
+					<span>{b.noPaired}</span>
 					<button className="qp-btn" onClick={() => setAdding(true)}>
-						Add device
+						{b.addDevice}
 					</button>
 				</div>
 			);
@@ -337,7 +339,7 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 								<div className="qp-row-actions">
 									{!d.can_connect && (
 										<span className="qp-note">
-											Connects on its own when it's turned on and in range.
+											{b.autoConnectNote}
 										</span>
 									)}
 									<div className="qp-btn-row">
@@ -350,14 +352,14 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 												{isBusy ? (
 													<LoaderCircle className="qp-spin" />
 												) : d.connected ? (
-													"Disconnect"
+													b.disconnect
 												) : (
-													"Connect"
+													b.connect
 												)}
 											</button>
 										)}
 										<button className="qp-btn" disabled={isBusy} onClick={() => void remove(d)}>
-											Remove
+											{b.remove}
 										</button>
 									</div>
 								</div>
@@ -371,23 +373,23 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 	};
 
 	return (
-		<div className="qp" onClick={(e) => e.stopPropagation()}>
+		<div className="qp" dir={dir} onClick={(e) => e.stopPropagation()}>
 			<div className="qp-header">
 				<button
 					className="qp-icon-btn"
 					onClick={adding ? () => setAdding(false) : onBack}
-					aria-label={adding ? "Back to devices" : "Back to controls"}
+					aria-label={adding ? t.quickPanels.backToDevices : t.quickPanels.backToControls}
 				>
 					<ChevronLeft />
 				</button>
-				<span className="qp-title">{adding ? "Add a device" : "Bluetooth"}</span>
+				<span className="qp-title">{adding ? b.addDevice : b.title}</span>
 				{!adding && (
 					<button
 						className="qp-icon-btn"
 						onClick={() => setAdding(true)}
 						disabled={!enabled}
-						aria-label="Add a device"
-						title="Add a device"
+						aria-label={b.addDevice}
+						title={b.addDevice}
 					>
 						<Plus />
 					</button>
@@ -396,7 +398,7 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 					className={`qp-switch ${enabled ? "on" : ""}`}
 					role="switch"
 					aria-checked={enabled}
-					aria-label="Bluetooth"
+					aria-label={b.title}
 					onClick={onToggle}
 				>
 					<span />
@@ -404,7 +406,7 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 			</div>
 			<div className="qp-body">
 				{!enabled ? (
-					<div className="qp-empty">Bluetooth is off</div>
+					<div className="qp-empty">{b.off}</div>
 				) : adding ? (
 					renderNearby()
 				) : (
@@ -412,7 +414,7 @@ export function BluetoothPanel({ enabled, onToggle, onBack, onPinChange }: Bluet
 				)}
 			</div>
 			<button className="qp-footer" onClick={() => invoke("open_bluetooth_settings")}>
-				More Bluetooth settings
+				{b.moreSettings}
 			</button>
 		</div>
 	);
