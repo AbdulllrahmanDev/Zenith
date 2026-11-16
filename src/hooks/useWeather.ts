@@ -126,9 +126,9 @@ async function resolveLocation(): Promise<ResolvedLocation> {
 	// 1. Check saved coordinates from the backend settings file.
 	try {
 		const settings = (await invoke("load_settings").catch(() => ({}))) as Record<string, any>;
-		const savedLat = settings["bloom-weather-lat"];
-		const savedLon = settings["bloom-weather-lon"];
-		const savedCity = settings["bloom-weather-city"] || localStorage.getItem("bloom-weather-city");
+		const savedLat = settings["zenith-weather-lat"];
+		const savedLon = settings["zenith-weather-lon"];
+		const savedCity = settings["zenith-weather-city"] || localStorage.getItem("zenith-weather-city");
 
 		if (savedLat && savedLon) {
 			return {
@@ -177,13 +177,13 @@ async function resolveLocation(): Promise<ResolvedLocation> {
 async function persistWeather(temp: number | null, condition: string): Promise<void> {
 	if (temp !== null) {
 		invoke("save_setting", {
-			key: "bloom-weather-cached-temp",
+			key: "zenith-weather-cached-temp",
 			value: temp
 		}).catch(() => {});
 	}
 	if (condition) {
 		invoke("save_setting", {
-			key: "bloom-weather-cached-condition",
+			key: "zenith-weather-cached-condition",
 			value: condition
 		}).catch(() => {});
 	}
@@ -191,18 +191,18 @@ async function persistWeather(temp: number | null, condition: string): Promise<v
 
 export function useWeather(enabled: boolean) {
 	const [temperature, setTemperature] = useState<number | null>(() => {
-		const cached = localStorage.getItem("bloom-weather-cached-temp");
+		const cached = localStorage.getItem("zenith-weather-cached-temp");
 		return cached !== null ? Number(cached) : null;
 	});
 	const [weatherCondition, setWeatherCondition] = useState<string>(
-		() => localStorage.getItem("bloom-weather-cached-condition") || ""
+		() => localStorage.getItem("zenith-weather-cached-condition") || ""
 	);
 	const [weatherIcon, setWeatherIcon] = useState<ComponentType<LucideProps>>(() => Thermometer);
 	const [cityName, setCityName] = useState<string>(
-		() => localStorage.getItem("bloom-weather-city") || ""
+		() => localStorage.getItem("zenith-weather-city") || ""
 	);
 	const [tempUnit, setTempUnit] = useState<string>(
-		() => localStorage.getItem("bloom-temp-unit") || "celsius"
+		() => localStorage.getItem("zenith-temp-unit") || "celsius"
 	);
 
 	const tempUnitRef = useRef(tempUnit);
@@ -228,8 +228,8 @@ export function useWeather(enabled: boolean) {
 				// Update city name if resolved from IP geolocation
 				if (location.city) {
 					setCityName(location.city);
-					localStorage.setItem("bloom-weather-city", location.city);
-					invoke("save_setting", { key: "bloom-weather-city", value: location.city }).catch(
+					localStorage.setItem("zenith-weather-city", location.city);
+					invoke("save_setting", { key: "zenith-weather-city", value: location.city }).catch(
 						() => {}
 					);
 				}
@@ -251,24 +251,24 @@ export function useWeather(enabled: boolean) {
 		invoke("load_settings")
 			.then((settings: any) => {
 				const cachedTemp =
-					settings["bloom-weather-cached-temp"] ??
-					localStorage.getItem("bloom-weather-cached-temp");
+					settings["zenith-weather-cached-temp"] ??
+					localStorage.getItem("zenith-weather-cached-temp");
 				if (cachedTemp !== undefined && cachedTemp !== null) {
 					setTemperature(Number(cachedTemp));
 				}
 				const cachedCond =
-					settings["bloom-weather-cached-condition"] ??
-					localStorage.getItem("bloom-weather-cached-condition");
+					settings["zenith-weather-cached-condition"] ??
+					localStorage.getItem("zenith-weather-cached-condition");
 				if (cachedCond) {
 					setWeatherCondition(String(cachedCond));
 					setWeatherIcon(() => getWeatherIcon(String(cachedCond)));
 				}
-				const savedUnit = settings["bloom-temp-unit"] ?? localStorage.getItem("bloom-temp-unit");
+				const savedUnit = settings["zenith-temp-unit"] ?? localStorage.getItem("zenith-temp-unit");
 				if (savedUnit) {
 					setTempUnit(String(savedUnit));
 				}
 				const savedCity =
-					settings["bloom-weather-city"] ?? localStorage.getItem("bloom-weather-city");
+					settings["zenith-weather-city"] ?? localStorage.getItem("zenith-weather-city");
 				if (savedCity) {
 					setCityName(String(savedCity));
 				}
@@ -288,7 +288,7 @@ export function useWeather(enabled: boolean) {
 			"settings-external-changed",
 			(event) => {
 				const { key, value } = event.payload;
-				if (key === "bloom-temp-unit") {
+				if (key === "zenith-temp-unit") {
 					setTempUnit(String(value));
 				}
 			}

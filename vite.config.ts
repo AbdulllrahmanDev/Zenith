@@ -38,7 +38,11 @@ export default defineConfig(async () => ({
 				main: "index.html",
 				overlay: "overlay.html",
 				settings: "settings.html",
-				dock: "dock.html"
+				dock: "dock.html",
+				translatorCard: "translator-card.html",
+				translatorOverlay: "translator-overlay.html",
+				translatorRegion: "translator-region.html",
+				translatorSpinner: "translator-spinner.html"
 			}
 		}
 	}

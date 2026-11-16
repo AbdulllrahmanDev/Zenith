@@ -240,8 +240,8 @@ export function NotchTab({
 							label = `${data.results[0].name}${data.results[0].country ? `, ${data.results[0].country}` : ""}`;
 						}
 					}
-					localStorage.setItem("bloom-prayer-lat", String(latitude));
-					localStorage.setItem("bloom-prayer-lon", String(longitude));
+					localStorage.setItem("zenith-prayer-lat", String(latitude));
+					localStorage.setItem("zenith-prayer-lon", String(longitude));
 					window.dispatchEvent(new Event("storage"));
 					setGpsStatusMsg(`Location acquired: ${label}`);
 				} catch {

@@ -21,94 +21,94 @@ Edit `settings.json` with any text editor while Zenith is running. Changes are a
 
 | Key                                | Type                             | Default       | Description                                                                                                                                                                      |
 | ---------------------------------- | -------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bloom-dock-enabled`               | `"true"` / `"false"`             | `"false"`     | Show or hide the Bloom Dock (taskbar replacement).                                                                                                                               |
-| `bloom-dock-display`               | `"primary"` / `"all"` / display id | `"primary"`   | Which display to show the dock on: `"primary"` (always primary display regardless of name/resolution), `"all"` (all displays), or specific display id. Locked to `"primary"` when only one display is connected. |
-| `bloom-dock-isolation`             | `"true"` / `"false"`             | `"false"`     | In multi-monitor mode, isolate dock apps to only show open windows running on that specific display.                                                                           |
-| `bloom-dock-mode`                  | `"fixed"` / `"smart"` / `"peek"` | `"smart"`     | Dock visibility behavior. **fixed** = always visible as AppBar. **smart** = auto-hide when overlapped by fullscreen apps. **peek** = hidden until cursor approaches bottom edge. |
-| `bloom-dock-edge-delay`            | milliseconds `"0"`–`"2000"`      | `"200"`       | In smart/peek mode, how long the cursor must rest against the bottom screen edge before the dock appears. `"0"` reveals instantly.                                               |
-| `bloom-dock-preview-enabled`       | `"true"` / `"false"`             | `"true"`      | Show window thumbnail previews when hovering dock icons.                                                                                                                         |
-| `bloom-dock-icon-only`             | `"true"` / `"false"`             | `"false"`     | Minimal icon-only style (no background/padding around icons).                                                                                                                    |
-| `bloom-dock-separator-enabled`     | `"true"` / `"false"`             | `"true"`      | Show a divider between pinned and unpinned dock apps when unpinned apps are present. Unpinned apps remain on the right when disabled.                                            |
-| `bloom-start-icon`                 | icon key / `custom:<data URI>`   | `"default"`   | Start button icon: `default`, `zenith-holographic`, `zenith-emerald`, `zenith-gold`, `zenith-iznik-blue`, `zenith-midnight-gold`, `zenith-ivory-emerald`, `windows`, or `custom:` followed by an uploaded image's data URI. |
-| `bloom-dock-task-view`             | `"true"` / `"false"`             | `"false"`     | Show a Task View button beside Start that opens Task View, like the taskbar's. Right-click it to hide it again.                                                                  |
-| `bloom-dock-adaptive`              | `"true"` / `"false"`             | `"false"`     | Fixed dock only. Stretch the dock to full width like a traditional taskbar while a window is maximized, and contract back when it's restored.                                    |
-| `bloom-dock-win-number-enabled`    | `"true"` / `"false"`             | `"true"`      | When the taskbar is replaced, Win+1 through Win+9 activate the matching pinned dock app (focus/minimize if running, launch otherwise) instead of the native taskbar slots.       |
-| `bloom-dock-extras-position`       | `"off"` / `"left"` / `"right"`   | `"off"`       | Show a dock extras section with drives, folders and the Recycle Bin beside the app icons, on the left or right side of the dock.                                                 |
-| `bloom-dock-extras-drives`         | `"true"` / `"false"`             | `"true"`      | Show fixed, removable (with media) and connected mapped network drives in the dock extras. Empty card readers and unloaded discs are hidden.                                     |
-| `bloom-dock-extras-hidden-drives`  | comma-separated letters          | `""`          | Drives left out of the dock extras, e.g. `"D,E"`. Drives not listed appear, including newly connected ones. Right-clicking a drive and choosing Remove from Dock adds it here. |
-| `bloom-dock-extras-recycle-bin`    | `"true"` / `"false"`             | `"true"`      | Show the Recycle Bin in the dock extras. The icon reflects whether the bin holds anything.                                                                                       |
-| `bloom-dock-extras-folders`        | comma-separated ids              | `"downloads"` | Known folders in the dock extras: any of `desktop`, `downloads`, `documents`, `pictures`, `music`, `videos`, or `"none"` for no folders.                                         |
-| `bloom-dock-extras-custom-folders` | JSON array                       | `"[]"`        | User-added folders, e.g. `[{"name":"Projects","path":"D:\\Projects"}]`. Folders that no longer exist are skipped until they return.                                              |
+| `zenith-dock-enabled`               | `"true"` / `"false"`             | `"false"`     | Show or hide the Zenith Dock (taskbar replacement).                                                                                                                               |
+| `zenith-dock-display`               | `"primary"` / `"all"` / display id | `"primary"`   | Which display to show the dock on: `"primary"` (always primary display regardless of name/resolution), `"all"` (all displays), or specific display id. Locked to `"primary"` when only one display is connected. |
+| `zenith-dock-isolation`             | `"true"` / `"false"`             | `"false"`     | In multi-monitor mode, isolate dock apps to only show open windows running on that specific display.                                                                           |
+| `zenith-dock-mode`                  | `"fixed"` / `"smart"` / `"peek"` | `"smart"`     | Dock visibility behavior. **fixed** = always visible as AppBar. **smart** = auto-hide when overlapped by fullscreen apps. **peek** = hidden until cursor approaches bottom edge. |
+| `zenith-dock-edge-delay`            | milliseconds `"0"`–`"2000"`      | `"200"`       | In smart/peek mode, how long the cursor must rest against the bottom screen edge before the dock appears. `"0"` reveals instantly.                                               |
+| `zenith-dock-preview-enabled`       | `"true"` / `"false"`             | `"true"`      | Show window thumbnail previews when hovering dock icons.                                                                                                                         |
+| `zenith-dock-icon-only`             | `"true"` / `"false"`             | `"false"`     | Minimal icon-only style (no background/padding around icons).                                                                                                                    |
+| `zenith-dock-separator-enabled`     | `"true"` / `"false"`             | `"true"`      | Show a divider between pinned and unpinned dock apps when unpinned apps are present. Unpinned apps remain on the right when disabled.                                            |
+| `zenith-start-icon`                 | icon key / `custom:<data URI>`   | `"default"`   | Start button icon: `default`, `zenith-holographic`, `zenith-emerald`, `zenith-gold`, `zenith-iznik-blue`, `zenith-midnight-gold`, `zenith-ivory-emerald`, `windows`, or `custom:` followed by an uploaded image's data URI. |
+| `zenith-dock-task-view`             | `"true"` / `"false"`             | `"false"`     | Show a Task View button beside Start that opens Task View, like the taskbar's. Right-click it to hide it again.                                                                  |
+| `zenith-dock-adaptive`              | `"true"` / `"false"`             | `"false"`     | Fixed dock only. Stretch the dock to full width like a traditional taskbar while a window is maximized, and contract back when it's restored.                                    |
+| `zenith-dock-win-number-enabled`    | `"true"` / `"false"`             | `"true"`      | When the taskbar is replaced, Win+1 through Win+9 activate the matching pinned dock app (focus/minimize if running, launch otherwise) instead of the native taskbar slots.       |
+| `zenith-dock-extras-position`       | `"off"` / `"left"` / `"right"`   | `"off"`       | Show a dock extras section with drives, folders and the Recycle Bin beside the app icons, on the left or right side of the dock.                                                 |
+| `zenith-dock-extras-drives`         | `"true"` / `"false"`             | `"true"`      | Show fixed, removable (with media) and connected mapped network drives in the dock extras. Empty card readers and unloaded discs are hidden.                                     |
+| `zenith-dock-extras-hidden-drives`  | comma-separated letters          | `""`          | Drives left out of the dock extras, e.g. `"D,E"`. Drives not listed appear, including newly connected ones. Right-clicking a drive and choosing Remove from Dock adds it here. |
+| `zenith-dock-extras-recycle-bin`    | `"true"` / `"false"`             | `"true"`      | Show the Recycle Bin in the dock extras. The icon reflects whether the bin holds anything.                                                                                       |
+| `zenith-dock-extras-folders`        | comma-separated ids              | `"downloads"` | Known folders in the dock extras: any of `desktop`, `downloads`, `documents`, `pictures`, `music`, `videos`, or `"none"` for no folders.                                         |
+| `zenith-dock-extras-custom-folders` | JSON array                       | `"[]"`        | User-added folders, e.g. `[{"name":"Projects","path":"D:\\Projects"}]`. Folders that no longer exist are skipped until they return.                                              |
 
 ### Notch
 
 | Key                      | Type                             | Default   | Description                                                                                                                    |
 | ------------------------ | -------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `bloom-notch-display`    | `"primary"` / `"all"` / display id | `"primary"` | Which display to show the notch on: `"primary"` (always primary display regardless of name/resolution), `"all"` (all displays), or specific display id. Locked to `"primary"` when only one display is connected. |
-| `bloom-notch-mode`       | `"fixed"` / `"smart"` / `"peek"` | `"fixed"` | Notch (top bar) visibility behavior. Same modes as dock. **peek** shows the notch briefly on media events and notifications.   |
-| `bloom-notch-edge-delay` | milliseconds `"0"`–`"2000"`      | `"200"`   | In smart/peek mode, how long the cursor must rest against the top screen edge before the notch peeks. `"0"` reveals instantly. |
+| `zenith-notch-display`    | `"primary"` / `"all"` / display id | `"primary"` | Which display to show the notch on: `"primary"` (always primary display regardless of name/resolution), `"all"` (all displays), or specific display id. Locked to `"primary"` when only one display is connected. |
+| `zenith-notch-mode`       | `"fixed"` / `"smart"` / `"peek"` | `"fixed"` | Notch (top bar) visibility behavior. Same modes as dock. **peek** shows the notch briefly on media events and notifications.   |
+| `zenith-notch-edge-delay` | milliseconds `"0"`–`"2000"`      | `"200"`   | In smart/peek mode, how long the cursor must rest against the top screen edge before the notch peeks. `"0"` reveals instantly. |
 
 ### Weather
 
 | Key                              | Type                         | Default     | Description                                                                        |
 | -------------------------------- | ---------------------------- | ----------- | ---------------------------------------------------------------------------------- |
-| `bloom-weather-enabled`          | `"true"` / `"false"`         | `"true"`    | Show weather widget in the notch status bar.                                       |
-| `bloom-weather-city`             | string                       | `""`        | Manually set city name for weather. Empty string = auto-detect via IP geolocation. |
-| `bloom-weather-lat`              | number string                | (auto)      | Latitude coordinate for weather. Set automatically when a city is selected.        |
-| `bloom-weather-lon`              | number string                | (auto)      | Longitude coordinate for weather. Set automatically when a city is selected.       |
-| `bloom-weather-cached-temp`      | number string                | (none)      | Cached temperature value shown before next API fetch.                              |
-| `bloom-weather-cached-condition` | string                       | (none)      | Cached weather condition text (e.g. "Partly Cloudy").                              |
-| `bloom-temp-unit`                | `"celsius"` / `"fahrenheit"` | `"celsius"` | Temperature display unit.                                                          |
+| `zenith-weather-enabled`          | `"true"` / `"false"`         | `"true"`    | Show weather widget in the notch status bar.                                       |
+| `zenith-weather-city`             | string                       | `""`        | Manually set city name for weather. Empty string = auto-detect via IP geolocation. |
+| `zenith-weather-lat`              | number string                | (auto)      | Latitude coordinate for weather. Set automatically when a city is selected.        |
+| `zenith-weather-lon`              | number string                | (auto)      | Longitude coordinate for weather. Set automatically when a city is selected.       |
+| `zenith-weather-cached-temp`      | number string                | (none)      | Cached temperature value shown before next API fetch.                              |
+| `zenith-weather-cached-condition` | string                       | (none)      | Cached weather condition text (e.g. "Partly Cloudy").                              |
+| `zenith-temp-unit`                | `"celsius"` / `"fahrenheit"` | `"celsius"` | Temperature display unit.                                                          |
 
 ### Modules
 
 | Key                         | Type                              | Default  | Description                                                                                              |
 | --------------------------- | --------------------------------- | -------- | -------------------------------------------------------------------------------------------------------- |
-| `bloom-calendar-enabled`    | `"true"` / `"false"`              | `"true"` | Enable calendar/timer mode in the notch.                                                                 |
-| `bloom-music-mode-enabled`  | `"true"` / `"false"`              | `"true"` | Enable interactive music media widget.                                                                   |
-| `bloom-music-compact-notch` | `"true"` / `"false"`              | `"true"` | Show compact music display (visualizer + artwork) in collapsed notch.                                    |
-| `bloom-notch-remember-panel` | `"true"` / `"false"` | `"true"` | Click opens the last-used panel when on; when off, click opens `bloom-notch-default-panel`. |
-| `bloom-notch-default-panel` | `"calendar"` / `"command-center"` / `"prayer"` | `"calendar"` | Fixed panel opened on click when panel memory is off. If calendar is disabled, Command Center opens instead. |
-| `bloom-notch-last-panel`    | `"calendar"` / `"command-center"` / `"prayer"` | (unset)  | Last panel the notch was left on, saved by Bloom while panel memory is on. |
-| `bloom-notch-click-to-open` | `"true"` / `"false"` | (legacy) | Old setting read only when `bloom-notch-remember-panel` is absent; `"false"` now selects fixed-panel behavior. |
+| `zenith-calendar-enabled`    | `"true"` / `"false"`              | `"true"` | Enable calendar/timer mode in the notch.                                                                 |
+| `zenith-music-mode-enabled`  | `"true"` / `"false"`              | `"true"` | Enable interactive music media widget.                                                                   |
+| `zenith-music-compact-notch` | `"true"` / `"false"`              | `"true"` | Show compact music display (visualizer + artwork) in collapsed notch.                                    |
+| `zenith-notch-remember-panel` | `"true"` / `"false"` | `"true"` | Click opens the last-used panel when on; when off, click opens `zenith-notch-default-panel`. |
+| `zenith-notch-default-panel` | `"calendar"` / `"command-center"` / `"prayer"` | `"calendar"` | Fixed panel opened on click when panel memory is off. If calendar is disabled, Command Center opens instead. |
+| `zenith-notch-last-panel`    | `"calendar"` / `"command-center"` / `"prayer"` | (unset)  | Last panel the notch was left on, saved by Zenith while panel memory is on. |
+| `zenith-notch-click-to-open` | `"true"` / `"false"` | (legacy) | Old setting read only when `zenith-notch-remember-panel` is absent; `"false"` now selects fixed-panel behavior. |
 
 ### Prayer Times
 
 | Key                       | Type                                                  | Default                | Description                                                                                                       |
 | ------------------------- | ----------------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `bloom-prayer-enabled`    | `"true"` / `"false"`                                  | `"true"`               | Enable Islamic Prayer Times panel in the notch.                                                                   |
-| `bloom-prayer-location-mode` | `"auto"` / `"manual"`                              | `"auto"`               | Location mode: **auto** = device GPS / IP geolocation; **manual** = specific country and city selection.          |
-| `bloom-prayer-city`       | string                                                | `""`                   | Manually set city for prayer times when in manual mode.                                                           |
-| `bloom-prayer-country`    | string                                                | `""`                   | Manually set country for prayer times when in manual mode.                                                        |
-| `bloom-prayer-method`     | integer string (`"1"`–`"15"`)                         | `"4"`                  | Calculation method (e.g. 4 = Umm Al-Qura, 5 = Egyptian General Authority, 3 = MWL).                               |
-| `bloom-prayer-time-offset`| integer string (`"-120"`–`"120"`)                     | `"0"`                  | Manual time offset adjustment in minutes.                                                                         |
-| `bloom-prayer-alert-type` | `"sound_notification"` / `"notification_only"` / `"off"` | `"sound_notification"` | Notification mode when prayer time arrives (play Athan sound and/or show desktop notification).                   |
-| `bloom-prayer-pre-alert`  | `"true"` / `"false"`                                  | `"true"`               | Show an advance desktop reminder 15 minutes before the next prayer.                                              |
+| `zenith-prayer-enabled`    | `"true"` / `"false"`                                  | `"true"`               | Enable Islamic Prayer Times panel in the notch.                                                                   |
+| `zenith-prayer-location-mode` | `"auto"` / `"manual"`                              | `"auto"`               | Location mode: **auto** = device GPS / IP geolocation; **manual** = specific country and city selection.          |
+| `zenith-prayer-city`       | string                                                | `""`                   | Manually set city for prayer times when in manual mode.                                                           |
+| `zenith-prayer-country`    | string                                                | `""`                   | Manually set country for prayer times when in manual mode.                                                        |
+| `zenith-prayer-method`     | integer string (`"1"`–`"15"`)                         | `"4"`                  | Calculation method (e.g. 4 = Umm Al-Qura, 5 = Egyptian General Authority, 3 = MWL).                               |
+| `zenith-prayer-time-offset`| integer string (`"-120"`–`"120"`)                     | `"0"`                  | Manual time offset adjustment in minutes.                                                                         |
+| `zenith-prayer-alert-type` | `"sound_notification"` / `"notification_only"` / `"off"` | `"sound_notification"` | Notification mode when prayer time arrives (play Athan sound and/or show desktop notification).                   |
+| `zenith-prayer-pre-alert`  | `"true"` / `"false"`                                  | `"true"`               | Show an advance desktop reminder 15 minutes before the next prayer.                                              |
 
 ### Shelf
 
 | Key                   | Type                 | Default   | Description                                                                                                    |
 | --------------------- | -------------------- | --------- | -------------------------------------------------------------------------------------------------------------- |
-| `bloom-shelf-persist` | `"true"` / `"false"` | `"false"` | Keep notch shelf items across restarts. Off = items are cleared when Bloom closes. Max 10 items, newest first. |
+| `zenith-shelf-persist` | `"true"` / `"false"` | `"false"` | Keep notch shelf items across restarts. Off = items are cleared when Zenith closes. Max 10 items, newest first. |
 
 ### Music Appearance
 
 | Key                                | Type                      | Default     | Description                                                                                     |
 | ---------------------------------- | ------------------------- | ----------- | ----------------------------------------------------------------------------------------------- |
-| `bloom-media-layout`               | `"classic"` / `"compact"` | `"classic"` | Expanded player style. **classic** = large album art. **compact** = small thumbnail + controls. |
-| `bloom-media-ambience-enabled`     | `"true"` / `"false"`      | `"true"`    | Colored ambient glow behind expanded album art.                                                 |
-| `bloom-media-compact-glow-enabled` | `"true"` / `"false"`      | `"true"`    | Glow effect around the collapsed compact thumbnail.                                             |
-| `bloom-media-visualizer-enabled`   | `"true"` / `"false"`      | `"true"`    | Audio visualizer bars in music mode. Also accepts `bloom-visualizer-enabled` (legacy alias).    |
-| `bloom-media-album-art-enabled`    | `"true"` / `"false"`      | `"true"`    | Show album artwork in the notch music display.                                                  |
+| `zenith-media-layout`               | `"classic"` / `"compact"` | `"classic"` | Expanded player style. **classic** = large album art. **compact** = small thumbnail + controls. |
+| `zenith-media-ambience-enabled`     | `"true"` / `"false"`      | `"true"`    | Colored ambient glow behind expanded album art.                                                 |
+| `zenith-media-compact-glow-enabled` | `"true"` / `"false"`      | `"true"`    | Glow effect around the collapsed compact thumbnail.                                             |
+| `zenith-media-visualizer-enabled`   | `"true"` / `"false"`      | `"true"`    | Audio visualizer bars in music mode. Also accepts `zenith-visualizer-enabled` (legacy alias).    |
+| `zenith-media-album-art-enabled`    | `"true"` / `"false"`      | `"true"`    | Show album artwork in the notch music display.                                                  |
 
 ### Overlays
 
 | Key                                | Type                 | Default  | Description                                                              |
 | ---------------------------------- | -------------------- | -------- | ------------------------------------------------------------------------ |
-| `bloom-volume-overlay-enabled`     | `"true"` / `"false"` | `"true"` | Show Bloom volume HUD when volume changes (replaces native Windows OSD). |
-| `bloom-volume-edge-enabled`        | `"true"` / `"false"` | `"true"` | Trigger volume HUD by hovering the left screen edge.                     |
-| `bloom-brightness-overlay-enabled` | `"true"` / `"false"` | `"true"` | Show Bloom brightness HUD when brightness changes.                       |
-| `bloom-brightness-edge-enabled`    | `"true"` / `"false"` | `"true"` | Trigger brightness HUD by hovering the right screen edge.                |
+| `zenith-volume-overlay-enabled`     | `"true"` / `"false"` | `"true"` | Show Zenith volume HUD when volume changes (replaces native Windows OSD). |
+| `zenith-volume-edge-enabled`        | `"true"` / `"false"` | `"true"` | Trigger volume HUD by hovering the left screen edge.                     |
+| `zenith-brightness-overlay-enabled` | `"true"` / `"false"` | `"true"` | Show Zenith brightness HUD when brightness changes.                       |
+| `zenith-brightness-edge-enabled`    | `"true"` / `"false"` | `"true"` | Trigger brightness HUD by hovering the right screen edge.                |
 
 ### Mouse Radial Launcher
 
@@ -142,7 +142,7 @@ Edit `settings.json` with any text editor while Zenith is running. Changes are a
 | `zenith-mouse-game-mode-scope`        | `"all"` / `"list"`                              | `"all"`       | Game protection scope: suppress on **all** fullscreen apps, or only for listed executables.                                                                 |
 | `zenith-mouse-game-mode-auto-detect`  | `"true"` / `"false"`                            | `"true"`      | Automatically detect Steam, Epic, Riot, and Xbox games when scope is `"list"`.                                                                              |
 | `zenith-mouse-game-mode-blocked-apps` | comma-separated executables                     | `"csgo.exe, valorant.exe, league of legends.exe, dota2.exe"` | Process names to block trigger for when scope is `"list"`.                                                   |
-| `zenith-mouse-sound-enabled`          | `"true"` / `"false"`                            | `"true"`      | Enable WebAudio procedural sound synthesizer for radial menu bloom and slice hover.                                                                         |
+| `zenith-mouse-sound-enabled`          | `"true"` / `"false"`                            | `"true"`      | Enable WebAudio procedural sound synthesizer for radial menu open and slice hover.                                                                         |
 | `zenith-mouse-sound-volume`           | integer string (`"0"`–`"100"`)                  | `"70"`        | Master volume percentage for radial menu sound effects.                                                                                                     |
 | `zenith-mouse-open-sound`             | sound voice id or `"off"`                       | `"sub-tick"`  | Synthesizer voice played on wheel open (`sub-tick`, `thump`, `knock`, `pluck`, `pulse`, `drop`, `felt-tap`, `rubber`, `reese`, `haptic`, or `off`).         |
 | `zenith-mouse-hover-sound`            | sound voice id or `"off"`                       | `"sub-tick"`  | Synthesizer voice played on slice hover (`sub-tick`, `thump`, `knock`, `pluck`, `pulse`, `drop`, `felt-tap`, `rubber`, `reese`, `haptic`, or `off`).        |
@@ -153,24 +153,24 @@ Edit `settings.json` with any text editor while Zenith is running. Changes are a
 
 | Key                      | Type                                             | Default     | Description                                                                                                                                                 |
 | ------------------------ | ------------------------------------------------ | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bloom-theme-mode`       | `"dark"` / `"light"` / `"custom"` / `"adaptive"` | `"dark"`    | Theme mode. **dark** = dark translucent. **light** = light translucent. **custom** = user-picked color. **adaptive** = follows Windows system accent color. |
-| `bloom-theme-color`      | hex string                                       | `"#007aff"` | Custom theme color (used in `custom` and `adaptive` modes).                                                                                                 |
-| `bloom-theme-opacity`    | float string                                     | `"0.80"`    | Background opacity (0.1 to 1.0).                                                                                                                            |
-| `bloom-theme-saturation` | float string                                     | `"0.50"`    | Color saturation for custom/adaptive themes (0.0 to 1.0).                                                                                                   |
-| `bloom-theme-brightness` | float string                                     | `"0.15"`    | Background brightness for custom/adaptive themes (0.0 to 1.0).                                                                                              |
-| `bloom-corners-enabled`  | `"true"` / `"false"`                             | `"false"`   | Render rounded screen corner overlays on top edges.                                                                                                         |
+| `zenith-theme-mode`       | `"dark"` / `"light"` / `"custom"` / `"adaptive"` | `"dark"`    | Theme mode. **dark** = dark translucent. **light** = light translucent. **custom** = user-picked color. **adaptive** = follows Windows system accent color. |
+| `zenith-theme-color`      | hex string                                       | `"#007aff"` | Custom theme color (used in `custom` and `adaptive` modes).                                                                                                 |
+| `zenith-theme-opacity`    | float string                                     | `"0.80"`    | Background opacity (0.1 to 1.0).                                                                                                                            |
+| `zenith-theme-saturation` | float string                                     | `"0.50"`    | Color saturation for custom/adaptive themes (0.0 to 1.0).                                                                                                   |
+| `zenith-theme-brightness` | float string                                     | `"0.15"`    | Background brightness for custom/adaptive themes (0.0 to 1.0).                                                                                              |
+| `zenith-corners-enabled`  | `"true"` / `"false"`                             | `"false"`   | Render rounded screen corner overlays on top edges.                                                                                                         |
 
 ### Status Widgets
 
 | Key                    | Type        | Default                                    | Description                                                                                                 |
 | ---------------------- | ----------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
-| `bloom-status-widgets` | JSON string | `{"left":["weather"],"right":["battery"]}` | Widget layout in collapsed notch. Available: `"weather"`, `"battery"`, `"cpu"`, `"ram"`, `"disk"`, `"net"`. |
+| `zenith-status-widgets` | JSON string | `{"left":["weather"],"right":["battery"]}` | Widget layout in collapsed notch. Available: `"weather"`, `"battery"`, `"cpu"`, `"ram"`, `"disk"`, `"net"`. |
 
 Example:
 
 ```json
 {
-	"bloom-status-widgets": "{\"left\":[\"cpu\",\"ram\"],\"right\":[\"battery\",\"net\"]}"
+	"zenith-status-widgets": "{\"left\":[\"cpu\",\"ram\"],\"right\":[\"battery\",\"net\"]}"
 }
 ```
 
@@ -250,6 +250,34 @@ with open(path, 'w') as f: json.dump(settings, f)
 ## Notes
 
 - All boolean values are strings (`"true"` / `"false"`) for consistency with `localStorage`.
+
+### Translator (`المترجم`)
+
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| `zenith-translator-enabled` | boolean string | `"true"` | Enable or disable global translator hotkeys |
+| `zenith-translator-engine` | `"cloud"` \| `"local"` | `"cloud"` | AI backend (`cloud` API or offline `local` GGUF model) |
+| `zenith-translator-provider` | `"gemini"` \| `"groq"` \| `"openai"` | `"gemini"` | Cloud API provider |
+| `zenith-translator-api-key` | string | `""` | Google Gemini API key |
+| `zenith-translator-groq-api-key` | string | `""` | Groq API key |
+| `zenith-translator-openai-api-key` | string | `""` | OpenAI API key |
+| `zenith-translator-local-model-id` | string | `"qwen2.5-1.5b-instruct-q4_k_m"` | Offline local GGUF model identifier |
+| `zenith-translator-target-language` | string | `"Arabic"` | Target language for quick card and screen overlays |
+| `zenith-translator-output-mode` | `"full"` \| `"explain"` \| `"summarize"` | `"full"` | Quick processing mode |
+| `zenith-translator-screenshot-mode` | `"instant"` \| `"region"` | `"instant"` | Screen overlay capture mode |
+| `zenith-translator-select-all-fallback` | boolean string | `"true"` | Fallback to Ctrl+A if no text is selected |
+| `zenith-translator-auto-paste-ar-to-en` | boolean string | `"true"` | Auto-paste English translation in-place via Ctrl+V |
+| `zenith-translator-hotkey-ar-to-en` | string | `"Ctrl+Alt+A"` | Global hotkey for instant Arabic→English replacement |
+| `zenith-translator-hotkey-any-to-ar` | string | `"Ctrl+Alt+X"` | Global hotkey for floating card translation/explanation |
+| `zenith-translator-hotkey-screen` | string | `"Ctrl+Alt+S"` | Global hotkey for screen overlay translation |
+| `zenith-translator-hotkey-fullpage` | string | `"Ctrl+Alt+W"` | Global hotkey for scrolling full-page overlay translation |
+| `zenith-translator-hotkey-toggle` | string | `"Ctrl+Alt+Space"` | Global hotkey to open Zenith Settings on the translator tab |
+| `zenith-translator-font-size` | integer string | `"15"` | Font size (`11`–`28` px) for floating card and screen overlay |
+| `zenith-translator-card-timeout-sec` | integer string | `"12"` | Auto-dismiss timeout (`3`–`60` seconds) for floating card |
+| `zenith-translator-overlay-opacity` | integer string | `"88"` | Overlay backdrop opacity (`40`–`100`) |
+| `zenith-translator-custom-prompt-inplace` | string | `""` | Optional custom system prompt for in-place English translation |
+| `zenith-translator-custom-prompt-quick` | string | `""` | Optional custom system prompt for quick card / overlay translation |
+| `zenith-translator-card-pos` | JSON string | `""` | Saved floating card screen coordinates (`{"x":0,"y":0}`) |
 - The `useSettingsSync` hook auto-converts `"true"` / `"false"` strings to booleans.
 - `auto-hide` mode values in `zenith-dock-mode` and `zenith-notch-mode` are legacy aliases for `smart` — they are mapped automatically.
 - Changing `zenith-scale` triggers AppBar re-registration to adjust reserved screen space.

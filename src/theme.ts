@@ -117,17 +117,17 @@ export async function applyTheme(
 	const root = document.documentElement;
 
 	if (opacity === undefined || opacity === null) {
-		const cachedOpacity = localStorage.getItem("bloom-theme-opacity");
+		const cachedOpacity = localStorage.getItem("zenith-theme-opacity");
 		opacity = cachedOpacity !== null ? parseFloat(cachedOpacity) : 0.8;
 	}
 
 	if (saturation === undefined || saturation === null) {
-		const cachedSaturation = localStorage.getItem("bloom-theme-saturation");
+		const cachedSaturation = localStorage.getItem("zenith-theme-saturation");
 		saturation = cachedSaturation !== null ? parseFloat(cachedSaturation) : 0.5;
 	}
 
 	if (brightness === undefined || brightness === null) {
-		const cachedBrightness = localStorage.getItem("bloom-theme-brightness");
+		const cachedBrightness = localStorage.getItem("zenith-theme-brightness");
 		brightness = cachedBrightness !== null ? parseFloat(cachedBrightness) : 0.15;
 	}
 
@@ -135,7 +135,7 @@ export async function applyTheme(
 	const opExpanded = Math.min(1.0, opacity + 0.12);
 
 	const setVar = (key: string, val: string) => {
-		root.style.setProperty(`--bloom-${key}`, val);
+		root.style.setProperty(`--zenith-${key}`, val);
 		root.style.setProperty(`--zenith-${key}`, val);
 	};
 
@@ -224,13 +224,13 @@ export async function applyTheme(
 }
 
 export function initTheme() {
-	const syncMode = localStorage.getItem("bloom-theme-mode") || "dark";
-	const syncColor = localStorage.getItem("bloom-theme-color") || "#007aff";
-	const syncOpacityVal = localStorage.getItem("bloom-theme-opacity");
+	const syncMode = localStorage.getItem("zenith-theme-mode") || "dark";
+	const syncColor = localStorage.getItem("zenith-theme-color") || "#007aff";
+	const syncOpacityVal = localStorage.getItem("zenith-theme-opacity");
 	const syncOpacity = syncOpacityVal !== null ? parseFloat(syncOpacityVal) : 0.8;
-	const syncSaturationVal = localStorage.getItem("bloom-theme-saturation");
+	const syncSaturationVal = localStorage.getItem("zenith-theme-saturation");
 	const syncSaturation = syncSaturationVal !== null ? parseFloat(syncSaturationVal) : 0.5;
-	const syncBrightnessVal = localStorage.getItem("bloom-theme-brightness");
+	const syncBrightnessVal = localStorage.getItem("zenith-theme-brightness");
 	const syncBrightness = syncBrightnessVal !== null ? parseFloat(syncBrightnessVal) : 0.15;
 
 	// Fast synchronous draw using cached localStorage
@@ -241,18 +241,18 @@ export function initTheme() {
 		.then(async (settings) => {
 			// Don't write a stale mirror value back while the window reloads.
 			if (await reloadIfMirrorWasStale(settings)) return;
-			const mode = settings["bloom-theme-mode"] ? String(settings["bloom-theme-mode"]) : syncMode;
-			const color = settings["bloom-theme-color"]
-				? String(settings["bloom-theme-color"])
+			const mode = settings["zenith-theme-mode"] ? String(settings["zenith-theme-mode"]) : syncMode;
+			const color = settings["zenith-theme-color"]
+				? String(settings["zenith-theme-color"])
 				: syncColor;
-			const opacityVal = settings["bloom-theme-opacity"]
-				? parseFloat(String(settings["bloom-theme-opacity"]))
+			const opacityVal = settings["zenith-theme-opacity"]
+				? parseFloat(String(settings["zenith-theme-opacity"]))
 				: syncOpacity;
-			const saturationVal = settings["bloom-theme-saturation"]
-				? parseFloat(String(settings["bloom-theme-saturation"]))
+			const saturationVal = settings["zenith-theme-saturation"]
+				? parseFloat(String(settings["zenith-theme-saturation"]))
 				: syncSaturation;
-			const brightnessVal = settings["bloom-theme-brightness"]
-				? parseFloat(String(settings["bloom-theme-brightness"]))
+			const brightnessVal = settings["zenith-theme-brightness"]
+				? parseFloat(String(settings["zenith-theme-brightness"]))
 				: syncBrightness;
 
 			if (
@@ -262,11 +262,11 @@ export function initTheme() {
 				saturationVal !== syncSaturation ||
 				brightnessVal !== syncBrightness
 			) {
-				localStorage.setItem("bloom-theme-mode", mode);
-				localStorage.setItem("bloom-theme-color", color);
-				localStorage.setItem("bloom-theme-opacity", String(opacityVal));
-				localStorage.setItem("bloom-theme-saturation", String(saturationVal));
-				localStorage.setItem("bloom-theme-brightness", String(brightnessVal));
+				localStorage.setItem("zenith-theme-mode", mode);
+				localStorage.setItem("zenith-theme-color", color);
+				localStorage.setItem("zenith-theme-opacity", String(opacityVal));
+				localStorage.setItem("zenith-theme-saturation", String(saturationVal));
+				localStorage.setItem("zenith-theme-brightness", String(brightnessVal));
 				applyTheme(mode, color, opacityVal, saturationVal, brightnessVal);
 			}
 		})
@@ -274,38 +274,38 @@ export function initTheme() {
 
 	// Helper: read all theme values from localStorage and apply
 	const applyThemeFromStorage = () => {
-		const mode = localStorage.getItem("bloom-theme-mode") || "dark";
-		const color = localStorage.getItem("bloom-theme-color") || "#007aff";
-		const opacity = parseFloat(localStorage.getItem("bloom-theme-opacity") || "0.80");
-		const saturation = parseFloat(localStorage.getItem("bloom-theme-saturation") || "0.50");
-		const brightness = parseFloat(localStorage.getItem("bloom-theme-brightness") || "0.15");
+		const mode = localStorage.getItem("zenith-theme-mode") || "dark";
+		const color = localStorage.getItem("zenith-theme-color") || "#007aff";
+		const opacity = parseFloat(localStorage.getItem("zenith-theme-opacity") || "0.80");
+		const saturation = parseFloat(localStorage.getItem("zenith-theme-saturation") || "0.50");
+		const brightness = parseFloat(localStorage.getItem("zenith-theme-brightness") || "0.15");
 		applyTheme(mode, color, opacity, saturation, brightness);
 	};
 
-	const bloomThemeKeys = [
-		"bloom-theme-mode",
-		"bloom-theme-color",
-		"bloom-theme-opacity",
-		"bloom-theme-saturation",
-		"bloom-theme-brightness"
+	const zenithThemeKeys = [
+		"zenith-theme-mode",
+		"zenith-theme-color",
+		"zenith-theme-opacity",
+		"zenith-theme-saturation",
+		"zenith-theme-brightness"
 	];
 
 	// Listen to setting changes broadcasted from settings window
 	// (localStorage sync is handled by saveAndLocal in Settings.tsx; we just apply the theme)
 	const settingsPromise = listen<{ key: string; value: any }>("settings-changed", (event) => {
 		const { key } = event.payload;
-		if (bloomThemeKeys.includes(key)) {
+		if (zenithThemeKeys.includes(key)) {
 			applyThemeFromStorage();
 		}
 	});
 
 	// Listen to system accent color updates in case of adaptive theme
 	const accentPromise = listen<string>("system-accent-changed", (event) => {
-		const currentMode = localStorage.getItem("bloom-theme-mode") || "dark";
+		const currentMode = localStorage.getItem("zenith-theme-mode") || "dark";
 		if (currentMode === "adaptive") {
-			const opacity = parseFloat(localStorage.getItem("bloom-theme-opacity") || "0.80");
-			const saturation = parseFloat(localStorage.getItem("bloom-theme-saturation") || "0.50");
-			const brightness = parseFloat(localStorage.getItem("bloom-theme-brightness") || "0.15");
+			const opacity = parseFloat(localStorage.getItem("zenith-theme-opacity") || "0.80");
+			const saturation = parseFloat(localStorage.getItem("zenith-theme-saturation") || "0.50");
+			const brightness = parseFloat(localStorage.getItem("zenith-theme-brightness") || "0.15");
 			applyTheme("adaptive", event.payload, opacity, saturation, brightness);
 		}
 	});
@@ -316,7 +316,7 @@ export function initTheme() {
 		"settings-external-changed",
 		(event) => {
 			const { key } = event.payload;
-			if (bloomThemeKeys.includes(key)) {
+			if (zenithThemeKeys.includes(key)) {
 				applyThemeFromStorage();
 			}
 		}

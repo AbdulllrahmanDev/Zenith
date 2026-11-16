@@ -9,6 +9,7 @@ mod services;
 mod shelf;
 mod shelf_preview;
 mod state;
+mod translator;
 mod tray;
 mod types;
 mod updater;
@@ -238,7 +239,21 @@ fn main() {
             bluetooth::bluetooth_discovery,
             bluetooth::bluetooth_pair,
             bluetooth::bluetooth_pairing_respond,
-            bluetooth::bluetooth_unpair
+            bluetooth::bluetooth_unpair,
+            translator_get_local_status,
+            translator_start_download,
+            translator_cancel_download,
+            translator_delete_local_model,
+            translator_test_connection,
+            translator_set_hotkeys_paused,
+            translator_submit_region,
+            translator_cancel_region,
+            translator_close_overlay,
+            translator_close_card,
+            translator_save_card_position,
+            translator_copy_text,
+            translator_trigger_action,
+            translator_get_initial_state
         ])
         .setup(|app| {
             init_taskbar_marker(app.handle());
@@ -451,6 +466,8 @@ fn main() {
             diagnostics::record("services_ready", "hooks and settings watcher initialized");
             wifi::setup_wifi_notifications(app.handle().clone());
             bluetooth::setup_bluetooth_notifications(app.handle().clone());
+            translator::init(app.handle());
+            diagnostics::record("translator_ready", "translator hotkeys initialized");
 
             // Listen for second-instance signal to open settings
             if let Some(&h_event) = SINGLE_INSTANCE_EVENT_HANDLE.get() {
@@ -488,15 +505,24 @@ fn main() {
                 let settings_item =
                     MenuItem::with_id(app, "settings", "Open Settings", true, None::<&str>)?;
                 let menu = Menu::with_items(app, &[&settings_item, &restart_item, &quit_item])?;
+                let default_icon = app.default_window_icon().cloned();
+                let icon_pixels = default_icon
+                    .as_ref()
+                    .map(|img| (img.rgba().to_vec(), img.width(), img.height()));
                 let ah = app.handle().clone();
-                TrayIconBuilder::new()
-                    .icon(app.default_window_icon().unwrap().clone())
+                let mut builder = TrayIconBuilder::new()
                     .tooltip("Zenith")
-                    .menu(&menu)
+                    .menu(&menu);
+                if let Some(icon) = default_icon {
+                    builder = builder.icon(icon);
+                }
+                let tray_icon = builder
                     .on_menu_event(move |_, event| match event.id().as_ref() {
                         "quit" => {
                             diagnostics::record("shutdown", "source=tray");
                             SHUTTING_DOWN.store(true, Ordering::Relaxed);
+                            cleanup_win32_tray_icon();
+                            crate::translator::shutdown();
                             crate::commands::release_appbars(&ah);
                             set_taskbar_visibility(true, true);
                             NATIVE_TASKBAR_HIDDEN.store(false, Ordering::Relaxed);
@@ -507,6 +533,8 @@ fn main() {
                         "restart" => {
                             diagnostics::record("restart", "source=tray");
                             SHUTTING_DOWN.store(true, Ordering::Relaxed);
+                            cleanup_win32_tray_icon();
+                            crate::translator::shutdown();
                             crate::commands::release_appbars(&ah);
                             if let Some(w) = ah.get_webview_window("settings") {
                                 let _ = w.destroy();
@@ -534,7 +562,64 @@ fn main() {
                         }
                     })
                     .build(app)?;
+                app.manage(tray_icon.clone());
+                diagnostics::record("tray_ready", "tray icon built");
+
+                let tray_hwnd = tray_icon
+                    .with_inner_tray_icon(|inner| inner.window_handle() as isize)
+                    .unwrap_or(0);
+
+                // tray-icon 0.24.1 on Windows constructs NOTIFYICONDATAW with
+                // cbSize = 0 (via ..mem::zeroed()), which causes Shell_NotifyIconW
+                // to fail silently without showing any tray icon. Verify via
+                // Shell_NotifyIconGetRect (which sets cbSize) on the main GUI thread
+                // and repair directly with cbSize populated when missing.
+                let verify_app = app.handle().clone();
+                let _keep_tray = tray_icon;
+                tauri::async_runtime::spawn(async move {
+                    for (attempt, delay_ms) in [150u64, 1000, 2500, 5000].into_iter().enumerate() {
+                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+                        if SHUTTING_DOWN.load(Ordering::Relaxed) {
+                            return;
+                        }
+                        let (tx, rx) = tokio::sync::oneshot::channel();
+                        let pixels = icon_pixels.clone();
+                        let dispatch_res = verify_app.run_on_main_thread(move || {
+                            let res = ensure_win32_tray_icon_on_main(
+                                tray_hwnd,
+                                pixels.as_ref().map(|(bytes, w, h)| (bytes.as_slice(), *w, *h)),
+                            );
+                            let _ = tx.send(res);
+                        });
+                        match (dispatch_res, rx.await) {
+                            (Ok(()), Ok(Ok(mode))) => {
+                                diagnostics::record(
+                                    "tray_confirmed",
+                                    &format!("attempt={attempt} {mode}"),
+                                );
+                                return;
+                            }
+                            (Ok(()), Ok(Err(err))) => {
+                                diagnostics::record(
+                                    "tray_retry",
+                                    &format!("attempt={attempt} err={err}"),
+                                );
+                            }
+                            (dispatch_err, recv_res) => {
+                                diagnostics::record(
+                                    "tray_retry",
+                                    &format!(
+                                        "attempt={attempt} dispatch={:?} recv={:?}",
+                                        dispatch_err.is_ok(),
+                                        recv_res.is_ok()
+                                    ),
+                                );
+                            }
+                        }
+                    }
+                });
             }
+            diagnostics::record("setup_complete", "entering event loop");
             Ok(())
         })
         .build(tauri::generate_context!())
@@ -542,9 +627,184 @@ fn main() {
     app.run(|_, event| {
         if let tauri::RunEvent::Exit = event {
             diagnostics::record("exit", "restoring native taskbar");
+            cleanup_win32_tray_icon();
+            crate::translator::shutdown();
             set_taskbar_visibility(true, true);
             NATIVE_TASKBAR_HIDDEN.store(false, Ordering::Relaxed);
             set_native_osd_suppressed(false);
         }
     });
+}
+
+static WIN32_TRAY_REG: std::sync::Mutex<Option<(isize, u32, isize)>> = std::sync::Mutex::new(None);
+
+fn create_tray_hicon(
+    rgba: &[u8],
+    width: u32,
+    height: u32,
+) -> Option<windows::Win32::UI::WindowsAndMessaging::HICON> {
+    use image::imageops::FilterType;
+    use windows::Win32::UI::WindowsAndMessaging::CreateIcon;
+
+    let rgba_img = image::RgbaImage::from_raw(width, height, rgba.to_vec())?;
+    let resized = if width != 32 || height != 32 {
+        image::imageops::resize(&rgba_img, 32, 32, FilterType::Lanczos3)
+    } else {
+        rgba_img
+    };
+
+    let w = resized.width() as usize;
+    let h = resized.height() as usize;
+    let mut bgra = Vec::with_capacity(w * h * 4);
+    let stride = w.div_ceil(8);
+    let mut and_mask = vec![0u8; stride * h];
+
+    for (y, row) in resized.rows().enumerate() {
+        for (x, px) in row.enumerate() {
+            let [r, g, b, a] = px.0;
+            bgra.extend_from_slice(&[b, g, r, a]);
+            if a == 0 {
+                and_mask[y * stride + x / 8] |= 0x80 >> (x % 8);
+            }
+        }
+    }
+
+    unsafe {
+        CreateIcon(
+            None,
+            w as i32,
+            h as i32,
+            1,
+            32,
+            and_mask.as_ptr(),
+            bgra.as_ptr(),
+        )
+        .ok()
+    }
+}
+
+fn has_win32_tray_icon(tray_hwnd: isize, tray_id: u32) -> bool {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::Shell::{Shell_NotifyIconGetRect, NOTIFYICONIDENTIFIER};
+
+    if tray_hwnd == 0 {
+        return false;
+    }
+    let id = NOTIFYICONIDENTIFIER {
+        cbSize: std::mem::size_of::<NOTIFYICONIDENTIFIER>() as u32,
+        hWnd: HWND(tray_hwnd as *mut std::ffi::c_void),
+        uID: tray_id,
+        ..Default::default()
+    };
+    unsafe { Shell_NotifyIconGetRect(&id).is_ok() }
+}
+
+fn ensure_win32_tray_icon_on_main(
+    tray_hwnd: isize,
+    icon_pixels: Option<(&[u8], u32, u32)>,
+) -> Result<&'static str, String> {
+    use windows::core::w;
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::Shell::{
+        Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_MODIFY, NOTIFYICONDATAW,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, FindWindowW, IsWindow, HICON};
+
+    // Matches tray-icon-0.24.1::counter initial value (1) and WM_USER_TRAYICON (6002).
+    const TRAY_INTERNAL_ID: u32 = 1;
+    const WM_USER_TRAYICON: u32 = 6002;
+
+    if tray_hwnd == 0 {
+        return Err("tray HWND is null".to_string());
+    }
+
+    if has_win32_tray_icon(tray_hwnd, TRAY_INTERNAL_ID) {
+        return Ok("native");
+    }
+
+    let hwnd = HWND(tray_hwnd as *mut std::ffi::c_void);
+    let hicon = icon_pixels
+        .and_then(|(bytes, w, h)| create_tray_hicon(bytes, w, h))
+        .unwrap_or_default();
+    let hicon_valid = !hicon.is_invalid();
+
+    let mut tip = [0u16; 128];
+    for (dst, src) in tip.iter_mut().zip("Zenith".encode_utf16()) {
+        *dst = src;
+    }
+
+    let mut flags = NIF_MESSAGE | NIF_TIP;
+    if hicon_valid {
+        flags |= NIF_ICON;
+    }
+
+    let nid = NOTIFYICONDATAW {
+        cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+        hWnd: hwnd,
+        uID: TRAY_INTERNAL_ID,
+        uFlags: flags,
+        uCallbackMessage: WM_USER_TRAYICON,
+        hIcon: hicon,
+        szTip: tip,
+        ..Default::default()
+    };
+
+    let ok = unsafe { Shell_NotifyIconW(NIM_ADD, &nid) }.as_bool()
+        || unsafe { Shell_NotifyIconW(NIM_MODIFY, &nid) }.as_bool();
+    if !ok {
+        let err = std::io::Error::last_os_error();
+        let shell_tray = unsafe { FindWindowW(w!("Shell_TrayWnd"), None) }
+            .map(|h| !h.is_invalid())
+            .unwrap_or(false);
+        let is_win = unsafe { IsWindow(Some(hwnd)) }.as_bool();
+        if hicon_valid {
+            unsafe {
+                let _ = DestroyIcon(hicon);
+            }
+        }
+        return Err(format!(
+            "Shell_NotifyIconW failed: {err} (shell_tray={shell_tray}, is_win={is_win}, hicon={hicon_valid}, cb={})",
+            nid.cbSize
+        ));
+    }
+
+    if let Ok(mut guard) = WIN32_TRAY_REG.lock() {
+        if let Some((_, _, old_hicon)) = guard.take() {
+            if old_hicon != 0 {
+                unsafe {
+                    let _ = DestroyIcon(HICON(old_hicon as *mut std::ffi::c_void));
+                }
+            }
+        }
+        *guard = Some((tray_hwnd, TRAY_INTERNAL_ID, hicon.0 as isize));
+    }
+
+    if has_win32_tray_icon(tray_hwnd, TRAY_INTERNAL_ID) {
+        Ok("win32_repair")
+    } else {
+        Err("Shell_NotifyIconGetRect failed after NIM_ADD".to_string())
+    }
+}
+
+fn cleanup_win32_tray_icon() {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::Shell::{Shell_NotifyIconW, NIM_DELETE, NOTIFYICONDATAW};
+    use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, HICON};
+
+    if let Ok(mut guard) = WIN32_TRAY_REG.lock() {
+        if let Some((hwnd_raw, tray_id, hicon_raw)) = guard.take() {
+            let nid = NOTIFYICONDATAW {
+                cbSize: std::mem::size_of::<NOTIFYICONDATAW>() as u32,
+                hWnd: HWND(hwnd_raw as *mut std::ffi::c_void),
+                uID: tray_id,
+                ..Default::default()
+            };
+            unsafe {
+                let _ = Shell_NotifyIconW(NIM_DELETE, &nid);
+                if hicon_raw != 0 {
+                    let _ = DestroyIcon(HICON(hicon_raw as *mut std::ffi::c_void));
+                }
+            }
+        }
+    }
 }

@@ -205,10 +205,10 @@ body {
 	padding: 8px 8px;
 	border-radius: 18px 18px 0 0;
 	/* Painted by the .edge-surface child (see components/EdgeSurface.css). */
-	--surface-bg: var(--bloom-bg, rgba(0, 0, 0, 0.8));
+	--surface-bg: var(--zenith-bg, rgba(0, 0, 0, 0.8));
 	isolation: isolate;
 	border: none;
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	position: relative;
 	z-index: 2;
 	transform-origin: bottom center;
@@ -243,7 +243,7 @@ body {
 	flex: none;
 	margin: 0 2px;
 	border-radius: 1px;
-	background: color-mix(in srgb, var(--bloom-text, white) 24%, transparent);
+	background: color-mix(in srgb, var(--zenith-text, white) 24%, transparent);
 	pointer-events: none;
 }
 
@@ -264,7 +264,7 @@ body {
 	align-items: center;
 	border-radius: 12px;
 	background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0.05) 100%);
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 	transition: opacity 0.2s ease;
 }
@@ -358,9 +358,9 @@ body {
 /* Context Menu */
 .context-menu {
 	position: fixed;
-	background: var(--bloom-bg-expanded, rgba(40, 40, 40, 0.95));
+	background: var(--zenith-bg-expanded, rgba(40, 40, 40, 0.95));
 	backdrop-filter: blur(20px);
-	border: 1px solid var(--bloom-border, rgba(255, 255, 255, 0.1));
+	border: 1px solid var(--zenith-border, rgba(255, 255, 255, 0.1));
 	border-radius: 12px;
 	padding: 6px;
 	z-index: 9999;
@@ -374,7 +374,7 @@ body {
 
 .menu-item {
 	padding: 8px 12px;
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	font-size: 13px;
 	border-radius: 6px;
 	cursor: pointer;
@@ -392,7 +392,7 @@ body {
 
 .menu-divider {
 	height: 1px;
-	background: var(--bloom-border, rgba(255, 255, 255, 0.1));
+	background: var(--zenith-border, rgba(255, 255, 255, 0.1));
 	margin: 4px 8px;
 }
 
@@ -413,9 +413,9 @@ body {
 	position: absolute;
 	left: 100%;
 	bottom: -6px;
-	background: var(--bloom-bg-expanded, rgba(40, 40, 40, 0.98));
+	background: var(--zenith-bg-expanded, rgba(40, 40, 40, 0.98));
 	backdrop-filter: blur(25px);
-	border: 1px solid var(--bloom-border, rgba(255, 255, 255, 0.1));
+	border: 1px solid var(--zenith-border, rgba(255, 255, 255, 0.1));
 	border-radius: 12px;
 	padding: 6px;
 	min-width: 140px;
@@ -470,11 +470,11 @@ body {
 	pointer-events: auto;
 	width: 360px;
 	height: 440px;
-	background: var(--bloom-bg-expanded, rgba(30, 30, 30, 0.95));
+	background: var(--zenith-bg-expanded, rgba(30, 30, 30, 0.95));
 	backdrop-filter: blur(40px) saturate(1.6);
 	-webkit-backdrop-filter: blur(40px) saturate(1.6);
 	border-radius: 18px;
-	border: 1px solid var(--bloom-border, rgba(255, 255, 255, 0.12));
+	border: 1px solid var(--zenith-border, rgba(255, 255, 255, 0.12));
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
@@ -491,11 +491,11 @@ body {
 	margin: 10px 10px 4px;
 	padding: 10px 12px;
 	border-radius: 12px;
-	background: var(--bloom-group-bg, rgba(255, 255, 255, 0.06));
+	background: var(--zenith-group-bg, rgba(255, 255, 255, 0.06));
 }
 
 .popup-search-icon {
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.35));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.35));
 	flex-shrink: 0;
 }
 
@@ -504,7 +504,7 @@ body {
 	background: none;
 	border: none;
 	outline: none;
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	font-size: 14px;
 	font-weight: 400;
 	font-family: inherit;
@@ -514,7 +514,7 @@ body {
 }
 
 .popup-search-input::placeholder {
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.3));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.3));
 }
 
 .popup-apps-scroll {
@@ -529,7 +529,7 @@ body {
 }
 
 .popup-apps-scroll::-webkit-scrollbar-thumb {
-	background: var(--bloom-scrollbar-thumb, rgba(255, 255, 255, 0.08));
+	background: var(--zenith-scrollbar-thumb, rgba(255, 255, 255, 0.08));
 	border-radius: 2px;
 }
 
@@ -551,7 +551,7 @@ body {
 	font-weight: 600;
 	letter-spacing: 0.06em;
 	text-transform: uppercase;
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.4));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.4));
 }
 
 /* Skeleton rows match real row geometry so the spinner-to-list swap
@@ -562,7 +562,7 @@ body {
 
 .popup-skeleton-box,
 .popup-skeleton-line {
-	background: var(--bloom-group-bg, rgba(255, 255, 255, 0.06));
+	background: var(--zenith-group-bg, rgba(255, 255, 255, 0.06));
 	animation: popup-pulse 1.1s ease-in-out infinite;
 }
 
@@ -583,16 +583,16 @@ body {
 }
 
 .popup-app-row:hover {
-	background: var(--bloom-group-bg, rgba(255, 255, 255, 0.08));
+	background: var(--zenith-group-bg, rgba(255, 255, 255, 0.08));
 }
 
 /* Selected (keyboard) row: accent-tinted with a visible edge so the focused
    option never blends into the list. Fallback first for older engines. */
 .popup-app-row.selected {
 	background: rgba(255, 255, 255, 0.13);
-	background: color-mix(in srgb, var(--bloom-accent, #007aff) 28%, transparent);
+	background: color-mix(in srgb, var(--zenith-accent, #007aff) 28%, transparent);
 	box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
-	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bloom-accent, #007aff) 55%, transparent);
+	box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--zenith-accent, #007aff) 55%, transparent);
 }
 
 .popup-app-row.selected .popup-app-pin {
@@ -606,7 +606,7 @@ body {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	background: var(--bloom-group-bg, rgba(255, 255, 255, 0.06));
+	background: var(--zenith-group-bg, rgba(255, 255, 255, 0.06));
 	overflow: hidden;
 	flex-shrink: 0;
 }
@@ -621,14 +621,14 @@ body {
 .popup-app-initial {
 	font-size: 13px;
 	font-weight: 600;
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.4));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.4));
 }
 
 .popup-app-name {
 	flex: 1;
 	font-size: 14px;
 	font-weight: 500;
-	color: var(--bloom-text, rgba(255, 255, 255, 0.9));
+	color: var(--zenith-text, rgba(255, 255, 255, 0.9));
 	white-space: nowrap;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -644,7 +644,7 @@ body {
 	border-radius: 7px;
 	font-size: 15px;
 	font-weight: 500;
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.25));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.25));
 	opacity: 0;
 	transition: all 0.15s ease;
 	flex-shrink: 0;
@@ -657,24 +657,24 @@ body {
 /* Already on the dock: always show the check, row is inert. */
 .popup-app-row.is-pinned .popup-app-pin {
 	opacity: 1;
-	color: var(--bloom-accent, #007aff);
+	color: var(--zenith-accent, #007aff);
 }
 
 .popup-app-row:hover .popup-app-pin:hover {
-	background: var(--bloom-group-bg, rgba(255, 255, 255, 0.12));
-	color: var(--bloom-text, rgba(255, 255, 255, 0.9));
+	background: var(--zenith-group-bg, rgba(255, 255, 255, 0.12));
+	color: var(--zenith-text, rgba(255, 255, 255, 0.9));
 }
 
 .popup-empty {
 	padding: 40px;
 	text-align: center;
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.3));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.3));
 	font-size: 13px;
 	font-weight: 500;
 }
 
-/* Invert Bloom logo / Settings icon in light mode */
-.light-mode .bloom-icon-img {
+/* Invert Zenith logo / Settings icon in light mode */
+.light-mode .zenith-icon-img {
 	filter: invert(1) brightness(0.15) contrast(1.2);
 }
 
@@ -685,7 +685,7 @@ body {
 }
 
 .light-mode .dock-icon svg {
-	stroke: var(--bloom-text);
+	stroke: var(--zenith-text);
 }
 
 .light-mode .dock-icon-only .dock-icon {
@@ -693,69 +693,69 @@ body {
 }
 
 .light-mode .active-indicator {
-	background: var(--bloom-text);
-	box-shadow: 0 0 3px var(--bloom-text);
+	background: var(--zenith-text);
+	box-shadow: 0 0 3px var(--zenith-text);
 }
 
 .light-mode .tooltip {
-	background: var(--bloom-bg-expanded);
-	color: var(--bloom-text);
-	border-color: var(--bloom-border);
+	background: var(--zenith-bg-expanded);
+	color: var(--zenith-text);
+	border-color: var(--zenith-border);
 	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .light-mode .start-menu,
 .light-mode .context-menu,
 .light-mode .submenu {
-	background: var(--bloom-bg-expanded);
-	border-color: var(--bloom-border);
+	background: var(--zenith-bg-expanded);
+	border-color: var(--zenith-border);
 	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
 }
 
 .light-mode .menu-item {
-	color: var(--bloom-text);
+	color: var(--zenith-text);
 }
 
 .light-mode .menu-item:hover {
-	background: var(--bloom-group-bg);
+	background: var(--zenith-group-bg);
 }
 
 .light-mode .menu-divider {
-	background: var(--bloom-border);
+	background: var(--zenith-border);
 }
 
 .light-mode .add-app-popup {
-	background: var(--bloom-bg-expanded);
-	border-color: var(--bloom-border);
+	background: var(--zenith-bg-expanded);
+	border-color: var(--zenith-border);
 	box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.1);
 }
 
 .light-mode .popup-search-icon {
-	color: var(--bloom-text-muted);
+	color: var(--zenith-text-muted);
 }
 
 .light-mode .popup-search-input {
-	color: var(--bloom-text);
+	color: var(--zenith-text);
 }
 
 .light-mode .popup-search-input::placeholder {
-	color: var(--bloom-text-muted);
+	color: var(--zenith-text-muted);
 }
 
 .light-mode .popup-app-name {
-	color: var(--bloom-text);
+	color: var(--zenith-text);
 }
 
 .light-mode .popup-app-initial {
-	color: var(--bloom-text-muted);
+	color: var(--zenith-text-muted);
 }
 
 .light-mode .popup-app-pin {
-	color: var(--bloom-text-muted);
+	color: var(--zenith-text-muted);
 }
 
 .light-mode .popup-app-row.selected {
-	background: var(--bloom-group-bg);
+	background: var(--zenith-group-bg);
 }
 
 .dock-toast {

@@ -2,7 +2,18 @@
 	"$schema": "../gen/schemas/desktop-schema.json",
 	"identifier": "default",
 	"description": "Capability for all windows",
-	"windows": ["main", "overlay", "settings", "dock", "dock-*", "main-*"],
+	"windows": [
+		"main",
+		"overlay",
+		"settings",
+		"dock",
+		"dock-*",
+		"main-*",
+		"translator-card",
+		"translator-overlay",
+		"translator-region",
+		"translator-spinner"
+	],
 	"permissions": [
 		"core:default",
 		"opener:default",

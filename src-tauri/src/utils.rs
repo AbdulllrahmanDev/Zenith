@@ -1256,43 +1256,6 @@ pub fn save_setting_file(
 const CURRENT_IDENTIFIER: &str = "io.github.abdulllrahmandev.zenith";
 /// Directory name used by earlier builds. Only read to carry users' files over.
 const PREVIOUS_IDENTIFIER: &str = "com.sehaz.zenith";
-/// Setting-key prefix used by earlier builds, and the one used now.
-const PREVIOUS_KEY_PREFIX: &str = "bloom-";
-const KEY_PREFIX: &str = "zenith-";
-
-/// Rewrites setting keys and start-icon values saved by earlier builds.
-/// Returns true when anything changed. A value already stored under the new
-/// key name wins over the old one.
-pub fn migrate_previous_settings(
-    settings: &mut std::collections::HashMap<String, serde_json::Value>,
-) -> bool {
-    let mut changed = false;
-
-    let old_keys: Vec<String> = settings
-        .keys()
-        .filter(|key| key.starts_with(PREVIOUS_KEY_PREFIX))
-        .cloned()
-        .collect();
-    for old_key in old_keys {
-        if let Some(value) = settings.remove(&old_key) {
-            let new_key = format!("{}{}", KEY_PREFIX, &old_key[PREVIOUS_KEY_PREFIX.len()..]);
-            settings.entry(new_key).or_insert(value);
-            changed = true;
-        }
-    }
-
-    for value in settings.values_mut() {
-        let renamed = match value.as_str() {
-            Some("bloom-colorful") => "zenith-holographic",
-            Some("bloom-golden") => "zenith-gold",
-            Some("bloom-biscuit") => "zenith-ivory-emerald",
-            _ => continue,
-        };
-        *value = serde_json::Value::String(renamed.to_string());
-        changed = true;
-    }
-    changed
-}
 
 fn copy_dir_recursive(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
     std::fs::create_dir_all(to)?;
@@ -1334,15 +1297,7 @@ pub fn migrate_previous_data() {
         }
     }
 
-    // A missing file reads as an empty map, so nothing is written for new installs.
-    if let Ok(mut settings) = read_settings_file(&settings_path) {
-        if migrate_previous_settings(&mut settings) {
-            match write_settings_file(&settings_path, &settings) {
-                Ok(()) => crate::diagnostics::record("migration", "renamed setting keys"),
-                Err(e) => crate::diagnostics::record("migration", &e),
-            }
-        }
-    }
+
 }
 
 /// Load settings.json into the in-memory cache. Call once at startup.
@@ -1389,17 +1344,7 @@ pub fn get_zenith_scale(_app: &tauri::AppHandle) -> f64 {
 pub fn get_setting_str(_app: &tauri::AppHandle, key: &str) -> Option<String> {
     let cache = crate::state::SETTINGS_CACHE.get()?;
     let guard = cache.lock().ok()?;
-    if let Some(s) = guard.get(key).and_then(|v| v.as_str()) {
-        return Some(s.to_string());
-    }
-    let alt_key = if let Some(rest) = key.strip_prefix("zenith-") {
-        format!("bloom-{rest}")
-    } else if let Some(rest) = key.strip_prefix("bloom-") {
-        format!("zenith-{rest}")
-    } else {
-        return None;
-    };
-    guard.get(&alt_key).and_then(|v| v.as_str()).map(|s| s.to_string())
+    guard.get(key).and_then(|v| v.as_str()).map(|s| s.to_string())
 }
 
 fn dock_setting_enabled(value: Option<&serde_json::Value>) -> bool {
@@ -1413,11 +1358,7 @@ pub fn dock_enabled() -> bool {
         cache
             .lock()
             .map(|settings| {
-                dock_setting_enabled(
-                    settings
-                        .get("zenith-dock-enabled")
-                        .or_else(|| settings.get("bloom-dock-enabled")),
-                )
+                dock_setting_enabled(settings.get("zenith-dock-enabled"))
             })
             .unwrap_or(false)
     })
@@ -1797,6 +1738,8 @@ mod tests {
         std::fs::remove_dir(path.parent().unwrap()).unwrap();
     }
 
+
+
     #[test]
     fn taskbar_marker_round_trips_the_original_state() {
         for state in [0, 1, 2, 3] {
@@ -1931,35 +1874,7 @@ mod tests {
         assert!(!dock_setting_enabled(Some(&serde_json::json!(true))));
     }
 
-    #[test]
-    fn migrates_previous_setting_keys_and_icon_values() {
-        use super::migrate_previous_settings;
-        use std::collections::HashMap;
 
-        let mut settings: HashMap<String, serde_json::Value> = HashMap::new();
-        settings.insert("bloom-scale".into(), serde_json::json!("1.2"));
-        settings.insert("zenith-theme-mode".into(), serde_json::json!("dark"));
-        settings.insert("bloom-theme-mode".into(), serde_json::json!("light"));
-        settings.insert(
-            "bloom-dock-start-icon".into(),
-            serde_json::json!("bloom-golden"),
-        );
-
-        assert!(migrate_previous_settings(&mut settings));
-        assert_eq!(settings.get("zenith-scale"), Some(&serde_json::json!("1.2")));
-        // A value already stored under the new name wins over the old one.
-        assert_eq!(
-            settings.get("zenith-theme-mode"),
-            Some(&serde_json::json!("dark"))
-        );
-        assert_eq!(
-            settings.get("zenith-dock-start-icon"),
-            Some(&serde_json::json!("zenith-gold"))
-        );
-        assert!(settings.keys().all(|key| !key.starts_with("bloom-")));
-        // Running it again changes nothing.
-        assert!(!migrate_previous_settings(&mut settings));
-    }
 
     #[test]
     fn current_identifier_matches_tauri_config() {

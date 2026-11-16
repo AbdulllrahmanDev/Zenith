@@ -66,8 +66,8 @@ body,
 	justify-content: center;
 	padding: 28px 36px;
 	border-radius: 20px;
-	background: var(--bloom-bg, rgba(18, 18, 22, 0.92));
-	border: 1px solid var(--bloom-border, rgba(255, 255, 255, 0.12));
+	background: var(--zenith-bg, rgba(18, 18, 22, 0.92));
+	border: 1px solid var(--zenith-border, rgba(255, 255, 255, 0.12));
 	box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
 	min-width: 260px;
 }
@@ -80,7 +80,7 @@ body,
 }
 
 .update-splash-text {
-	color: var(--bloom-text, rgba(255, 255, 255, 0.9));
+	color: var(--zenith-text, rgba(255, 255, 255, 0.9));
 	font-family:
 		"Inter",
 		-apple-system,
@@ -97,14 +97,14 @@ body,
 .update-progress-bar {
 	width: 200px;
 	height: 4px;
-	background: var(--bloom-border, rgba(255, 255, 255, 0.12));
+	background: var(--zenith-border, rgba(255, 255, 255, 0.12));
 	border-radius: 2px;
 	overflow: hidden;
 }
 
 .update-progress-fill {
 	height: 100%;
-	background: var(--bloom-text, rgba(255, 255, 255, 0.9));
+	background: var(--zenith-text, rgba(255, 255, 255, 0.9));
 	border-radius: 2px;
 	transition: width 0.15s linear;
 }
@@ -118,7 +118,7 @@ body,
 	transform: translateY(-50%);
 	overflow: visible;
 	transform-origin: left center;
-	--surface-bg: var(--bloom-bg, rgba(0, 0, 0, 0.8));
+	--surface-bg: var(--zenith-bg, rgba(0, 0, 0, 0.8));
 	isolation: isolate;
 }
 
@@ -169,7 +169,7 @@ body,
 	bottom: 0;
 	left: 0;
 	width: 100%;
-	background: var(--bloom-text, white);
+	background: var(--zenith-text, white);
 	border-radius: 20px;
 }
 
@@ -184,7 +184,7 @@ body,
 	padding: 0;
 	border: none;
 	background: transparent;
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	cursor: pointer;
 }
 
@@ -277,11 +277,11 @@ body,
 	overflow-y: auto;
 	overflow-x: hidden;
 	scrollbar-width: thin;
-	scrollbar-color: var(--bloom-border, rgba(255, 255, 255, 0.2)) transparent;
+	scrollbar-color: var(--zenith-border, rgba(255, 255, 255, 0.2)) transparent;
 }
 
 .volume-mixer-empty {
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.6));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.6));
 	font-size: 11px;
 	font-weight: 500;
 	font-family:
@@ -323,7 +323,7 @@ body,
 	bottom: 0;
 	left: 0;
 	width: 100%;
-	background: var(--bloom-text, white);
+	background: var(--zenith-text, white);
 	border-radius: 20px;
 	pointer-events: none;
 }
@@ -342,7 +342,7 @@ body,
 	padding: 0;
 	border: none;
 	background: transparent;
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	cursor: pointer;
 }
 
@@ -360,8 +360,8 @@ body,
 	align-items: center;
 	justify-content: center;
 	border-radius: 5px;
-	background: var(--bloom-border, rgba(255, 255, 255, 0.15));
-	color: var(--bloom-text, white);
+	background: var(--zenith-border, rgba(255, 255, 255, 0.15));
+	color: var(--zenith-text, white);
 	font-size: 9px;
 	font-weight: 700;
 	font-family:
@@ -433,7 +433,7 @@ body,
 	position: relative;
 	pointer-events: auto;
 	/* Painted by its EdgeSurface child (see components/EdgeSurface.css). */
-	--surface-bg: var(--bloom-bg, rgba(0, 0, 0, 0.8));
+	--surface-bg: var(--zenith-bg, rgba(0, 0, 0, 0.8));
 	isolation: isolate;
 }
 
@@ -461,7 +461,7 @@ body,
 	bottom: 0;
 	left: 0;
 	width: 100%;
-	background: var(--bloom-text, white);
+	background: var(--zenith-text, white);
 	border-radius: 20px;
 }
 
@@ -471,7 +471,7 @@ body,
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	color: var(--bloom-text, rgba(255, 255, 255, 0.95));
+	color: var(--zenith-text, rgba(255, 255, 255, 0.95));
 	margin-top: 10px;
 }
 

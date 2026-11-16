@@ -10,9 +10,9 @@ interface GeneralTabProps {
 	toggleUpdateIndicator: () => void;
 	lowBatteryThreshold: number;
 	handleThresholdChange: (val: number) => void;
-	restartBloom: () => void;
+	restartZenith: () => void;
 	resetToDefaults: () => void;
-	quitBloom: () => void;
+	quitZenith: () => void;
 }
 
 export function GeneralTab({
@@ -24,9 +24,9 @@ export function GeneralTab({
 	toggleUpdateIndicator,
 	lowBatteryThreshold,
 	handleThresholdChange,
-	restartBloom,
+	restartZenith,
 	resetToDefaults,
-	quitBloom
+	quitZenith
 }: GeneralTabProps) {
 	return (
 		<>
@@ -90,7 +90,7 @@ export function GeneralTab({
 					label="Restart Zenith"
 					desc="Reinitialize all components"
 					action
-					onClick={restartBloom}
+					onClick={restartZenith}
 				/>
 				<SettingRow
 					icon={LogOut}
@@ -98,7 +98,7 @@ export function GeneralTab({
 					desc="Exit application completely"
 					action
 					danger
-					onClick={quitBloom}
+					onClick={quitZenith}
 					divider={false}
 				/>
 			</div>

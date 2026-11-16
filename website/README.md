@@ -74,7 +74,7 @@ export default defineConfig([
 
 ## Announcements
 
-`public/announcements.json` is polled once per day by the Bloom app (3.9.1+) and shown as a persistent notch card and a Settings banner until dismissed. It is served at `https://bloom.sehaz.space/announcements.json`.
+`public/announcements.json` is polled once per day by the Zenith app (3.9.1+) and shown as a persistent notch card and a Settings banner until dismissed. It is served at `https://zenith.sehaz.space/announcements.json`.
 
 Publish one by replacing the contents:
 
@@ -83,7 +83,7 @@ Publish one by replacing the contents:
 	"id": "2026-09-26-updater-manual-update",
 	"severity": "warning",
 	"title": "Update checks may fail on some networks",
-	"body": "Bloom 3.8.7 and 3.9.0 can time out reaching GitHub. If no update is found, install the latest release manually.",
+	"body": "Zenith 3.8.7 and 3.9.0 can time out reaching GitHub. If no update is found, install the latest release manually.",
 	"url": "https://github.com/AbdulllrahmanDev/Zenith/releases/latest"
 }
 ```

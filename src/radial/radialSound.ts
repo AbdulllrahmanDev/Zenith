@@ -44,12 +44,12 @@ export function isRadialSoundId(value: unknown): value is RadialSoundId {
 export function noteForHighlight(
   highlight: string | null,
   aimedAway: boolean,
-  elapsedSinceBloomMs: number,
+  elapsedSinceOpenMs: number,
   sounds: RadialSounds
 ): RadialSoundId | null {
   if (!sounds.hover || highlight === null) return null;
   if (highlight === HUB_TARGET && !aimedAway) return null;
-  if (sounds.open && elapsedSinceBloomMs < OPEN_SOUND_QUIET_MS) return null;
+  if (sounds.open && elapsedSinceOpenMs < OPEN_SOUND_QUIET_MS) return null;
   return sounds.hover;
 }
 
@@ -262,7 +262,7 @@ export function playRadialSound(id: RadialSoundId) {
   synth(c, voiceGain, t);
 }
 
-export function playRadialBloom(volumePercent = 70) {
+export function playRadialOpen(volumePercent = 70) {
   setRadialSoundVolume(volumePercent);
   playRadialSound('sub-tick');
 }

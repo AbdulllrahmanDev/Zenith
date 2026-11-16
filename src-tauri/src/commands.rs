@@ -3579,6 +3579,7 @@ pub fn release_appbars(handle: &AppHandle) {
 pub fn restore_taskbar_and_exit(handle: &AppHandle) {
     crate::diagnostics::record("shutdown", "restoring taskbar and releasing AppBars");
     SHUTTING_DOWN.store(true, Ordering::Relaxed);
+    crate::translator::shutdown();
     release_appbars(handle);
     set_taskbar_visibility(true, true);
     NATIVE_TASKBAR_HIDDEN.store(false, Ordering::Relaxed);
@@ -3600,6 +3601,7 @@ pub async fn quit_zenith(handle: AppHandle) {
 pub async fn restart_zenith(handle: AppHandle) {
     crate::diagnostics::record("restart", "restoring taskbar and releasing AppBars");
     SHUTTING_DOWN.store(true, Ordering::Relaxed);
+    crate::translator::shutdown();
     release_appbars(&handle);
     if let Some(w) = handle.get_webview_window("settings") {
         let _ = w.destroy();
@@ -3653,52 +3655,24 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let settings = crate::utils::save_setting_file(&path, key.clone(), value.clone())?;
-    let settings = if key == "zenith-notch-mode" {
-        crate::utils::save_setting_file(&path, "bloom-notch-mode".into(), value.clone()).unwrap_or(settings)
-    } else if key == "bloom-notch-mode" {
-        crate::utils::save_setting_file(&path, "zenith-notch-mode".into(), value.clone()).unwrap_or(settings)
-    } else {
-        settings
-    };
-
-    let alt_key = if let Some(rest) = key.strip_prefix("zenith-") {
-        Some(format!("bloom-{rest}"))
-    } else if let Some(rest) = key.strip_prefix("bloom-") {
-        Some(format!("zenith-{rest}"))
-    } else {
-        None
-    };
 
     // Broadcast so all windows sync
     let _ = app.emit(
         "settings-changed",
         serde_json::json!({ "key": &key, "value": &settings[&key] }),
     );
-    if let Some(ref alt) = alt_key {
-        if let Some(alt_val) = settings.get(alt) {
-            let _ = app.emit(
-                "settings-changed",
-                serde_json::json!({ "key": alt, "value": alt_val }),
-            );
-        }
-    }
 
-    if key == "zenith-scale" || key == "bloom-scale" {
+    if key == "zenith-scale" {
         re_register_appbars(&app, &settings);
-    } else if key == "zenith-notch-mode" || key == "bloom-notch-mode" {
-        let mode_val = settings
-            .get("zenith-notch-mode")
-            .or_else(|| settings.get("bloom-notch-mode"))
-            .and_then(|v| v.as_str());
+    } else if key == "zenith-notch-mode" {
+        let mode_val = settings.get("zenith-notch-mode").and_then(|v| v.as_str());
         let reserve = crate::services::notch_mode_reserves_work_area(mode_val);
         crate::services::apply_main_appbar_mode(&app, reserve);
-    } else if key == "zenith-notch-display"
-        || key == "bloom-notch-display"
-        || key == "zenith-dock-display"
-        || key == "bloom-dock-display"
-    {
+    } else if key == "zenith-notch-display" || key == "zenith-dock-display" {
         reposition_displays(app.clone());
         re_register_appbars(&app, &settings);
+    } else if key == "zenith-translator-enabled" || key.starts_with("zenith-translator-hotkey-") {
+        crate::translator::sync_hotkeys_from_settings(&app);
     }
     Ok(())
 }
@@ -3709,17 +3683,7 @@ pub fn load_settings(app: AppHandle) -> Result<HashMap<String, serde_json::Value
         Ok(p) => p.join("settings.json"),
         Err(_) => return Ok(HashMap::new()),
     };
-    let mut map = crate::utils::read_settings_file(&path)?;
-    let entries: Vec<(String, serde_json::Value)> =
-        map.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-    for (k, v) in entries {
-        if let Some(rest) = k.strip_prefix("zenith-") {
-            map.entry(format!("bloom-{rest}")).or_insert(v);
-        } else if let Some(rest) = k.strip_prefix("bloom-") {
-            map.entry(format!("zenith-{rest}")).or_insert(v);
-        }
-    }
-    Ok(map)
+    crate::utils::read_settings_file(&path)
 }
 
 /// Whether settings.json exists and parses, which load_settings can't tell
@@ -4346,11 +4310,11 @@ fn read_settings_import(reader: impl std::io::Read) -> Result<String, String> {
 }
 
 fn apply_imported_settings(app: &AppHandle, settings: &str) -> Result<(), String> {
-    let mut imported: HashMap<String, serde_json::Value> =
+    let imported: HashMap<String, serde_json::Value> =
         serde_json::from_str(settings.trim_start_matches('\u{feff}'))
             .map_err(|e| format!("Invalid JSON: {}", e))?;
-    // Exports from earlier builds use the old key names.
-    crate::utils::migrate_previous_settings(&mut imported);
+
+
 
     let path = app
         .path()
@@ -5002,4 +4966,89 @@ pub async fn activate_tray_icon(tray_id: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || crate::tray::interact(&tray_id, false))
         .await
         .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn translator_get_local_status(
+    app: AppHandle,
+) -> crate::translator::local_runtime::LocalDownloadStatus {
+    crate::translator::get_download_status(&app)
+}
+
+#[tauri::command]
+pub async fn translator_start_download(app: AppHandle) -> Result<(), String> {
+    crate::translator::start_model_and_runtime_download(app).await
+}
+
+#[tauri::command]
+pub fn translator_cancel_download() {
+    crate::translator::local_runtime::cancel_download();
+}
+
+#[tauri::command]
+pub fn translator_delete_local_model(app: AppHandle) -> Result<(), String> {
+    crate::translator::delete_model(&app)
+}
+
+#[tauri::command]
+pub async fn translator_test_connection(app: AppHandle) -> Result<String, String> {
+    crate::translator::test_connection(&app).await
+}
+
+#[tauri::command]
+pub fn translator_set_hotkeys_paused(paused: bool) {
+    crate::translator::hotkeys::set_paused(paused);
+}
+
+#[tauri::command]
+pub fn translator_submit_region(app: AppHandle, x: i32, y: i32, w: i32, h: i32) {
+    crate::translator::submit_region_selection(app, x, y, w, h);
+}
+
+#[tauri::command]
+pub fn translator_cancel_region(app: AppHandle) {
+    crate::translator::clear_window_state("translator-region");
+    if let Some(win) = app.get_webview_window("translator-region") {
+        let _ = win.hide();
+    }
+}
+
+#[tauri::command]
+pub fn translator_close_overlay(app: AppHandle) {
+    crate::translator::close_overlay(&app);
+}
+
+#[tauri::command]
+pub fn translator_close_card(app: AppHandle) {
+    crate::translator::clear_window_state("translator-card");
+    if let Some(win) = app.get_webview_window("translator-card") {
+        let _ = win.hide();
+    }
+}
+
+#[tauri::command]
+pub fn translator_get_initial_state(window: String) -> Option<serde_json::Value> {
+    crate::translator::get_initial_state(&window)
+}
+
+#[tauri::command]
+pub fn translator_save_card_position(app: AppHandle, x: i32, y: i32) {
+    crate::translator::save_card_position(&app, x, y);
+}
+
+#[tauri::command]
+pub fn translator_copy_text(text: String) -> bool {
+    crate::translator::copy_text(&text)
+}
+
+#[tauri::command]
+pub fn translator_trigger_action(app: AppHandle, action: String) {
+    match action.as_str() {
+        "ar_to_en" => crate::translator::trigger_ar_to_en(app),
+        "any_to_ar" => crate::translator::trigger_any_to_ar(app),
+        "screen_overlay" => crate::translator::trigger_screen_overlay(app, None),
+        "screen_region" => crate::translator::trigger_screen_overlay(app, Some("region".into())),
+        "fullpage_overlay" => crate::translator::trigger_fullpage_overlay(app),
+        _ => {}
+    }
 }

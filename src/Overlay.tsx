@@ -172,7 +172,7 @@ const MIXER_MAX_PANEL_WIDTH =
 	MIXER_PANEL_PADDING * 2 +
 	MIXER_MAX_COLUMNS * MIXER_COLUMN_WIDTH +
 	(MIXER_MAX_COLUMNS - 1) * MIXER_COLUMN_GAP;
-// A HUD card's size in CSS px before `bloom-scale`; the backend's edge
+// A HUD card's size in CSS px before `zenith-scale`; the backend's edge
 // hit-testing uses the same 42x196.
 const HUD_CARD_WIDTH = 42;
 const HUD_CARD_HEIGHT = 196;
@@ -707,24 +707,24 @@ function OverlayApp() {
 	const [isMuted, setIsMuted] = useState(false);
 	const [mixerExpanded, setMixerExpanded] = useState(false);
 	const [volumeOverlayEnabled, setVolumeOverlayEnabled] = useState(
-		() => localStorage.getItem("bloom-volume-overlay-enabled") !== "false"
+		() => localStorage.getItem("zenith-volume-overlay-enabled") !== "false"
 	);
 	const [volumeEdgeEnabled, setVolumeEdgeEnabled] = useState(
-		() => localStorage.getItem("bloom-volume-edge-enabled") !== "false"
+		() => localStorage.getItem("zenith-volume-edge-enabled") !== "false"
 	);
 
 	// Brightness state
 	const [brightness, setBrightness] = useState(50);
 	const [brightnessOverlayEnabled, setBrightnessOverlayEnabled] = useState(
-		() => localStorage.getItem("bloom-brightness-overlay-enabled") !== "false"
+		() => localStorage.getItem("zenith-brightness-overlay-enabled") !== "false"
 	);
 	const [brightnessEdgeEnabled, setBrightnessEdgeEnabled] = useState(
-		() => localStorage.getItem("bloom-brightness-edge-enabled") !== "false"
+		() => localStorage.getItem("zenith-brightness-edge-enabled") !== "false"
 	);
 
 	// Shared state
 	const [scale, setScale] = useState(() =>
-		parseFloat(localStorage.getItem("bloom-scale") || "1.0")
+		parseFloat(localStorage.getItem("zenith-scale") || "1.0")
 	);
 	const timeoutRef = useRef<any>(null);
 	const hideWindowTimeoutRef = useRef<any>(null);
@@ -747,14 +747,14 @@ function OverlayApp() {
 			.then(async (settings: any) => {
 				if (await reloadIfMirrorWasStale(settings)) return;
 				if (!settings) return;
-				if (settings["bloom-scale"] !== undefined) {
-					setScale(parseFloat(settings["bloom-scale"]));
+				if (settings["zenith-scale"] !== undefined) {
+					setScale(parseFloat(settings["zenith-scale"]));
 				}
-				if (settings["bloom-brightness-overlay-enabled"] !== undefined) {
-					setBrightnessOverlayEnabled(settings["bloom-brightness-overlay-enabled"] === "true");
+				if (settings["zenith-brightness-overlay-enabled"] !== undefined) {
+					setBrightnessOverlayEnabled(settings["zenith-brightness-overlay-enabled"] === "true");
 				}
-				if (settings["bloom-volume-overlay-enabled"] !== undefined) {
-					setVolumeOverlayEnabled(settings["bloom-volume-overlay-enabled"] === "true");
+				if (settings["zenith-volume-overlay-enabled"] !== undefined) {
+					setVolumeOverlayEnabled(settings["zenith-volume-overlay-enabled"] === "true");
 				}
 				if (settings["zenith-mouse-radial-enabled"] !== undefined) {
 					setMouseRadialEnabled(settings["zenith-mouse-radial-enabled"] !== "false");
@@ -865,14 +865,14 @@ function OverlayApp() {
 
 	// ── Splash Detection ──
 	useEffect(() => {
-		const firstRun = localStorage.getItem("bloom-first-run") === null;
-		const storedVersion = localStorage.getItem("bloom-app-version");
+		const firstRun = localStorage.getItem("zenith-first-run") === null;
+		const storedVersion = localStorage.getItem("zenith-app-version");
 
 		const showSplash = (version?: string) => {
 			splashActiveRef.current = true;
 			setMode("splash");
 			invoke("set_splash_fullscreen", { fullscreen: true });
-			if (version) localStorage.setItem("bloom-app-version", version);
+			if (version) localStorage.setItem("zenith-app-version", version);
 			setTimeout(() => emit("splash-done"), 2800);
 		};
 
@@ -881,7 +881,7 @@ function OverlayApp() {
 			showSplash();
 			// Still try to store the version in the background
 			getVersion()
-				.then((v) => localStorage.setItem("bloom-app-version", v))
+				.then((v) => localStorage.setItem("zenith-app-version", v))
 				.catch(() => {});
 			return;
 		}
@@ -896,13 +896,13 @@ function OverlayApp() {
 				}
 			})
 			.catch(() => {
-				// Version check failed — let bloom start
+				// Version check failed — let Zenith start
 				emit("splash-done");
 			});
 	}, []);
 
 	const onSplashComplete = useCallback(() => {
-		localStorage.setItem("bloom-first-run", "done");
+		localStorage.setItem("zenith-first-run", "done");
 		setTimeout(() => {
 			splashActiveRef.current = false;
 			setMode("idle");
@@ -1025,11 +1025,11 @@ function OverlayApp() {
 	]);
 
 	useSettingsSync({
-		"bloom-volume-overlay-enabled": setVolumeOverlayEnabled,
-		"bloom-volume-edge-enabled": setVolumeEdgeEnabled,
-		"bloom-brightness-overlay-enabled": setBrightnessOverlayEnabled,
-		"bloom-brightness-edge-enabled": setBrightnessEdgeEnabled,
-		"bloom-scale": setScale,
+		"zenith-volume-overlay-enabled": setVolumeOverlayEnabled,
+		"zenith-volume-edge-enabled": setVolumeEdgeEnabled,
+		"zenith-brightness-overlay-enabled": setBrightnessOverlayEnabled,
+		"zenith-brightness-edge-enabled": setBrightnessEdgeEnabled,
+		"zenith-scale": setScale,
 		"zenith-mouse-radial-enabled": setMouseRadialEnabled,
 		"zenith-mouse-trigger-mode": (v: unknown) => setMouseTriggerMode(v === "click" ? "click" : "hold"),
 		"zenith-mouse-placement": (v: unknown) => setMousePlacement(v === "center" ? "center" : "cursor"),

@@ -1905,7 +1905,7 @@ export function MouseTab({
 						</SettingRow>
 
 						<div style={{ padding: "10px 14px 4px 14px" }}>
-							<span style={{ fontSize: 11, fontWeight: 600, color: "var(--bloom-text, #fff)" }}>
+							<span style={{ fontSize: 11, fontWeight: 600, color: "var(--zenith-text, #fff)" }}>
 								Gesture Mode
 							</span>
 							<div className="rovyl-visual-grid">
@@ -1938,7 +1938,7 @@ export function MouseTab({
 						</div>
 
 						<div style={{ padding: "4px 14px 4px 14px" }}>
-							<span style={{ fontSize: 11, fontWeight: 600, color: "var(--bloom-text, #fff)" }}>
+							<span style={{ fontSize: 11, fontWeight: 600, color: "var(--zenith-text, #fff)" }}>
 								Aiming Mechanics
 							</span>
 							<div className="rovyl-visual-grid">
@@ -2226,7 +2226,7 @@ export function MouseTab({
 					<SettingRow
 						icon={Volume2}
 						label="Synthesized Haptic Audio"
-						desc="Zero-latency WebAudio procedural sound cues on wheel bloom and slice hover"
+						desc="Zero-latency WebAudio procedural sound cues on wheel open and slice hover"
 					>
 						<label className="toggle-switch">
 							<input
@@ -2263,7 +2263,7 @@ export function MouseTab({
 							<SettingRow
 								icon={Sparkles}
 								label="Wheel Open Voice"
-								desc="Synthesizer voice played when the radial menu blooms"
+								desc="Synthesizer voice played when the radial menu opens"
 							>
 								<select
 									className="settings-select"

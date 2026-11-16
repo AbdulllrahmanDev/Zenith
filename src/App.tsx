@@ -433,7 +433,7 @@ interface ShelfItem {
 	timestamp: number;
 }
 
-type BloomMode =
+type NotchPanelMode =
 	| "music"
 	| "calendar"
 	| "command-center"
@@ -513,10 +513,10 @@ function App() {
 	isOpenRef.current = isOpen;
 	const [isReady, setIsReady] = useState(false);
 	const [scale, setScale] = useState(() =>
-		parseFloat(localStorage.getItem("bloom-scale") || "1.0")
+		parseFloat(localStorage.getItem("zenith-scale") || "1.0")
 	);
 	const [timeFormat24h, setTimeFormat24h] = useState(
-		() => localStorage.getItem("bloom-time-format-24h") === "true"
+		() => localStorage.getItem("zenith-time-format-24h") === "true"
 	);
 
 	const [batteryLevel, setBatteryLevel] = useState(100);
@@ -536,7 +536,7 @@ function App() {
 	const [showPowerPulse, setShowPowerPulse] = useState(false);
 	const [showLowBatteryPulse, setShowLowBatteryPulse] = useState(false);
 	const [lowBatteryThreshold, setLowBatteryThreshold] = useState(() =>
-		parseInt(localStorage.getItem("bloom-low-battery-threshold") || "20")
+		parseInt(localStorage.getItem("zenith-low-battery-threshold") || "20")
 	);
 	const prevChargingRef = useRef<boolean | null>(null);
 	const powerPulseTimeoutRef = useRef<any>(null);
@@ -552,7 +552,7 @@ function App() {
 	}, []);
 
 	const [notchMode, setNotchMode] = useState(() => {
-		const raw = localStorage.getItem("bloom-notch-mode") || "fixed";
+		const raw = localStorage.getItem("zenith-notch-mode") || "fixed";
 		if (raw === "auto-hide") return "smart";
 		return raw;
 	});
@@ -639,7 +639,7 @@ function App() {
 	// Update state
 	const [updateAvailable, setUpdateAvailable] = useState(false);
 	const [showUpdateIndicator, setShowUpdateIndicator] = useState(
-		() => localStorage.getItem("bloom-show-update-indicator") !== "false"
+		() => localStorage.getItem("zenith-show-update-indicator") !== "false"
 	);
 	const [showUpdatePulse, setShowUpdatePulse] = useState(false);
 
@@ -699,20 +699,20 @@ function App() {
 	const [startupAnimating, setStartupAnimating] = useState(false);
 
 	const [dockMode, setDockMode] = useState(() => {
-		const raw = localStorage.getItem("bloom-dock-mode") || "smart";
+		const raw = localStorage.getItem("zenith-dock-mode") || "smart";
 		if (raw === "auto-hide") return "smart";
 		return raw;
 	});
 	const [dndActive, setDndActive] = useState(false);
 	const [dockEnabled, setDockEnabled] = useState(
-		() => localStorage.getItem("bloom-dock-enabled") === "true"
+		() => localStorage.getItem("zenith-dock-enabled") === "true"
 	);
 	const [isNotchHovered, setIsNotchHovered] = useState(false);
 
 	const [isEdgeHovered, setIsEdgeHovered] = useState(false);
 	const [isOverlapped, setIsOverlapped] = useState(false);
 	const [interactionState, setInteractionState] = useState<"active" | "grace" | "none">("none");
-	const bloomRef = useRef<HTMLDivElement>(null);
+	const notchRef = useRef<HTMLDivElement>(null);
 	// Measured to fit the hovered status strip; see statusFitWidth.
 	const leftWidgetsRef = useRef<HTMLDivElement>(null);
 	const rightWidgetsRef = useRef<HTMLDivElement>(null);
@@ -792,9 +792,9 @@ function App() {
 
 	useEffect(() => {
 		const updateRect = () => {
-			if (bloomRef.current && windowLabel === "main") {
+			if (notchRef.current && windowLabel === "main") {
 				// Activity bubbles sit beside the pill and must stay clickable too.
-				const rects = [bloomRef.current, musicBubbleRef.current, shelfBubbleRef.current]
+				const rects = [notchRef.current, musicBubbleRef.current, shelfBubbleRef.current]
 					.filter((el): el is NonNullable<typeof el> => el !== null)
 					.map((el) => el.getBoundingClientRect());
 				const left = Math.min(...rects.map((r) => r.left));
@@ -818,7 +818,7 @@ function App() {
 		updateRect();
 		window.addEventListener("resize", updateRect);
 		const observer = new ResizeObserver(updateRect);
-		if (bloomRef.current) observer.observe(bloomRef.current);
+		if (notchRef.current) observer.observe(notchRef.current);
 
 		return () => {
 			window.removeEventListener("resize", updateRect);
@@ -852,7 +852,7 @@ function App() {
 							setIsImpacted(true);
 							setIsExpanded(true);
 						}, 240);
-						setTimeout(() => setStartupAnimating(false), 1500);
+						setTimeout(() => setStartupAnimating(false), 4000);
 						return true;
 					}
 				} catch (e) {}
@@ -871,8 +871,8 @@ function App() {
 		// Overlay always emits splash-done, but on a normal relaunch it emits it near-instantly
 		// (after one async getVersion() call) — before this listener would be registered.
 		// By making the same decision here we avoid a race and avoid any unnecessary delay.
-		const firstRun = localStorage.getItem("bloom-first-run") === null;
-		const storedVersion = localStorage.getItem("bloom-app-version");
+		const firstRun = localStorage.getItem("zenith-first-run") === null;
+		const storedVersion = localStorage.getItem("zenith-app-version");
 
 		const waitForSplash = () => {
 			// Splash is definitely coming — register listener now (2800ms animation gives us plenty of time)
@@ -925,89 +925,89 @@ function App() {
 
 	// Settings state
 	const [settingsWeatherEnabled, setSettingsWeatherEnabled] = useState(
-		() => localStorage.getItem("bloom-weather-enabled") !== "false"
+		() => localStorage.getItem("zenith-weather-enabled") !== "false"
 	);
 	const [settingsCalendarEnabled, setSettingsCalendarEnabled] = useState(
-		() => localStorage.getItem("bloom-calendar-enabled") !== "false"
+		() => localStorage.getItem("zenith-calendar-enabled") !== "false"
 	);
 	const [settingsPrayerEnabled, setSettingsPrayerEnabled] = useState(
-		() => localStorage.getItem("bloom-prayer-enabled") !== "false"
+		() => localStorage.getItem("zenith-prayer-enabled") !== "false"
 	);
 
 	const [notificationsEnabled, setNotificationsEnabled] = useState(
-		() => localStorage.getItem("bloom-notifications-enabled") !== "false"
+		() => localStorage.getItem("zenith-notifications-enabled") !== "false"
 	);
 	const [notificationsSilent, setNotificationsSilent] = useState(
-		() => localStorage.getItem("bloom-notifications-silent") === "true"
+		() => localStorage.getItem("zenith-notifications-silent") === "true"
 	);
 	const [notificationsNotchEnabled, setNotificationsNotchEnabled] = useState(
-		() => localStorage.getItem("bloom-notifications-notch-enabled") !== "false"
+		() => localStorage.getItem("zenith-notifications-notch-enabled") !== "false"
 	);
 
 	const toggleNotificationsSetting = () => {
 		const next = !notificationsEnabled;
 		setNotificationsEnabled(next);
-		localStorage.setItem("bloom-notifications-enabled", String(next));
-		invoke("save_setting", { key: "bloom-notifications-enabled", value: String(next) }).catch(console.error);
+		localStorage.setItem("zenith-notifications-enabled", String(next));
+		invoke("save_setting", { key: "zenith-notifications-enabled", value: String(next) }).catch(console.error);
 	};
 
 	const toggleNotificationsSilentSetting = () => {
 		const next = !notificationsSilent;
 		setNotificationsSilent(next);
-		localStorage.setItem("bloom-notifications-silent", String(next));
-		invoke("save_setting", { key: "bloom-notifications-silent", value: String(next) }).catch(console.error);
+		localStorage.setItem("zenith-notifications-silent", String(next));
+		invoke("save_setting", { key: "zenith-notifications-silent", value: String(next) }).catch(console.error);
 	};
 
 	const toggleNotificationsNotchSetting = () => {
 		const next = !notificationsNotchEnabled;
 		setNotificationsNotchEnabled(next);
-		localStorage.setItem("bloom-notifications-notch-enabled", String(next));
-		invoke("save_setting", { key: "bloom-notifications-notch-enabled", value: String(next) }).catch(console.error);
+		localStorage.setItem("zenith-notifications-notch-enabled", String(next));
+		invoke("save_setting", { key: "zenith-notifications-notch-enabled", value: String(next) }).catch(console.error);
 	};
 
 	const [settingsTimerSoundEnabled, setSettingsTimerSoundEnabled] = useState(
-		() => localStorage.getItem("bloom-timer-sound-enabled") !== "false"
+		() => localStorage.getItem("zenith-timer-sound-enabled") !== "false"
 	);
 	const [settingsMusicModeEnabled, setSettingsMusicModeEnabled] = useState(
-		() => localStorage.getItem("bloom-music-mode-enabled") !== "false"
+		() => localStorage.getItem("zenith-music-mode-enabled") !== "false"
 	);
 	const [rememberPanelEnabled, setRememberPanelEnabled] = useState(
-		() => (localStorage.getItem("bloom-notch-remember-panel") ??
-			localStorage.getItem("bloom-notch-click-to-open")) !== "false"
+		() => (localStorage.getItem("zenith-notch-remember-panel") ??
+			localStorage.getItem("zenith-notch-click-to-open")) !== "false"
 	);
 	const rememberPanelEnabledRef = useRef(rememberPanelEnabled);
 	rememberPanelEnabledRef.current = rememberPanelEnabled;
 	const [defaultPanel, setDefaultPanel] = useState<NotchPanel>(() =>
-		asNotchPanel(localStorage.getItem("bloom-notch-default-panel")) ?? "calendar"
+		asNotchPanel(localStorage.getItem("zenith-notch-default-panel")) ?? "calendar"
 	);
 	// The panel the open notch was last left on. Opening the notch returns to it,
-	// across restarts too (bloom-notch-last-panel).
+	// across restarts too (zenith-notch-last-panel).
 	const [lastPanel, setLastPanel] = useState<NotchPanel | null>(() =>
-		asNotchPanel(localStorage.getItem("bloom-notch-last-panel"))
+		asNotchPanel(localStorage.getItem("zenith-notch-last-panel"))
 	);
 	const [settingsMusicCompactNotch, setSettingsMusicCompactNotch] = useState(
-		() => localStorage.getItem("bloom-music-compact-notch") !== "false"
+		() => localStorage.getItem("zenith-music-compact-notch") !== "false"
 	);
 	const [shelfPersist, setShelfPersist] = useState(
-		() => localStorage.getItem("bloom-shelf-persist") === "true"
+		() => localStorage.getItem("zenith-shelf-persist") === "true"
 	);
 	const [settingsVisualizerEnabled, setSettingsVisualizerEnabled] = useState(
-		() => localStorage.getItem("bloom-visualizer-enabled") !== "false"
+		() => localStorage.getItem("zenith-visualizer-enabled") !== "false"
 	);
 	const [settingsAlbumArtEnabled, setSettingsAlbumArtEnabled] = useState(
-		() => localStorage.getItem("bloom-media-album-art-enabled") !== "false"
+		() => localStorage.getItem("zenith-media-album-art-enabled") !== "false"
 	);
 	const [settingsAmbienceEnabled, setSettingsAmbienceEnabled] = useState(
-		() => localStorage.getItem("bloom-media-ambience-enabled") !== "false"
+		() => localStorage.getItem("zenith-media-ambience-enabled") !== "false"
 	);
 	const [settingsCompactGlowEnabled, setSettingsCompactGlowEnabled] = useState(
-		() => localStorage.getItem("bloom-media-compact-glow-enabled") !== "false"
+		() => localStorage.getItem("zenith-media-compact-glow-enabled") !== "false"
 	);
 	const [settingsCornersEnabled, setSettingsCornersEnabled] = useState(
-		() => localStorage.getItem("bloom-corners-enabled") === "true"
+		() => localStorage.getItem("zenith-corners-enabled") === "true"
 	);
 	const [mediaLayout, setMediaLayout] = useState<"classic" | "compact">(
-		() => (localStorage.getItem("bloom-media-layout") as "classic" | "compact") || "classic"
+		() => (localStorage.getItem("zenith-media-layout") as "classic" | "compact") || "classic"
 	);
 	const [compactVolumeExpanded, setCompactVolumeExpanded] = useState(false);
 
@@ -1036,40 +1036,40 @@ function App() {
 					return fallback;
 				};
 
-				setSettingsWeatherEnabled(getVal("bloom-weather-enabled", "true") !== "false");
-				setSettingsCalendarEnabled(getVal("bloom-calendar-enabled", "true") !== "false");
-				setSettingsPrayerEnabled(getVal("bloom-prayer-enabled", "true") !== "false");
-				setSettingsTimerSoundEnabled(getVal("bloom-timer-sound-enabled", "true") !== "false");
-				setSettingsMusicModeEnabled(getVal("bloom-music-mode-enabled", "true") !== "false");
+				setSettingsWeatherEnabled(getVal("zenith-weather-enabled", "true") !== "false");
+				setSettingsCalendarEnabled(getVal("zenith-calendar-enabled", "true") !== "false");
+				setSettingsPrayerEnabled(getVal("zenith-prayer-enabled", "true") !== "false");
+				setSettingsTimerSoundEnabled(getVal("zenith-timer-sound-enabled", "true") !== "false");
+				setSettingsMusicModeEnabled(getVal("zenith-music-mode-enabled", "true") !== "false");
 				setRememberPanelEnabled(
-					(getVal("bloom-notch-remember-panel") ?? getVal("bloom-notch-click-to-open", "true")) !== "false"
+					(getVal("zenith-notch-remember-panel") ?? getVal("zenith-notch-click-to-open", "true")) !== "false"
 				);
-				setDefaultPanel(asNotchPanel(getVal("bloom-notch-default-panel")) ?? "calendar");
-				setShelfPersist(getVal("bloom-shelf-persist", "false") === "true");
-				setSettingsMusicCompactNotch(getVal("bloom-music-compact-notch", "true") !== "false");
-				setLastPanel(asNotchPanel(getVal("bloom-notch-last-panel")));
+				setDefaultPanel(asNotchPanel(getVal("zenith-notch-default-panel")) ?? "calendar");
+				setShelfPersist(getVal("zenith-shelf-persist", "false") === "true");
+				setSettingsMusicCompactNotch(getVal("zenith-music-compact-notch", "true") !== "false");
+				setLastPanel(asNotchPanel(getVal("zenith-notch-last-panel")));
 				const viz =
-					getVal("bloom-media-visualizer-enabled") ?? getVal("bloom-visualizer-enabled", "true");
+					getVal("zenith-media-visualizer-enabled") ?? getVal("zenith-visualizer-enabled", "true");
 				setSettingsVisualizerEnabled(viz !== "false");
-				setSettingsAlbumArtEnabled(getVal("bloom-media-album-art-enabled", "true") !== "false");
-				setSettingsAmbienceEnabled(getVal("bloom-media-ambience-enabled", "true") !== "false");
+				setSettingsAlbumArtEnabled(getVal("zenith-media-album-art-enabled", "true") !== "false");
+				setSettingsAmbienceEnabled(getVal("zenith-media-ambience-enabled", "true") !== "false");
 				setSettingsCompactGlowEnabled(
-					getVal("bloom-media-compact-glow-enabled", "true") !== "false"
+					getVal("zenith-media-compact-glow-enabled", "true") !== "false"
 				);
-				setSettingsCornersEnabled(getVal("bloom-corners-enabled", "false") === "true");
-				setTimeFormat24h(getVal("bloom-time-format-24h") === "true");
+				setSettingsCornersEnabled(getVal("zenith-corners-enabled", "false") === "true");
+				setTimeFormat24h(getVal("zenith-time-format-24h") === "true");
 
-				const thresholdStr = getVal("bloom-low-battery-threshold", "20");
+				const thresholdStr = getVal("zenith-low-battery-threshold", "20");
 				if (thresholdStr) setLowBatteryThreshold(parseInt(thresholdStr as string));
 
-				const nMode = getVal("bloom-notch-mode", "fixed");
+				const nMode = getVal("zenith-notch-mode", "fixed");
 				if (nMode) {
 					const mapped = nMode === "auto-hide" ? "smart" : nMode;
 					setNotchMode(mapped);
 				}
 
 				if (windowLabel === "main") {
-					const firstRun = localStorage.getItem("bloom-first-run") === null;
+					const firstRun = localStorage.getItem("zenith-first-run") === null;
 					if (firstRun) {
 						if (!import.meta.env.DEV) {
 							import("@tauri-apps/plugin-autostart").then(({ enable, isEnabled }) => {
@@ -1078,13 +1078,13 @@ function App() {
 								});
 							});
 						}
-						localStorage.setItem("bloom-first-run", "done");
+						localStorage.setItem("zenith-first-run", "done");
 					}
-					const rawDockMode = getVal("bloom-dock-mode", "smart") as string;
+					const rawDockMode = getVal("zenith-dock-mode", "smart") as string;
 					const dockMode = rawDockMode === "auto-hide" ? "smart" : rawDockMode;
 					setDockMode(dockMode);
-					setDockEnabled(getVal("bloom-dock-enabled", "false") === "true");
-					const storedVersion = localStorage.getItem("bloom-app-version");
+					setDockEnabled(getVal("zenith-dock-enabled", "false") === "true");
+					const storedVersion = localStorage.getItem("zenith-app-version");
 					let waitForSplash = firstRun || storedVersion === null;
 					if (!waitForSplash) {
 						try {
@@ -1098,10 +1098,10 @@ function App() {
 					setSystemSettingsReady(true);
 				}
 
-				const scaleVal = getVal("bloom-scale");
+				const scaleVal = getVal("zenith-scale");
 				if (scaleVal !== null) setScale(parseFloat(scaleVal));
 
-				const widgetsVal = getVal("bloom-status-widgets");
+				const widgetsVal = getVal("zenith-status-widgets");
 				if (widgetsVal) {
 					try {
 						const parsed = JSON.parse(widgetsVal);
@@ -1175,33 +1175,33 @@ function App() {
 	// Settings sync — consolidated dispatch for all settings events
 	useSettingsSync(
 		{
-			"bloom-weather-enabled": setSettingsWeatherEnabled,
-			"bloom-calendar-enabled": setSettingsCalendarEnabled,
-			"bloom-prayer-enabled": setSettingsPrayerEnabled,
-			"bloom-notifications-enabled": (v: unknown) => setNotificationsEnabled(v !== "false"),
-			"bloom-notifications-silent": (v: unknown) => setNotificationsSilent(v === "true"),
-			"bloom-notifications-notch-enabled": (v: unknown) => setNotificationsNotchEnabled(v !== "false"),
-			"bloom-timer-sound-enabled": setSettingsTimerSoundEnabled,
-			"bloom-music-mode-enabled": setSettingsMusicModeEnabled,
-			"bloom-notch-remember-panel": setRememberPanelEnabled,
-			"bloom-notch-default-panel": (v: unknown) =>
+			"zenith-weather-enabled": setSettingsWeatherEnabled,
+			"zenith-calendar-enabled": setSettingsCalendarEnabled,
+			"zenith-prayer-enabled": setSettingsPrayerEnabled,
+			"zenith-notifications-enabled": (v: unknown) => setNotificationsEnabled(v !== "false"),
+			"zenith-notifications-silent": (v: unknown) => setNotificationsSilent(v === "true"),
+			"zenith-notifications-notch-enabled": (v: unknown) => setNotificationsNotchEnabled(v !== "false"),
+			"zenith-timer-sound-enabled": setSettingsTimerSoundEnabled,
+			"zenith-music-mode-enabled": setSettingsMusicModeEnabled,
+			"zenith-notch-remember-panel": setRememberPanelEnabled,
+			"zenith-notch-default-panel": (v: unknown) =>
 				setDefaultPanel(asNotchPanel(v) ?? "calendar"),
-			"bloom-shelf-persist": setShelfPersist,
-			"bloom-music-compact-notch": setSettingsMusicCompactNotch,
-			"bloom-notch-last-panel": (v: unknown) => setLastPanel(asNotchPanel(v)),
-			"bloom-media-visualizer-enabled": setSettingsVisualizerEnabled,
-			"bloom-visualizer-enabled": setSettingsVisualizerEnabled,
-			"bloom-media-album-art-enabled": setSettingsAlbumArtEnabled,
-			"bloom-media-ambience-enabled": setSettingsAmbienceEnabled,
-			"bloom-media-compact-glow-enabled": setSettingsCompactGlowEnabled,
-			"bloom-media-layout": setMediaLayout,
-			"bloom-corners-enabled": setSettingsCornersEnabled,
-			"bloom-scale": setScale,
-			"bloom-low-battery-threshold": setLowBatteryThreshold,
-			"bloom-dock-enabled": setDockEnabled,
-			"bloom-dock-mode": setDockMode,
-			"bloom-notch-mode": setNotchMode,
-			"bloom-status-widgets": (value) => {
+			"zenith-shelf-persist": setShelfPersist,
+			"zenith-music-compact-notch": setSettingsMusicCompactNotch,
+			"zenith-notch-last-panel": (v: unknown) => setLastPanel(asNotchPanel(v)),
+			"zenith-media-visualizer-enabled": setSettingsVisualizerEnabled,
+			"zenith-visualizer-enabled": setSettingsVisualizerEnabled,
+			"zenith-media-album-art-enabled": setSettingsAlbumArtEnabled,
+			"zenith-media-ambience-enabled": setSettingsAmbienceEnabled,
+			"zenith-media-compact-glow-enabled": setSettingsCompactGlowEnabled,
+			"zenith-media-layout": setMediaLayout,
+			"zenith-corners-enabled": setSettingsCornersEnabled,
+			"zenith-scale": setScale,
+			"zenith-low-battery-threshold": setLowBatteryThreshold,
+			"zenith-dock-enabled": setDockEnabled,
+			"zenith-dock-mode": setDockMode,
+			"zenith-notch-mode": setNotchMode,
+			"zenith-status-widgets": (value) => {
 				try {
 					const parsed = JSON.parse(value);
 					if (parsed && Array.isArray(parsed.left) && Array.isArray(parsed.right)) {
@@ -1209,8 +1209,8 @@ function App() {
 					}
 				} catch {}
 			},
-			"bloom-show-update-indicator": (value) => setShowUpdateIndicator(String(value) === "true"),
-			"bloom-time-format-24h": setTimeFormat24h
+			"zenith-show-update-indicator": (value) => setShowUpdateIndicator(String(value) === "true"),
+			"zenith-time-format-24h": setTimeFormat24h
 		},
 		[windowLabel]
 	);
@@ -1259,6 +1259,9 @@ function App() {
 						const wasInitialSync = !initialSystemSyncDone.current;
 						initialSystemSyncDone.current = true;
 						if (wasInitialSync) {
+							if (notchMode === "peek" || notchMode === "smart") {
+								triggerEventPeek(4000);
+							}
 							settleTimer = window.setTimeout(() => {
 								if (!cancelled) {
 									systemSyncQueue.current = systemSyncQueue.current
@@ -1307,16 +1310,16 @@ function App() {
 		};
 	}, [windowLabel, systemSettingsReady, waitForStartupSplash, dockEnabled, dockMode, notchMode]);
 
-	// Bloom mode state: 'music', 'calendar', 'command-center', 'announcement', 'shelf', or 'status'
-	const [bloomMode, setBloomMode] = useState<BloomMode>("status");
+	// Notch panel mode state: 'music', 'calendar', 'command-center', 'announcement', 'shelf', or 'status'
+	const [notchPanelMode, setNotchPanelMode] = useState<NotchPanelMode>("status");
 
 	// Shelf: files and selected text stashed in the notch via drag-and-drop.
 	// Files are stored as plain paths (references, never copies). Session-scoped
-	// by default; the bloom-shelf-persist setting keeps items across restarts.
+	// by default; the zenith-shelf-persist setting keeps items across restarts.
 	const [shelfItems, setShelfItems] = useState<ShelfItem[]>(() => {
-		if (localStorage.getItem("bloom-shelf-persist") !== "true") return [];
+		if (localStorage.getItem("zenith-shelf-persist") !== "true") return [];
 		try {
-			const saved = localStorage.getItem("bloom-shelf-items");
+			const saved = localStorage.getItem("zenith-shelf-items");
 			const parsed = saved ? JSON.parse(saved) : [];
 			if (!Array.isArray(parsed)) return [];
 			return parsed
@@ -1334,9 +1337,9 @@ function App() {
 	useEffect(() => {
 		try {
 			if (shelfPersist) {
-				localStorage.setItem("bloom-shelf-items", JSON.stringify(shelfItems));
+				localStorage.setItem("zenith-shelf-items", JSON.stringify(shelfItems));
 			} else {
-				localStorage.removeItem("bloom-shelf-items");
+				localStorage.removeItem("zenith-shelf-items");
 			}
 		} catch {
 			/* storage full or unavailable — shelf just won't persist */
@@ -1497,7 +1500,7 @@ function App() {
 		const el = shelfGridRef.current;
 		setShelfOverflowing(!!el && el.scrollWidth > 380 - 28 + 1);
 	}, []);
-	useLayoutEffect(measureShelfOverflow, [shelfItems, bloomMode, measureShelfOverflow]);
+	useLayoutEffect(measureShelfOverflow, [shelfItems, notchPanelMode, measureShelfOverflow]);
 	const shelfScrollRafRef = useRef<number | null>(null);
 	// The wheel scrolls the row from anywhere over the shelf view, not just
 	// over the tiles. Mice that report lines instead of pixels are scaled up.
@@ -1544,8 +1547,8 @@ function App() {
 	// What the collapsed notch shows (see collapsedMode). Refs let the drop
 	// listener and the backend pointer-left event, both mounted once, act on
 	// the current state.
-	const restingModeRef = useRef<BloomMode>("status");
-	const bloomModeRef = useRef<BloomMode>("status");
+	const restingModeRef = useRef<NotchPanelMode>("status");
+	const notchPanelModeRef = useRef<NotchPanelMode>("status");
 	const rememberPanelRef = useRef<(panel: NotchPanel) => void>(() => {});
 	const notchPinnedRef = useRef(false);
 	const releaseDeferredRef = useRef(false);
@@ -1563,14 +1566,14 @@ function App() {
 		setIsHovered(false);
 		setIsNotchHovered(false);
 		if (isOpenRef.current) {
-			const panel = asNotchPanel(bloomModeRef.current);
+			const panel = asNotchPanel(notchPanelModeRef.current);
 			if (panel && rememberPanelEnabledRef.current) rememberPanelRef.current(panel);
 			setIsOpen(false);
 		}
 		if (showAthanBanner) {
 			return;
 		}
-		setBloomMode((prev) =>
+		setNotchPanelMode((prev) =>
 			prev === "music" ||
 			prev === "command-center" ||
 			prev === "calendar" ||
@@ -1595,20 +1598,20 @@ function App() {
 		clearShelfCollapse();
 		shelfCollapseTimer.current = window.setTimeout(() => {
 			shelfCollapseTimer.current = null;
-			if (bloomModeRef.current !== "shelf") return;
+			if (notchPanelModeRef.current !== "shelf") return;
 			setIsOpen(false);
-			setBloomMode(restingModeRef.current);
+			setNotchPanelMode(restingModeRef.current);
 		}, delay);
 	};
 
 	const removeShelfItem = (id: string) => {
 		const next = shelfItems.filter((i) => i.id !== id);
 		setShelfItems(next);
-		if (next.length === 0 && bloomMode === "shelf") {
+		if (next.length === 0 && notchPanelMode === "shelf") {
 			// Nothing left to show: an open notch moves to the remembered panel,
 			// a closed one to its resting mode, instead of an empty shelf.
 			clearShelfCollapse();
-			setBloomMode(isOpen ? openingPanel() : restingModeRef.current);
+			setNotchPanelMode(isOpen ? openingPanel() : restingModeRef.current);
 		}
 	};
 
@@ -1720,7 +1723,7 @@ function App() {
 	// below. Drag-enter switches to the shelf panel (restoring the previous
 	// mode on cancel); drop stashes the real file paths.
 	const [isDragHovering, setIsDragHovering] = useState(false);
-	const shelfPrevModeRef = useRef<BloomMode>("status");
+	const shelfPrevModeRef = useRef<NotchPanelMode>("status");
 	const shelfPrevOpenRef = useRef(false);
 	const shelfDragActiveRef = useRef(false);
 	useEffect(() => {
@@ -1733,21 +1736,21 @@ function App() {
 			if (shelfSelfDragRef.current) return;
 			console.info("[shelf] drag-enter:", event.payload.paths ?? event.payload.text);
 			setIsDragHovering(true);
-			const prev = bloomModeRef.current;
+			const prev = notchPanelModeRef.current;
 			if (prev === "announcement" || prev === "shelf") return;
 			shelfPrevModeRef.current = prev;
 			shelfPrevOpenRef.current = isOpenRef.current;
 			shelfDragActiveRef.current = true;
 			setIsOpen(true);
-			setBloomMode("shelf");
+			setNotchPanelMode("shelf");
 		};
 		const leave = () => {
 			setIsDragHovering(false);
 			if (shelfDragActiveRef.current) {
 				shelfDragActiveRef.current = false;
-				if (bloomModeRef.current === "shelf") {
+				if (notchPanelModeRef.current === "shelf") {
 					setIsOpen(shelfPrevOpenRef.current);
-					setBloomMode(shelfPrevModeRef.current);
+					setNotchPanelMode(shelfPrevModeRef.current);
 				}
 			}
 		};
@@ -1761,9 +1764,9 @@ function App() {
 			if (paths.length === 0 && !text) return;
 			if (paths.length > 0) addShelfItems(paths);
 			if (text) addShelfText(text);
-			if (bloomModeRef.current !== "announcement") {
+			if (notchPanelModeRef.current !== "announcement") {
 				setIsOpen(true);
-				setBloomMode("shelf");
+				setNotchPanelMode("shelf");
 			}
 			collapseShelfSoon();
 		};
@@ -1795,16 +1798,16 @@ function App() {
 		if (!announcement || announcementDismissed) return;
 		if (announcementShownRef.current === announcement.id) return;
 		announcementShownRef.current = announcement.id;
-		setBloomMode("announcement");
+		setNotchPanelMode("announcement");
 		if (notchMode === "peek") triggerEventPeek(6000);
 	}, [announcement, announcementDismissed, notchMode, triggerEventPeek]);
 
 	// Leave the announcement view once it is dismissed (or gone).
 	useEffect(() => {
-		if (bloomMode === "announcement" && (!announcement || announcementDismissed)) {
-			setBloomMode(mediaInfo.has_media && isPlaying ? "music" : "status");
+		if (notchPanelMode === "announcement" && (!announcement || announcementDismissed)) {
+			setNotchPanelMode(mediaInfo.has_media && isPlaying ? "music" : "status");
 		}
-	}, [bloomMode, announcement, announcementDismissed, mediaInfo.has_media, isPlaying]);
+	}, [notchPanelMode, announcement, announcementDismissed, mediaInfo.has_media, isPlaying]);
 
 	// Window height is now kept constant to prevent rendering layout lag and sharp corners
 
@@ -1828,7 +1831,7 @@ function App() {
 		const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
 		if (Math.abs(delta) < 5) return; // Ignore tiny movements
 
-		if (cycleBloomMode(delta > 0 ? 1 : -1)) lastScrollTime.current = now;
+		if (cycleNotchPanelMode(delta > 0 ? 1 : -1)) lastScrollTime.current = now;
 	};
 
 	function panelAvailable(panel: NotchPanel) {
@@ -1839,24 +1842,24 @@ function App() {
 
 	// Wheel and swipe navigate panels, even from a collapsed live activity.
 	// Music and shelf remain entry points through their activity affordances.
-	const cycleBloomMode = (direction: 1 | -1) => {
-		if (bloomMode === "announcement") return false;
+	const cycleNotchPanelMode = (direction: 1 | -1) => {
+		if (notchPanelMode === "announcement") return false;
 		const panels = NOTCH_PANELS.filter(panelAvailable);
-		const currentIndex = panels.indexOf(bloomMode as NotchPanel);
+		const currentIndex = panels.indexOf(notchPanelMode as NotchPanel);
 		const nextMode = currentIndex === -1
 			? openingPanel()
 			: panels[(currentIndex + direction + panels.length) % panels.length];
 		setIsOpen(true);
-		setBloomMode(nextMode);
+		setNotchPanelMode(nextMode);
 		return true;
 	};
 
 	// Arrows and wheel both stay within panels once one is open.
 	const cyclePanel = (direction: 1 | -1) => {
 		const panels = NOTCH_PANELS.filter(panelAvailable);
-		const index = panels.indexOf(bloomMode as NotchPanel);
+		const index = panels.indexOf(notchPanelMode as NotchPanel);
 		if (index === -1 || panels.length < 2) return;
-		setBloomMode(panels[(index + direction + panels.length) % panels.length]);
+		setNotchPanelMode(panels[(index + direction + panels.length) % panels.length]);
 	};
 
 	// Timer state
@@ -1866,7 +1869,7 @@ function App() {
 	const [isEditingTimer, setIsEditingTimer] = useState(false);
 	const [timerEditDigits, setTimerEditDigits] = useState("");
 	const [lastDurationSeconds, setLastDurationSeconds] = useState(() => {
-		const stored = parseInt(localStorage.getItem("bloom-timer-last-duration") || "", 10);
+		const stored = parseInt(localStorage.getItem("zenith-timer-last-duration") || "", 10);
 		return Number.isFinite(stored) && stored > 0 ? stored : 25 * 60;
 	});
 	const timerInputRef = useRef<HTMLInputElement>(null);
@@ -1887,7 +1890,7 @@ function App() {
 		setIsEditingTimer(false);
 		setTimerSeconds(seconds);
 		setLastDurationSeconds(seconds);
-		localStorage.setItem("bloom-timer-last-duration", String(seconds));
+		localStorage.setItem("zenith-timer-last-duration", String(seconds));
 		setIsTimerRunning(true);
 		setIsTimerFinished(false);
 	};
@@ -1934,7 +1937,7 @@ function App() {
 		const base = timerSeconds > 0 ? timerSeconds : lastDurationSeconds;
 		// A tap that changes nothing (e.g. paused timer) must not reset the state.
 		if (!start && total === base) return;
-		localStorage.setItem("bloom-timer-last-duration", String(total));
+		localStorage.setItem("zenith-timer-last-duration", String(total));
 		setLastDurationSeconds(total);
 		setTimerSeconds(start ? total : 0);
 		setIsTimerRunning(start);
@@ -2050,9 +2053,9 @@ function App() {
 	const collapsedMode = musicActivity && !timerActive ? "music" : "status";
 	const showMusicBubble = musicActivity && timerActive && !isOpen && isVisible && !isHidden && !showAthanBanner;
 	const showShelfBubble =
-		shelfItems.length > 0 && !isOpen && isVisible && !isHidden && bloomMode !== "announcement" && !showAthanBanner;
+		shelfItems.length > 0 && !isOpen && isVisible && !isHidden && notchPanelMode !== "announcement" && !showAthanBanner;
 	restingModeRef.current = collapsedMode;
-	bloomModeRef.current = bloomMode;
+	notchPanelModeRef.current = notchPanelMode;
 
 	const wasAthanBannerVisibleRef = useRef(false);
 	useEffect(() => {
@@ -2062,7 +2065,7 @@ function App() {
 		}
 		if (wasAthanBannerVisibleRef.current && !showAthanBanner) {
 			setIsOpen(false);
-			setBloomMode(collapsedMode);
+			setNotchPanelMode(collapsedMode);
 		}
 		wasAthanBannerVisibleRef.current = showAthanBanner;
 	}, [showAthanBanner, collapsedMode, triggerEventPeek]);
@@ -2076,16 +2079,16 @@ function App() {
 
 	// Expands the notch into a panel, or into an activity's own view.
 	const openNotch = (view: NotchPanel | "music" | "shelf") => {
-		if (bloomMode === "announcement") return;
+		if (notchPanelMode === "announcement") return;
 		setIsOpen(true);
-		setBloomMode(view);
+		setNotchPanelMode(view);
 	};
 
 	const rememberPanel = (panel: NotchPanel) => {
 		if (panel === lastPanel) return;
 		setLastPanel(panel);
-		localStorage.setItem("bloom-notch-last-panel", panel);
-		invoke("save_setting", { key: "bloom-notch-last-panel", value: panel }).catch(console.error);
+		localStorage.setItem("zenith-notch-last-panel", panel);
+		invoke("save_setting", { key: "zenith-notch-last-panel", value: panel }).catch(console.error);
 	};
 	rememberPanelRef.current = rememberPanel;
 
@@ -2116,37 +2119,37 @@ function App() {
 		lastPlayingRef.current = isPlaying;
 	}, [isPlaying, mediaInfo.title, notchMode, triggerEventPeek]);
 
-	// Reset bloom mode when calendar setting is disabled
+	// Reset notch panel mode when calendar setting is disabled
 	useEffect(() => {
-		if (!settingsCalendarEnabled && bloomMode === "calendar") {
-			setBloomMode(isOpen ? openingPanel() : collapsedMode);
+		if (!settingsCalendarEnabled && notchPanelMode === "calendar") {
+			setNotchPanelMode(isOpen ? openingPanel() : collapsedMode);
 		}
-	}, [settingsCalendarEnabled, bloomMode, isOpen]);
+	}, [settingsCalendarEnabled, notchPanelMode, isOpen]);
 
-	// Reset bloom mode when prayer setting is disabled
+	// Reset notch panel mode when prayer setting is disabled
 	useEffect(() => {
-		if (!settingsPrayerEnabled && bloomMode === "prayer") {
-			setBloomMode(isOpen ? openingPanel() : collapsedMode);
+		if (!settingsPrayerEnabled && notchPanelMode === "prayer") {
+			setNotchPanelMode(isOpen ? openingPanel() : collapsedMode);
 		}
-	}, [settingsPrayerEnabled, bloomMode, isOpen]);
+	}, [settingsPrayerEnabled, notchPanelMode, isOpen]);
 
 	// Leave the music view when music is turned off or the player ends its media
 	// session: an open notch falls back to the remembered panel.
 	useEffect(() => {
-		if (bloomMode === "music" && !(settingsMusicModeEnabled && mediaInfo.has_media)) {
-			setBloomMode(isOpen ? openingPanel() : collapsedMode);
+		if (notchPanelMode === "music" && !(settingsMusicModeEnabled && mediaInfo.has_media)) {
+			setNotchPanelMode(isOpen ? openingPanel() : collapsedMode);
 		}
-	}, [settingsMusicModeEnabled, mediaInfo.has_media, bloomMode, isOpen]);
+	}, [settingsMusicModeEnabled, mediaInfo.has_media, notchPanelMode, isOpen]);
 
 	// The collapsed notch always shows its current live activity: music while a
 	// session exists, the timer (with music in its bubble) once one is set, and
 	// the clock otherwise. An open notch is left alone.
 	useEffect(() => {
 		if (isOpen || announcementOpenRef.current) return;
-		if (bloomMode !== collapsedMode && bloomMode !== "shelf") {
-			setBloomMode(collapsedMode);
+		if (notchPanelMode !== collapsedMode && notchPanelMode !== "shelf") {
+			setNotchPanelMode(collapsedMode);
 		}
-	}, [collapsedMode, bloomMode, isOpen]);
+	}, [collapsedMode, notchPanelMode, isOpen]);
 
 	// Update time
 	useEffect(() => {
@@ -2308,13 +2311,13 @@ function App() {
 	}, []);
 
 	// Refresh Wi-Fi status while the command center is open so changes made
-	// outside Bloom (keyboard toggle, Windows quick settings) show up.
+	// outside Zenith (keyboard toggle, Windows quick settings) show up.
 	useEffect(() => {
-		if (bloomMode !== "command-center") return;
+		if (notchPanelMode !== "command-center") return;
 		void refreshWifiStatus();
 		const interval = setInterval(() => void refreshWifiStatus(), 5000);
 		return () => clearInterval(interval);
-	}, [bloomMode, refreshWifiStatus]);
+	}, [notchPanelMode, refreshWifiStatus]);
 
 	// Poll system metrics for status widgets
 	useEffect(() => {
@@ -2510,7 +2513,7 @@ function App() {
 		(id: string, widget: HTMLElement) => {
 			if (statusTooltipTimerRef.current) clearTimeout(statusTooltipTimerRef.current);
 			statusTooltipTimerRef.current = setTimeout(() => {
-				const pill = bloomRef.current?.getBoundingClientRect();
+				const pill = notchRef.current?.getBoundingClientRect();
 				const own = widget.getBoundingClientRect();
 				// Client rects are zoomed by the notch scale; offsets are not.
 				if (!pill) {
@@ -2549,7 +2552,7 @@ function App() {
 	// shorter doesn't make the notch jitter. Layout widths are unaffected by
 	// the notch scale.
 	useLayoutEffect(() => {
-		if (!isHovered || bloomMode !== "status") {
+		if (!isHovered || notchPanelMode !== "status") {
 			if (statusFitWidth !== 0) setStatusFitWidth(0);
 			return;
 		}
@@ -2615,7 +2618,7 @@ function App() {
 	const handleWifiRightClick = useCallback((e: React.MouseEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
-		setBloomMode("wifi");
+		setNotchPanelMode("wifi");
 	}, []);
 
 	const toggleDockModeSetting = useCallback(
@@ -2623,8 +2626,8 @@ function App() {
 			e.stopPropagation();
 			const nextMode = dockMode === "fixed" ? "smart" : dockMode === "smart" ? "peek" : "fixed";
 			setDockMode(nextMode);
-			localStorage.setItem("bloom-dock-mode", nextMode);
-			invoke("save_setting", { key: "bloom-dock-mode", value: nextMode }).catch(console.error);
+			localStorage.setItem("zenith-dock-mode", nextMode);
+			invoke("save_setting", { key: "zenith-dock-mode", value: nextMode }).catch(console.error);
 			try {
 				await invoke("change_dock_mode", { mode: nextMode });
 			} catch (err) {
@@ -2639,8 +2642,8 @@ function App() {
 			e.stopPropagation();
 			const nextMode = notchMode === "fixed" ? "smart" : notchMode === "smart" ? "peek" : "fixed";
 			setNotchMode(nextMode);
-			localStorage.setItem("bloom-notch-mode", nextMode);
-			invoke("save_setting", { key: "bloom-notch-mode", value: nextMode }).catch(console.error);
+			localStorage.setItem("zenith-notch-mode", nextMode);
+			invoke("save_setting", { key: "zenith-notch-mode", value: nextMode }).catch(console.error);
 			try {
 				await invoke("change_notch_mode", { mode: nextMode });
 			} catch (err) {
@@ -2653,7 +2656,7 @@ function App() {
 	const handleBluetoothRightClick = useCallback((e: React.MouseEvent) => {
 		e.preventDefault();
 		e.stopPropagation();
-		setBloomMode("bluetooth");
+		setNotchPanelMode("bluetooth");
 	}, []);
 
 	const toggleCalendarMode = (e: React.MouseEvent) => {
@@ -2667,7 +2670,7 @@ function App() {
 		if (!isOpen) {
 			openNotch(openingPanel());
 		} else if (settingsCalendarEnabled) {
-			setBloomMode("calendar");
+			setNotchPanelMode("calendar");
 		}
 	};
 
@@ -2811,11 +2814,11 @@ function App() {
 	};
 
 	// Music mode shows any time we have media info (playing or paused) and music mode setting is enabled
-	const isMusicMode = mediaInfo.has_media && bloomMode === "music" && settingsMusicModeEnabled;
+	const isMusicMode = mediaInfo.has_media && notchPanelMode === "music" && settingsMusicModeEnabled;
 	// A media session remains reachable on hover after its activity fades, or
 	// whenever the compact music display is disabled.
 	const showMusicOnStatusHover =
-		!isOpen && isHovered && bloomMode === "status" && settingsMusicModeEnabled &&
+		!isOpen && isHovered && notchPanelMode === "status" && settingsMusicModeEnabled &&
 		mediaInfo.has_media && (!musicActivityVisible || !settingsMusicCompactNotch);
 	const showCompactMusicIcons = isMusicMode || showMusicOnStatusHover;
 
@@ -2825,16 +2828,16 @@ function App() {
 	// Calculate width dynamically based on enabled features
 	const getDynamicWidth = () => {
 		if (showAthanBanner) return isOpen ? 420 : 260;
-		if (bloomMode === "announcement" && announcement && !announcementDismissed) return 380;
+		if (notchPanelMode === "announcement" && announcement && !announcementDismissed) return 380;
 		if (isCalendarMode) return 480;
-		if (bloomMode === "prayer" && isOpen) return 480;
-		if (bloomMode === "shelf") return 380;
-		if (bloomMode === "command-center" && isOpen) return 350;
-		if (bloomMode === "wifi" || bloomMode === "bluetooth" || bloomMode === "notifications") return 350;
+		if (notchPanelMode === "prayer" && isOpen) return 480;
+		if (notchPanelMode === "shelf") return 380;
+		if (notchPanelMode === "command-center" && isOpen) return 350;
+		if (notchPanelMode === "wifi" || notchPanelMode === "bluetooth" || notchPanelMode === "notifications") return 350;
 		if (showMusicOnStatusHover) {
 			return 170 + (settingsVisualizerEnabled ? 30 : 0);
 		}
-		if (bloomMode === "status" && isHovered) {
+		if (notchPanelMode === "status" && isHovered) {
 			const totalWidgets = statusWidgets.left.length + statusWidgets.right.length;
 			return Math.max(Math.min(200 + totalWidgets * 50, 380) - clock24hTrim, statusFitWidth);
 		}
@@ -2856,23 +2859,23 @@ function App() {
 			return isImpacted ? 28.9 : 44.2;
 		}
 		// Announcement card: body is line-clamped, so a fixed size fits both cases.
-		if (bloomMode === "announcement" && announcement && !announcementDismissed) {
+		if (notchPanelMode === "announcement" && announcement && !announcementDismissed) {
 			return announcement.url ? 168 : 148;
 		}
 		// Sized to the calendar's week-row count plus the timer's fixed content.
-		if (bloomMode === "calendar") return calendarMonthRows >= 6 ? 305 : 273;
-		if (bloomMode === "prayer") return isOpen ? 273 : 36;
+		if (notchPanelMode === "calendar") return calendarMonthRows >= 6 ? 305 : 273;
+		if (notchPanelMode === "prayer") return isOpen ? 273 : 36;
 		// Shelf expands on mode alone (no hover needed: there is no cursor
 		// hover during an OS drag) and is sized to exactly one row of tiles,
 		// plus room for the scrollbar once the tiles overflow it.
-		if (bloomMode === "shelf") {
+		if (notchPanelMode === "shelf") {
 			if (shelfItems.length === 0) return 130;
 			return shelfOverflowing ? 190 : 176;
 		}
-		if (bloomMode === "command-center") return isOpen ? 230 : 36;
-		if (bloomMode === "wifi" || bloomMode === "bluetooth") return 300;
-		if (bloomMode === "notifications") return 240;
-		if (bloomMode === "status") return 36;
+		if (notchPanelMode === "command-center") return isOpen ? 230 : 36;
+		if (notchPanelMode === "wifi" || notchPanelMode === "bluetooth") return 300;
+		if (notchPanelMode === "notifications") return 240;
+		if (notchPanelMode === "status") return 36;
 		if (isMusicMode && isOpen) {
 			const hasProgressBar = (mediaInfo.duration_ms ?? 0) > 0;
 			let h = mediaLayout === "compact" ? (hasProgressBar ? 132 : 116) : 120;
@@ -2884,18 +2887,18 @@ function App() {
 		return 36;
 	};
 
-	const isCalendarMode = bloomMode === "calendar";
+	const isCalendarMode = notchPanelMode === "calendar";
 	// Arrows switch between the two tool panels; wheel/swipe can also open one
 	// directly from the collapsed pill or a live activity.
 	const showPanelArrows =
-		isOpen && asNotchPanel(bloomMode) !== null && NOTCH_PANELS.filter(panelAvailable).length > 1;
+		isOpen && asNotchPanel(notchPanelMode) !== null && NOTCH_PANELS.filter(panelAvailable).length > 1;
 
 	// Close compact media player expansions when notch is unhovered or mode changes
 	useEffect(() => {
 		if (mediaLayout === "compact") {
 			setCompactVolumeExpanded(false);
 		}
-	}, [isHovered, mediaLayout, bloomMode]);
+	}, [isHovered, mediaLayout, notchPanelMode]);
 
 	// The pill's target geometry: the animation springs toward it, and the
 	// window region below is cut from it, so the region is already at the
@@ -2958,8 +2961,8 @@ function App() {
 				}}
 			>
 				<motion.div
-					ref={bloomRef}
-					className={`bloom zenith-notch ${isHovered ? "expanded" : ""} ${isImpacted ? "is-impacted" : ""} ${isDragHovering ? "drag-hover" : ""}`}
+					ref={notchRef}
+					className={`zenith-notch ${isHovered ? "expanded" : ""} ${isImpacted ? "is-impacted" : ""} ${isDragHovering ? "drag-hover" : ""}`}
 					onMouseEnter={() => setIsNotchHovered(true)}
 					onMouseLeave={() => setIsNotchHovered(false)}
 					onWheel={handleWheel}
@@ -2984,8 +2987,8 @@ function App() {
 						scaleY: 1,
 						borderTopLeftRadius: isImpacted ? 0 : 18,
 						borderTopRightRadius: isImpacted ? 0 : 18,
-						borderBottomLeftRadius: (isCalendarMode || bloomMode === "prayer" || (showAthanBanner && isOpen)) ? 28 : 18,
-						borderBottomRightRadius: (isCalendarMode || bloomMode === "prayer" || (showAthanBanner && isOpen)) ? 28 : 18,
+						borderBottomLeftRadius: (isCalendarMode || notchPanelMode === "prayer" || (showAthanBanner && isOpen)) ? 28 : 18,
+						borderBottomRightRadius: (isCalendarMode || notchPanelMode === "prayer" || (showAthanBanner && isOpen)) ? 28 : 18,
 						filter: isVisible ? "blur(0px)" : "blur(8px)",
 						pointerEvents: isVisible ? "auto" : "none"
 					}}
@@ -3001,7 +3004,7 @@ function App() {
 						releaseDeferredRef.current = false;
 						setIsHovered(true);
 						// Hovering the shelf cancels its post-drop auto-close.
-						if (bloomMode === "shelf") clearShelfCollapse();
+						if (notchPanelMode === "shelf") clearShelfCollapse();
 					}}
 					onHoverEnd={releaseNotchHover}
 					style={{ originY: 0 }}
@@ -3045,7 +3048,7 @@ function App() {
 					<AnimatePresence mode="wait">
 						{isExpanded && (
 							<motion.div
-								key="bloom-content"
+								key="zenith-content"
 								initial={{ opacity: 0 }}
 								animate={{ opacity: 1 }}
 								exit={{ opacity: 0 }}
@@ -3131,9 +3134,9 @@ function App() {
 													onAnimateNext={animateNext}
 													onLayoutChange={(layout) => {
 														setMediaLayout(layout);
-														localStorage.setItem("bloom-media-layout", layout);
+														localStorage.setItem("zenith-media-layout", layout);
 														invoke("save_setting", {
-															key: "bloom-media-layout",
+															key: "zenith-media-layout",
 															value: layout
 														}).catch(console.error);
 														window.dispatchEvent(
@@ -3153,9 +3156,9 @@ function App() {
 															onClick={(e) => {
 																e.stopPropagation();
 																setMediaLayout("compact");
-																localStorage.setItem("bloom-media-layout", "compact");
+																localStorage.setItem("zenith-media-layout", "compact");
 																invoke("save_setting", {
-																	key: "bloom-media-layout",
+																	key: "zenith-media-layout",
 																	value: "compact"
 																}).catch(console.error);
 																window.dispatchEvent(
@@ -3628,7 +3631,7 @@ function App() {
 
 								{/* Wi-Fi networks, opened from the controls panel's Wi-Fi tile */}
 								<AnimatePresence>
-									{!showAthanBanner && bloomMode === "wifi" && (
+									{!showAthanBanner && notchPanelMode === "wifi" && (
 										<motion.div
 											key="wifi-view"
 											initial={{ opacity: 0 }}
@@ -3639,7 +3642,7 @@ function App() {
 											<WifiPanel
 												enabled={wifiEnabled}
 												onToggle={toggleWifi}
-												onBack={() => setBloomMode("command-center")}
+												onBack={() => setNotchPanelMode("command-center")}
 												onPinChange={setNotchPinned}
 											/>
 										</motion.div>
@@ -3648,7 +3651,7 @@ function App() {
 
 								{/* Bluetooth devices, opened from the controls panel's Bluetooth tile */}
 								<AnimatePresence>
-									{!showAthanBanner && bloomMode === "bluetooth" && (
+									{!showAthanBanner && notchPanelMode === "bluetooth" && (
 										<motion.div
 											key="bluetooth-view"
 											initial={{ opacity: 0 }}
@@ -3659,7 +3662,7 @@ function App() {
 											<BluetoothPanel
 												enabled={bluetoothEnabled}
 												onToggle={toggleBluetooth}
-												onBack={() => setBloomMode("command-center")}
+												onBack={() => setNotchPanelMode("command-center")}
 												onPinChange={setNotchPinned}
 											/>
 										</motion.div>
@@ -3668,7 +3671,7 @@ function App() {
 
 								{/* Notifications Panel, opened from Command Center's Bell button */}
 								<AnimatePresence>
-									{!showAthanBanner && bloomMode === "notifications" && (
+									{!showAthanBanner && notchPanelMode === "notifications" && (
 										<motion.div
 											key="notifications-view"
 											initial={{ opacity: 0 }}
@@ -3677,7 +3680,7 @@ function App() {
 											transition={{ type: "spring", stiffness: 400, damping: 30 }}
 										>
 											<NotificationPanel
-												onBack={() => setBloomMode("command-center")}
+												onBack={() => setNotchPanelMode("command-center")}
 												openSettingsWindow={openSettingsWindow}
 												notificationsEnabled={notificationsEnabled}
 												onToggleNotifications={toggleNotificationsSetting}
@@ -3692,7 +3695,7 @@ function App() {
 
 								{/* Command Center Panel */}
 								<AnimatePresence>
-									{!showAthanBanner && bloomMode === "command-center" && (
+									{!showAthanBanner && notchPanelMode === "command-center" && (
 										<motion.div
 											className="command-center-content-minimal"
 											onClick={(e) => e.stopPropagation()}
@@ -3734,7 +3737,7 @@ function App() {
 														title="Wi-Fi networks"
 														onClick={(e) => {
 															e.stopPropagation();
-															setBloomMode("wifi");
+															setNotchPanelMode("wifi");
 														}}
 													>
 														<ChevronRight />
@@ -3793,7 +3796,7 @@ function App() {
 														title="Bluetooth devices"
 														onClick={(e) => {
 															e.stopPropagation();
-															setBloomMode("bluetooth");
+															setNotchPanelMode("bluetooth");
 														}}
 													>
 														<ChevronRight />
@@ -3858,7 +3861,7 @@ function App() {
 													className="cc-circular-btn"
 													onClick={(e) => {
 														e.stopPropagation();
-														setBloomMode("notifications");
+														setNotchPanelMode("notifications");
 													}}
 													onContextMenu={(e) => {
 														e.preventDefault();
@@ -3953,7 +3956,7 @@ function App() {
 
 								{/* Announcement Card */}
 								<AnimatePresence>
-									{!showAthanBanner && bloomMode === "announcement" && announcement && !announcementDismissed && (
+									{!showAthanBanner && notchPanelMode === "announcement" && announcement && !announcementDismissed && (
 										<motion.div
 											className={`announcement-content severity-${announcement.severity}`}
 											onClick={(e) => e.stopPropagation()}
@@ -4106,7 +4109,7 @@ function App() {
 
 								{/* Prayer Times Split View */}
 								<AnimatePresence>
-									{settingsPrayerEnabled && bloomMode === "prayer" && !showAthanBanner && (
+									{settingsPrayerEnabled && notchPanelMode === "prayer" && !showAthanBanner && (
 										<motion.div
 											key="prayer-view"
 											className="prayer-content-wrapper"
@@ -4123,7 +4126,7 @@ function App() {
 
 								{/* Shelf Panel */}
 								<AnimatePresence>
-									{!showAthanBanner && bloomMode === "shelf" && (
+									{!showAthanBanner && notchPanelMode === "shelf" && (
 										<motion.div
 											className="shelf-content"
 											onClick={(e) => e.stopPropagation()}

@@ -23,7 +23,7 @@ function readBool(val: string | null): boolean {
 
 export function useSettings() {
 	const [saveError, setSaveError] = useState(
-		() => sessionStorage.getItem("bloom-settings-save-error") !== null
+		() => sessionStorage.getItem("zenith-settings-save-error") !== null
 	);
 	const saveQueue = useRef<Promise<void>>(Promise.resolve());
 	const saveFailed = useRef(false);
@@ -31,83 +31,83 @@ export function useSettings() {
 	const [weatherEnabled, setWeatherEnabled] = useState(true);
 	const [calendarEnabled, setCalendarEnabled] = useState(true);
 	const [prayerEnabled, setPrayerEnabled] = useState(
-		() => localStorage.getItem("bloom-prayer-enabled") !== "false"
+		() => localStorage.getItem("zenith-prayer-enabled") !== "false"
 	);
 	const [prayerCity, setPrayerCity] = useState(
-		() => localStorage.getItem("bloom-prayer-city") || ""
+		() => localStorage.getItem("zenith-prayer-city") || ""
 	);
 	const [prayerCountry, setPrayerCountry] = useState(
-		() => localStorage.getItem("bloom-prayer-country") || ""
+		() => localStorage.getItem("zenith-prayer-country") || ""
 	);
 	const [prayerLocationMode, setPrayerLocationMode] = useState<"auto" | "manual">(
-		() => (localStorage.getItem("bloom-prayer-location-mode") === "manual" ? "manual" : "auto")
+		() => (localStorage.getItem("zenith-prayer-location-mode") === "manual" ? "manual" : "auto")
 	);
 	const [prayerMethod, setPrayerMethod] = useState(
-		() => localStorage.getItem("bloom-prayer-method") || "5"
+		() => localStorage.getItem("zenith-prayer-method") || "5"
 	);
 	const [prayerTimeOffset, setPrayerTimeOffset] = useState(
-		() => localStorage.getItem("bloom-prayer-time-offset") || "0"
+		() => localStorage.getItem("zenith-prayer-time-offset") || "0"
 	);
 	const [prayerAlertType, setPrayerAlertType] = useState(
-		() => localStorage.getItem("bloom-prayer-alert-type") || "sound_notification"
+		() => localStorage.getItem("zenith-prayer-alert-type") || "sound_notification"
 	);
 	const [prayerPreAlert, setPrayerPreAlert] = useState(
-		() => localStorage.getItem("bloom-prayer-pre-alert") !== "false"
+		() => localStorage.getItem("zenith-prayer-pre-alert") !== "false"
 	);
 	const [prayerNotchPopup, setPrayerNotchPopup] = useState(
-		() => localStorage.getItem("bloom-prayer-notch-popup") !== "false"
+		() => localStorage.getItem("zenith-prayer-notch-popup") !== "false"
 	);
 	const [notificationsEnabled, setNotificationsEnabled] = useState(
-		() => localStorage.getItem("bloom-notifications-enabled") !== "false"
+		() => localStorage.getItem("zenith-notifications-enabled") !== "false"
 	);
 	const [notificationsSilent, setNotificationsSilent] = useState(
-		() => localStorage.getItem("bloom-notifications-silent") === "true"
+		() => localStorage.getItem("zenith-notifications-silent") === "true"
 	);
 	const [notificationsNotchEnabled, setNotificationsNotchEnabled] = useState(
-		() => localStorage.getItem("bloom-notifications-notch-enabled") !== "false"
+		() => localStorage.getItem("zenith-notifications-notch-enabled") !== "false"
 	);
 	const [timerSoundEnabled, setTimerSoundEnabled] = useState(
-		() => localStorage.getItem("bloom-timer-sound-enabled") !== "false"
+		() => localStorage.getItem("zenith-timer-sound-enabled") !== "false"
 	);
 	const [musicModeEnabled, setMusicModeEnabled] = useState(true);
 	const [notchRememberPanel, setNotchRememberPanel] = useState(
-		() => (localStorage.getItem("bloom-notch-remember-panel") ??
-			localStorage.getItem("bloom-notch-click-to-open")) !== "false"
+		() => (localStorage.getItem("zenith-notch-remember-panel") ??
+			localStorage.getItem("zenith-notch-click-to-open")) !== "false"
 	);
 	const [notchDefaultPanel, setNotchDefaultPanel] = useState<"calendar" | "command-center" | "prayer">(
 		() => {
-			const s = localStorage.getItem("bloom-notch-default-panel");
+			const s = localStorage.getItem("zenith-notch-default-panel");
 			if (s === "command-center" || s === "prayer") return s;
 			return "calendar";
 		}
 	);
 	const [musicCompactNotch, setMusicCompactNotch] = useState(true);
 	const [shelfPersist, setShelfPersist] = useState(
-		() => localStorage.getItem("bloom-shelf-persist") === "true"
+		() => localStorage.getItem("zenith-shelf-persist") === "true"
 	);
 	const [volumeOverlayEnabled, setVolumeOverlayEnabled] = useState(true);
 	const [volumeEdgeEnabled, setVolumeEdgeEnabled] = useState(
-		() => localStorage.getItem("bloom-volume-edge-enabled") !== "false"
+		() => localStorage.getItem("zenith-volume-edge-enabled") !== "false"
 	);
 	const [brightnessOverlayEnabled, setBrightnessOverlayEnabled] = useState(
-		() => localStorage.getItem("bloom-brightness-overlay-enabled") !== "false"
+		() => localStorage.getItem("zenith-brightness-overlay-enabled") !== "false"
 	);
 	const [brightnessEdgeEnabled, setBrightnessEdgeEnabled] = useState(
-		() => localStorage.getItem("bloom-brightness-edge-enabled") !== "false"
+		() => localStorage.getItem("zenith-brightness-edge-enabled") !== "false"
 	);
 	const [mediaAmbienceEnabled, setMediaAmbienceEnabled] = useState(true);
 	const [mediaCompactGlowEnabled, setMediaCompactGlowEnabled] = useState(true);
 	const [mediaLayout, setMediaLayout] = useState<"classic" | "compact">(
-		() => (localStorage.getItem("bloom-media-layout") as "classic" | "compact") || "classic"
+		() => (localStorage.getItem("zenith-media-layout") as "classic" | "compact") || "classic"
 	);
 	const [cornersEnabled, setCornersEnabled] = useState(
-		() => localStorage.getItem("bloom-corners-enabled") === "true"
+		() => localStorage.getItem("zenith-corners-enabled") === "true"
 	);
 	const [showUpdateIndicator, setShowUpdateIndicator] = useState(
-		() => localStorage.getItem("bloom-show-update-indicator") !== "false"
+		() => localStorage.getItem("zenith-show-update-indicator") !== "false"
 	);
 	const [timeFormat24h, setTimeFormat24h] = useState(
-		() => localStorage.getItem("bloom-time-format-24h") === "true"
+		() => localStorage.getItem("zenith-time-format-24h") === "true"
 	);
 	const [tempUnitFahrenheit, setTempUnitFahrenheit] = useState(false);
 	const [cityName, setCityName] = useState("");
@@ -120,67 +120,67 @@ export function useSettings() {
 		right: ["battery"]
 	});
 	const [dockEnabled, setDockEnabled] = useState(
-		() => localStorage.getItem("bloom-dock-enabled") === "true"
+		() => localStorage.getItem("zenith-dock-enabled") === "true"
 	);
 	const [dockPreviewEnabled, setDockPreviewEnabled] = useState(true);
 	const [dockIconOnly, setDockIconOnly] = useState(
-		() => localStorage.getItem("bloom-dock-icon-only") === "true"
+		() => localStorage.getItem("zenith-dock-icon-only") === "true"
 	);
 	const [dockSeparatorEnabled, setDockSeparatorEnabled] = useState(
-		() => localStorage.getItem("bloom-dock-separator-enabled") !== "false"
+		() => localStorage.getItem("zenith-dock-separator-enabled") !== "false"
 	);
 	const [startIcon, setStartIcon] = useState(
-		() => localStorage.getItem("bloom-start-icon") || "default"
+		() => localStorage.getItem("zenith-start-icon") || "default"
 	);
 	const [dockAdaptive, setDockAdaptive] = useState(
-		() => localStorage.getItem("bloom-dock-adaptive") === "true"
+		() => localStorage.getItem("zenith-dock-adaptive") === "true"
 	);
 	const [dockWinNumberEnabled, setDockWinNumberEnabled] = useState(
-		() => localStorage.getItem("bloom-dock-win-number-enabled") !== "false"
+		() => localStorage.getItem("zenith-dock-win-number-enabled") !== "false"
 	);
 	const [dockExtrasPosition, setDockExtrasPosition] = useState(
-		() => localStorage.getItem("bloom-dock-extras-position") || "off"
+		() => localStorage.getItem("zenith-dock-extras-position") || "off"
 	);
 	const [dockExtrasDrives, setDockExtrasDrives] = useState(
-		() => localStorage.getItem("bloom-dock-extras-drives") !== "false"
+		() => localStorage.getItem("zenith-dock-extras-drives") !== "false"
 	);
 	const [dockExtrasHiddenDrives, setDockExtrasHiddenDrives] = useState(
-		() => localStorage.getItem("bloom-dock-extras-hidden-drives") || ""
+		() => localStorage.getItem("zenith-dock-extras-hidden-drives") || ""
 	);
 	const [dockExtrasRecycleBin, setDockExtrasRecycleBin] = useState(
-		() => localStorage.getItem("bloom-dock-extras-recycle-bin") !== "false"
+		() => localStorage.getItem("zenith-dock-extras-recycle-bin") !== "false"
 	);
 	const [dockTaskView, setDockTaskView] = useState(
-		() => localStorage.getItem("bloom-dock-task-view") === "true"
+		() => localStorage.getItem("zenith-dock-task-view") === "true"
 	);
 	const [dockExtrasFolders, setDockExtrasFolders] = useState(
-		() => localStorage.getItem("bloom-dock-extras-folders") ?? DEFAULT_ENABLED_FOLDERS
+		() => localStorage.getItem("zenith-dock-extras-folders") ?? DEFAULT_ENABLED_FOLDERS
 	);
 	const [dockExtrasCustomFolders, setDockExtrasCustomFolders] = useState(
-		() => localStorage.getItem("bloom-dock-extras-custom-folders") || "[]"
+		() => localStorage.getItem("zenith-dock-extras-custom-folders") || "[]"
 	);
 	const [dockMode, setDockMode] = useState(() => {
-		const raw = localStorage.getItem("bloom-dock-mode") || "smart";
+		const raw = localStorage.getItem("zenith-dock-mode") || "smart";
 		return raw === "auto-hide" ? "smart" : raw;
 	});
 	const [dockEdgeDelay, setDockEdgeDelay] = useState(() => {
-		const val = localStorage.getItem("bloom-dock-edge-delay");
+		const val = localStorage.getItem("zenith-dock-edge-delay");
 		return val !== null ? parseInt(val) : 200;
 	});
 	const [notchMode, setNotchMode] = useState("fixed");
 	const [notchEdgeDelay, setNotchEdgeDelay] = useState(() => {
-		const val = localStorage.getItem("bloom-notch-edge-delay");
+		const val = localStorage.getItem("zenith-notch-edge-delay");
 		return val !== null ? parseInt(val) : 200;
 	});
 	const [displays, setDisplays] = useState<DisplayInfo[]>([]);
 	const [notchDisplay, setNotchDisplay] = useState(
-		() => localStorage.getItem("bloom-notch-display") || "primary"
+		() => localStorage.getItem("zenith-notch-display") || "primary"
 	);
 	const [dockDisplay, setDockDisplay] = useState(
-		() => localStorage.getItem("bloom-dock-display") || "primary"
+		() => localStorage.getItem("zenith-dock-display") || "primary"
 	);
 	const [dockIsolation, setDockIsolation] = useState(
-		() => localStorage.getItem("bloom-dock-isolation") === "true"
+		() => localStorage.getItem("zenith-dock-isolation") === "true"
 	);
 
 	// Mouse & Radial Menu State
@@ -285,33 +285,100 @@ export function useSettings() {
 	);
 
 	const [lowBatteryThreshold, setLowBatteryThreshold] = useState(20);
+
+	// ── Translator state ──
+	const [translatorEnabled, setTranslatorEnabled] = useState(
+		() => localStorage.getItem("zenith-translator-enabled") !== "false"
+	);
+	const [translatorEngine, setTranslatorEngine] = useState<"cloud" | "local">(() =>
+		localStorage.getItem("zenith-translator-engine") === "local" ? "local" : "cloud"
+	);
+	const [translatorProvider, setTranslatorProvider] = useState<"gemini" | "groq" | "openai">(() => {
+		const p = localStorage.getItem("zenith-translator-provider");
+		return p === "groq" || p === "openai" ? p : "gemini";
+	});
+	const [translatorApiKey, setTranslatorApiKey] = useState(
+		() => localStorage.getItem("zenith-translator-api-key") || ""
+	);
+	const [translatorGroqApiKey, setTranslatorGroqApiKey] = useState(
+		() => localStorage.getItem("zenith-translator-groq-api-key") || ""
+	);
+	const [translatorOpenaiApiKey, setTranslatorOpenaiApiKey] = useState(
+		() => localStorage.getItem("zenith-translator-openai-api-key") || ""
+	);
+	const [translatorTargetLanguage, setTranslatorTargetLanguage] = useState(
+		() => localStorage.getItem("zenith-translator-target-language") || "Arabic"
+	);
+	const [translatorOutputMode, setTranslatorOutputMode] = useState<"full" | "explain" | "summarize">(() => {
+		const m = localStorage.getItem("zenith-translator-output-mode");
+		return m === "explain" || m === "summarize" ? m : "full";
+	});
+	const [translatorScreenshotMode, setTranslatorScreenshotMode] = useState<"instant" | "region">(() =>
+		localStorage.getItem("zenith-translator-screenshot-mode") === "region" ? "region" : "instant"
+	);
+	const [translatorSelectAllFallback, setTranslatorSelectAllFallback] = useState(
+		() => localStorage.getItem("zenith-translator-select-all-fallback") !== "false"
+	);
+	const [translatorAutoPasteArToEn, setTranslatorAutoPasteArToEn] = useState(
+		() => localStorage.getItem("zenith-translator-auto-paste-ar-to-en") !== "false"
+	);
+	const [translatorHotkeyArToEn, setTranslatorHotkeyArToEn] = useState(
+		() => localStorage.getItem("zenith-translator-hotkey-ar-to-en") || "Ctrl+Alt+A"
+	);
+	const [translatorHotkeyAnyToAr, setTranslatorHotkeyAnyToAr] = useState(
+		() => localStorage.getItem("zenith-translator-hotkey-any-to-ar") || "Ctrl+Alt+X"
+	);
+	const [translatorHotkeyScreen, setTranslatorHotkeyScreen] = useState(
+		() => localStorage.getItem("zenith-translator-hotkey-screen") || "Ctrl+Alt+S"
+	);
+	const [translatorHotkeyFullpage, setTranslatorHotkeyFullpage] = useState(
+		() => localStorage.getItem("zenith-translator-hotkey-fullpage") || "Ctrl+Alt+W"
+	);
+	const [translatorHotkeyToggle, setTranslatorHotkeyToggle] = useState(
+		() => localStorage.getItem("zenith-translator-hotkey-toggle") || "Ctrl+Alt+Space"
+	);
+	const [translatorFontSize, setTranslatorFontSize] = useState(
+		() => parseInt(localStorage.getItem("zenith-translator-font-size") || "15", 10)
+	);
+	const [translatorCardTimeoutSec, setTranslatorCardTimeoutSec] = useState(
+		() => parseInt(localStorage.getItem("zenith-translator-card-timeout-sec") || "12", 10)
+	);
+	const [translatorOverlayOpacity, setTranslatorOverlayOpacity] = useState(
+		() => parseInt(localStorage.getItem("zenith-translator-overlay-opacity") || "88", 10)
+	);
+	const [translatorCustomPromptInplace, setTranslatorCustomPromptInplace] = useState(
+		() => localStorage.getItem("zenith-translator-custom-prompt-inplace") || ""
+	);
+	const [translatorCustomPromptQuick, setTranslatorCustomPromptQuick] = useState(
+		() => localStorage.getItem("zenith-translator-custom-prompt-quick") || ""
+	);
 	const [updateStatus, setUpdateStatus] = useState<
 		"idle" | "checking" | "available" | "uptodate" | "error" | "downloading" | "installing"
 	>("idle");
 	const [updateVersion, setUpdateVersion] = useState("");
 	const [appVersion, setAppVersion] = useState("");
 	const [autoUpdate, setAutoUpdate] = useState(
-		() => localStorage.getItem("bloom-auto-update") === "true"
+		() => localStorage.getItem("zenith-auto-update") === "true"
 	);
 	const [scale, setScale] = useState(() =>
-		parseFloat(localStorage.getItem("bloom-scale") || "1.0")
+		parseFloat(localStorage.getItem("zenith-scale") || "1.0")
 	);
 	const [themeMode, setThemeMode] = useState(
-		() => localStorage.getItem("bloom-theme-mode") || "dark"
+		() => localStorage.getItem("zenith-theme-mode") || "dark"
 	);
 	const [themeColor, setThemeColor] = useState(
-		() => localStorage.getItem("bloom-theme-color") || "#007aff"
+		() => localStorage.getItem("zenith-theme-color") || "#007aff"
 	);
 	const [themeOpacity, setThemeOpacity] = useState(() => {
-		const val = localStorage.getItem("bloom-theme-opacity");
+		const val = localStorage.getItem("zenith-theme-opacity");
 		return val !== null ? parseFloat(val) : 0.8;
 	});
 	const [themeSaturation, setThemeSaturation] = useState(() => {
-		const val = localStorage.getItem("bloom-theme-saturation");
+		const val = localStorage.getItem("zenith-theme-saturation");
 		return val !== null ? parseFloat(val) : 0.5;
 	});
 	const [themeBrightness, setThemeBrightness] = useState(() => {
-		const val = localStorage.getItem("bloom-theme-brightness");
+		const val = localStorage.getItem("zenith-theme-brightness");
 		return val !== null ? parseFloat(val) : 0.15;
 	});
 	const [exportStatus, setExportStatus] = useState<"idle" | "exporting" | "success" | "error">(
@@ -340,52 +407,52 @@ export function useSettings() {
 				if (val !== null) setter(transform(val));
 			};
 
-			apply(getVal("bloom-weather-enabled"), setWeatherEnabled, readBool);
-			apply(getVal("bloom-calendar-enabled"), setCalendarEnabled, readBool);
-			apply(getVal("bloom-timer-sound-enabled"), setTimerSoundEnabled, readBool);
-			apply(getVal("bloom-music-mode-enabled"), setMusicModeEnabled, readBool);
-			apply(getVal("bloom-notch-remember-panel") ?? getVal("bloom-notch-click-to-open"),
+			apply(getVal("zenith-weather-enabled"), setWeatherEnabled, readBool);
+			apply(getVal("zenith-calendar-enabled"), setCalendarEnabled, readBool);
+			apply(getVal("zenith-timer-sound-enabled"), setTimerSoundEnabled, readBool);
+			apply(getVal("zenith-music-mode-enabled"), setMusicModeEnabled, readBool);
+			apply(getVal("zenith-notch-remember-panel") ?? getVal("zenith-notch-click-to-open"),
 				setNotchRememberPanel, readBool);
-			apply(getVal("bloom-notch-default-panel"), setNotchDefaultPanel,
+			apply(getVal("zenith-notch-default-panel"), setNotchDefaultPanel,
 				(v) => v === "command-center" ? "command-center" : "calendar");
-			apply(getVal("bloom-music-compact-notch"), setMusicCompactNotch, readBool);
-			apply(getVal("bloom-shelf-persist"), setShelfPersist, readBool);
-			apply(getVal("bloom-volume-overlay-enabled"), setVolumeOverlayEnabled, readBool);
-			apply(getVal("bloom-brightness-overlay-enabled"), setBrightnessOverlayEnabled, readBool);
-			apply(getVal("bloom-media-ambience-enabled"), setMediaAmbienceEnabled, readBool);
-			apply(getVal("bloom-media-compact-glow-enabled"), setMediaCompactGlowEnabled, readBool);
-			apply(getVal("bloom-corners-enabled"), setCornersEnabled, readBool);
-			apply(getVal("bloom-time-format-24h"), setTimeFormat24h, readBool);
-			apply(getVal("bloom-show-update-indicator"), setShowUpdateIndicator, readBool);
-			apply(getVal("bloom-auto-update"), setAutoUpdate, readBool);
-			apply(getVal("bloom-volume-edge-enabled"), setVolumeEdgeEnabled, readBool);
-			apply(getVal("bloom-brightness-edge-enabled"), setBrightnessEdgeEnabled, readBool);
-			apply(getVal("bloom-dock-enabled"), setDockEnabled, readBool);
-			apply(getVal("bloom-dock-preview-enabled"), setDockPreviewEnabled, readBool);
-			apply(getVal("bloom-dock-icon-only"), setDockIconOnly, readBool);
-			apply(getVal("bloom-dock-separator-enabled"), setDockSeparatorEnabled, readBool);
-			apply(getVal("bloom-start-icon"), setStartIcon, (v) => v);
-			apply(getVal("bloom-dock-adaptive"), setDockAdaptive, readBool);
-			apply(getVal("bloom-dock-win-number-enabled"), setDockWinNumberEnabled, readBool);
-			apply(getVal("bloom-dock-extras-position"), setDockExtrasPosition, (v) => v);
-			apply(getVal("bloom-dock-extras-drives"), setDockExtrasDrives, readBool);
-			apply(getVal("bloom-dock-extras-recycle-bin"), setDockExtrasRecycleBin, readBool);
-			apply(getVal("bloom-dock-task-view"), setDockTaskView, readBool);
-			apply(getVal("bloom-dock-extras-hidden-drives"), setDockExtrasHiddenDrives, (v) => v);
-			apply(getVal("bloom-dock-extras-folders"), setDockExtrasFolders, (v) => v);
-			apply(getVal("bloom-dock-extras-custom-folders"), setDockExtrasCustomFolders, (v) => v);
+			apply(getVal("zenith-music-compact-notch"), setMusicCompactNotch, readBool);
+			apply(getVal("zenith-shelf-persist"), setShelfPersist, readBool);
+			apply(getVal("zenith-volume-overlay-enabled"), setVolumeOverlayEnabled, readBool);
+			apply(getVal("zenith-brightness-overlay-enabled"), setBrightnessOverlayEnabled, readBool);
+			apply(getVal("zenith-media-ambience-enabled"), setMediaAmbienceEnabled, readBool);
+			apply(getVal("zenith-media-compact-glow-enabled"), setMediaCompactGlowEnabled, readBool);
+			apply(getVal("zenith-corners-enabled"), setCornersEnabled, readBool);
+			apply(getVal("zenith-time-format-24h"), setTimeFormat24h, readBool);
+			apply(getVal("zenith-show-update-indicator"), setShowUpdateIndicator, readBool);
+			apply(getVal("zenith-auto-update"), setAutoUpdate, readBool);
+			apply(getVal("zenith-volume-edge-enabled"), setVolumeEdgeEnabled, readBool);
+			apply(getVal("zenith-brightness-edge-enabled"), setBrightnessEdgeEnabled, readBool);
+			apply(getVal("zenith-dock-enabled"), setDockEnabled, readBool);
+			apply(getVal("zenith-dock-preview-enabled"), setDockPreviewEnabled, readBool);
+			apply(getVal("zenith-dock-icon-only"), setDockIconOnly, readBool);
+			apply(getVal("zenith-dock-separator-enabled"), setDockSeparatorEnabled, readBool);
+			apply(getVal("zenith-start-icon"), setStartIcon, (v) => v);
+			apply(getVal("zenith-dock-adaptive"), setDockAdaptive, readBool);
+			apply(getVal("zenith-dock-win-number-enabled"), setDockWinNumberEnabled, readBool);
+			apply(getVal("zenith-dock-extras-position"), setDockExtrasPosition, (v) => v);
+			apply(getVal("zenith-dock-extras-drives"), setDockExtrasDrives, readBool);
+			apply(getVal("zenith-dock-extras-recycle-bin"), setDockExtrasRecycleBin, readBool);
+			apply(getVal("zenith-dock-task-view"), setDockTaskView, readBool);
+			apply(getVal("zenith-dock-extras-hidden-drives"), setDockExtrasHiddenDrives, (v) => v);
+			apply(getVal("zenith-dock-extras-folders"), setDockExtrasFolders, (v) => v);
+			apply(getVal("zenith-dock-extras-custom-folders"), setDockExtrasCustomFolders, (v) => v);
 
-			apply(getVal("bloom-temp-unit"), setTempUnitFahrenheit, (v) => v === "fahrenheit");
-			apply(getVal("bloom-scale"), setScale, parseFloat);
-			apply(getVal("bloom-low-battery-threshold"), setLowBatteryThreshold, parseInt);
+			apply(getVal("zenith-temp-unit"), setTempUnitFahrenheit, (v) => v === "fahrenheit");
+			apply(getVal("zenith-scale"), setScale, parseFloat);
+			apply(getVal("zenith-low-battery-threshold"), setLowBatteryThreshold, parseInt);
 
-			apply(getVal("bloom-notch-mode"), setNotchMode, (v) => (v === "auto-hide" ? "smart" : v));
-			apply(getVal("bloom-notch-edge-delay"), setNotchEdgeDelay, parseInt);
-			apply(getVal("bloom-dock-mode"), setDockMode, (v) => (v === "auto-hide" ? "smart" : v));
-			apply(getVal("bloom-dock-edge-delay"), setDockEdgeDelay, parseInt);
-			apply(getVal("bloom-notch-display"), setNotchDisplay, (v) => v);
-			apply(getVal("bloom-dock-display"), setDockDisplay, (v) => v);
-			apply(getVal("bloom-dock-isolation"), setDockIsolation, readBool);
+			apply(getVal("zenith-notch-mode"), setNotchMode, (v) => (v === "auto-hide" ? "smart" : v));
+			apply(getVal("zenith-notch-edge-delay"), setNotchEdgeDelay, parseInt);
+			apply(getVal("zenith-dock-mode"), setDockMode, (v) => (v === "auto-hide" ? "smart" : v));
+			apply(getVal("zenith-dock-edge-delay"), setDockEdgeDelay, parseInt);
+			apply(getVal("zenith-notch-display"), setNotchDisplay, (v) => v);
+			apply(getVal("zenith-dock-display"), setDockDisplay, (v) => v);
+			apply(getVal("zenith-dock-isolation"), setDockIsolation, readBool);
 
 			// Mouse & Radial Menu Settings
 			apply(getVal("zenith-mouse-radial-enabled"), setMouseRadialEnabled, readBool);
@@ -421,29 +488,57 @@ export function useSettings() {
 			apply(getVal("zenith-mouse-open-sound"), setMouseOpenSound, (v) => v);
 			apply(getVal("zenith-mouse-hover-sound"), setMouseHoverSound, (v) => v);
 
-			const savedCity = getVal("bloom-weather-city");
+			const savedCity = getVal("zenith-weather-city");
 			if (savedCity) setCityName(savedCity);
 
-			apply(getVal("bloom-prayer-enabled"), setPrayerEnabled, readBool);
-			apply(getVal("bloom-prayer-city"), setPrayerCity, (v) => v);
-			apply(getVal("bloom-prayer-country"), setPrayerCountry, (v) => v);
-			apply(getVal("bloom-prayer-location-mode"), setPrayerLocationMode, (v) => (v === "manual" ? "manual" : "auto"));
-			apply(getVal("bloom-prayer-method"), setPrayerMethod, (v) => v);
-			apply(getVal("bloom-prayer-time-offset"), setPrayerTimeOffset, (v) => v);
-			apply(getVal("bloom-prayer-alert-type"), setPrayerAlertType, (v) => v);
-			apply(getVal("bloom-prayer-pre-alert"), setPrayerPreAlert, readBool);
-			apply(getVal("bloom-prayer-notch-popup"), setPrayerNotchPopup, readBool);
-			apply(getVal("bloom-notifications-enabled"), setNotificationsEnabled, readBool);
-			apply(getVal("bloom-notifications-silent"), setNotificationsSilent, readBool);
-			apply(getVal("bloom-notifications-notch-enabled"), setNotificationsNotchEnabled, readBool);
+			apply(getVal("zenith-prayer-enabled"), setPrayerEnabled, readBool);
+			apply(getVal("zenith-prayer-city"), setPrayerCity, (v) => v);
+			apply(getVal("zenith-prayer-country"), setPrayerCountry, (v) => v);
+			apply(getVal("zenith-prayer-location-mode"), setPrayerLocationMode, (v) => (v === "manual" ? "manual" : "auto"));
+			apply(getVal("zenith-prayer-method"), setPrayerMethod, (v) => v);
+			apply(getVal("zenith-prayer-time-offset"), setPrayerTimeOffset, (v) => v);
+			apply(getVal("zenith-prayer-alert-type"), setPrayerAlertType, (v) => v);
+			apply(getVal("zenith-prayer-pre-alert"), setPrayerPreAlert, readBool);
+			apply(getVal("zenith-prayer-notch-popup"), setPrayerNotchPopup, readBool);
+			apply(getVal("zenith-notifications-enabled"), setNotificationsEnabled, readBool);
+			apply(getVal("zenith-notifications-silent"), setNotificationsSilent, readBool);
+			apply(getVal("zenith-notifications-notch-enabled"), setNotificationsNotchEnabled, readBool);
 
-			apply(getVal("bloom-theme-mode"), setThemeMode, (v) => v);
-			apply(getVal("bloom-theme-color"), setThemeColor, (v) => v);
-			apply(getVal("bloom-theme-opacity"), setThemeOpacity, parseFloat);
-			apply(getVal("bloom-theme-saturation"), setThemeSaturation, parseFloat);
-			apply(getVal("bloom-theme-brightness"), setThemeBrightness, parseFloat);
+			apply(getVal("zenith-theme-mode"), setThemeMode, (v) => v);
+			apply(getVal("zenith-theme-color"), setThemeColor, (v) => v);
+			apply(getVal("zenith-theme-opacity"), setThemeOpacity, parseFloat);
+			apply(getVal("zenith-theme-saturation"), setThemeSaturation, parseFloat);
+			apply(getVal("zenith-theme-brightness"), setThemeBrightness, parseFloat);
 
-			const widgetsVal = getVal("bloom-status-widgets");
+			apply(getVal("zenith-translator-enabled"), setTranslatorEnabled, (v) => v !== "false");
+			apply(getVal("zenith-translator-engine"), setTranslatorEngine, (v) => (v === "local" ? "local" : "cloud"));
+			apply(getVal("zenith-translator-provider"), setTranslatorProvider, (v) =>
+				v === "groq" || v === "openai" ? v : "gemini"
+			);
+			apply(getVal("zenith-translator-api-key"), setTranslatorApiKey, (v) => v);
+			apply(getVal("zenith-translator-groq-api-key"), setTranslatorGroqApiKey, (v) => v);
+			apply(getVal("zenith-translator-openai-api-key"), setTranslatorOpenaiApiKey, (v) => v);
+			apply(getVal("zenith-translator-target-language"), setTranslatorTargetLanguage, (v) => v);
+			apply(getVal("zenith-translator-output-mode"), setTranslatorOutputMode, (v) =>
+				v === "explain" || v === "summarize" ? v : "full"
+			);
+			apply(getVal("zenith-translator-screenshot-mode"), setTranslatorScreenshotMode, (v) =>
+				v === "region" ? "region" : "instant"
+			);
+			apply(getVal("zenith-translator-select-all-fallback"), setTranslatorSelectAllFallback, (v) => v !== "false");
+			apply(getVal("zenith-translator-auto-paste-ar-to-en"), setTranslatorAutoPasteArToEn, (v) => v !== "false");
+			apply(getVal("zenith-translator-hotkey-ar-to-en"), setTranslatorHotkeyArToEn, (v) => v);
+			apply(getVal("zenith-translator-hotkey-any-to-ar"), setTranslatorHotkeyAnyToAr, (v) => v);
+			apply(getVal("zenith-translator-hotkey-screen"), setTranslatorHotkeyScreen, (v) => v);
+			apply(getVal("zenith-translator-hotkey-fullpage"), setTranslatorHotkeyFullpage, (v) => v);
+			apply(getVal("zenith-translator-hotkey-toggle"), setTranslatorHotkeyToggle, (v) => v);
+			apply(getVal("zenith-translator-font-size"), setTranslatorFontSize, (v) => parseInt(v, 10) || 15);
+			apply(getVal("zenith-translator-card-timeout-sec"), setTranslatorCardTimeoutSec, (v) => parseInt(v, 10) || 12);
+			apply(getVal("zenith-translator-overlay-opacity"), setTranslatorOverlayOpacity, (v) => parseInt(v, 10) || 88);
+			apply(getVal("zenith-translator-custom-prompt-inplace"), setTranslatorCustomPromptInplace, (v) => v);
+			apply(getVal("zenith-translator-custom-prompt-quick"), setTranslatorCustomPromptQuick, (v) => v);
+
+			const widgetsVal = getVal("zenith-status-widgets");
 			if (widgetsVal) {
 				try {
 					const parsed = JSON.parse(widgetsVal);
@@ -465,7 +560,7 @@ export function useSettings() {
 			} catch (error) {
 				console.error(`Failed to save ${key}:`, error);
 				saveFailed.current = true;
-				sessionStorage.setItem("bloom-settings-save-error", "true");
+				sessionStorage.setItem("zenith-settings-save-error", "true");
 				setSaveError(true);
 				window.setTimeout(() => window.location.reload(), 0);
 				return false;
@@ -473,7 +568,7 @@ export function useSettings() {
 			try {
 				if (value === null) localStorage.removeItem(key);
 				else localStorage.setItem(key, value);
-				sessionStorage.removeItem("bloom-settings-save-error");
+				sessionStorage.removeItem("zenith-settings-save-error");
 			} catch (error) {
 				console.warn("Settings mirror update failed:", error);
 			}
@@ -484,7 +579,7 @@ export function useSettings() {
 		return operation;
 	};
 
-	const saveLocation = (key: "bloom-weather-lat" | "bloom-weather-lon", value: string | null): Promise<boolean> => {
+	const saveLocation = (key: "zenith-weather-lat" | "zenith-weather-lon", value: string | null): Promise<boolean> => {
 		const operation = saveQueue.current.then(async () => {
 			if (saveFailed.current) return false;
 			try {
@@ -492,14 +587,14 @@ export function useSettings() {
 			} catch (error) {
 				console.error(`Failed to save ${key}:`, error);
 				saveFailed.current = true;
-				sessionStorage.setItem("bloom-settings-save-error", "true");
+				sessionStorage.setItem("zenith-settings-save-error", "true");
 				setSaveError(true);
 				window.setTimeout(() => window.location.reload(), 0);
 				return false;
 			}
 			try {
 				localStorage.removeItem(key);
-				sessionStorage.removeItem("bloom-settings-save-error");
+				sessionStorage.removeItem("zenith-settings-save-error");
 			} catch (error) {
 				console.warn("Settings mirror cleanup failed:", error);
 			}
@@ -511,7 +606,7 @@ export function useSettings() {
 	};
 
 	const dismissSaveError = () => {
-		sessionStorage.removeItem("bloom-settings-save-error");
+		sessionStorage.removeItem("zenith-settings-save-error");
 		setSaveError(false);
 	};
 
@@ -523,13 +618,13 @@ export function useSettings() {
 			.then((disps) => {
 				setDisplays(disps);
 				if (disps.length <= 1) {
-					if (localStorage.getItem("bloom-notch-display") !== "primary") {
+					if (localStorage.getItem("zenith-notch-display") !== "primary") {
 						setNotchDisplay("primary");
-						saveSetting("bloom-notch-display", "primary");
+						saveSetting("zenith-notch-display", "primary");
 					}
-					if (localStorage.getItem("bloom-dock-display") !== "primary") {
+					if (localStorage.getItem("zenith-dock-display") !== "primary") {
 						setDockDisplay("primary");
-						saveSetting("bloom-dock-display", "primary");
+						saveSetting("zenith-dock-display", "primary");
 					}
 				}
 			})
@@ -548,64 +643,64 @@ export function useSettings() {
 
 	// ── Sync settings from other windows ──
 	useSettingsSync({
-		"bloom-dock-mode": setDockMode,
-		"bloom-dock-edge-delay": setDockEdgeDelay,
-		"bloom-notch-mode": setNotchMode,
-		"bloom-notch-edge-delay": setNotchEdgeDelay,
-		"bloom-dock-enabled": setDockEnabled,
-		"bloom-dock-icon-only": setDockIconOnly,
-		"bloom-dock-separator-enabled": setDockSeparatorEnabled,
-		"bloom-start-icon": setStartIcon,
-		"bloom-dock-preview-enabled": setDockPreviewEnabled,
-		"bloom-dock-adaptive": setDockAdaptive,
-		"bloom-dock-win-number-enabled": setDockWinNumberEnabled,
-		"bloom-dock-extras-position": setDockExtrasPosition,
-		"bloom-dock-extras-drives": setDockExtrasDrives,
-		"bloom-dock-extras-recycle-bin": setDockExtrasRecycleBin,
-		"bloom-dock-task-view": setDockTaskView,
-		"bloom-dock-extras-hidden-drives": setDockExtrasHiddenDrives,
-		"bloom-dock-extras-folders": setDockExtrasFolders,
-		"bloom-dock-extras-custom-folders": setDockExtrasCustomFolders,
-		"bloom-weather-enabled": setWeatherEnabled,
-		"bloom-calendar-enabled": setCalendarEnabled,
-		"bloom-prayer-enabled": setPrayerEnabled,
-		"bloom-prayer-city": setPrayerCity,
-		"bloom-prayer-country": setPrayerCountry,
-		"bloom-prayer-location-mode": (v: unknown) => setPrayerLocationMode(v === "manual" ? "manual" : "auto"),
-		"bloom-prayer-method": setPrayerMethod,
-		"bloom-prayer-time-offset": setPrayerTimeOffset,
-		"bloom-prayer-alert-type": setPrayerAlertType,
-		"bloom-prayer-pre-alert": setPrayerPreAlert,
-		"bloom-prayer-notch-popup": setPrayerNotchPopup,
-		"bloom-notifications-enabled": setNotificationsEnabled,
-		"bloom-notifications-silent": setNotificationsSilent,
-		"bloom-notifications-notch-enabled": setNotificationsNotchEnabled,
-		"bloom-timer-sound-enabled": setTimerSoundEnabled,
-		"bloom-music-mode-enabled": setMusicModeEnabled,
-		"bloom-notch-remember-panel": setNotchRememberPanel,
-		"bloom-notch-default-panel": (v: unknown) =>
+		"zenith-dock-mode": setDockMode,
+		"zenith-dock-edge-delay": setDockEdgeDelay,
+		"zenith-notch-mode": setNotchMode,
+		"zenith-notch-edge-delay": setNotchEdgeDelay,
+		"zenith-dock-enabled": setDockEnabled,
+		"zenith-dock-icon-only": setDockIconOnly,
+		"zenith-dock-separator-enabled": setDockSeparatorEnabled,
+		"zenith-start-icon": setStartIcon,
+		"zenith-dock-preview-enabled": setDockPreviewEnabled,
+		"zenith-dock-adaptive": setDockAdaptive,
+		"zenith-dock-win-number-enabled": setDockWinNumberEnabled,
+		"zenith-dock-extras-position": setDockExtrasPosition,
+		"zenith-dock-extras-drives": setDockExtrasDrives,
+		"zenith-dock-extras-recycle-bin": setDockExtrasRecycleBin,
+		"zenith-dock-task-view": setDockTaskView,
+		"zenith-dock-extras-hidden-drives": setDockExtrasHiddenDrives,
+		"zenith-dock-extras-folders": setDockExtrasFolders,
+		"zenith-dock-extras-custom-folders": setDockExtrasCustomFolders,
+		"zenith-weather-enabled": setWeatherEnabled,
+		"zenith-calendar-enabled": setCalendarEnabled,
+		"zenith-prayer-enabled": setPrayerEnabled,
+		"zenith-prayer-city": setPrayerCity,
+		"zenith-prayer-country": setPrayerCountry,
+		"zenith-prayer-location-mode": (v: unknown) => setPrayerLocationMode(v === "manual" ? "manual" : "auto"),
+		"zenith-prayer-method": setPrayerMethod,
+		"zenith-prayer-time-offset": setPrayerTimeOffset,
+		"zenith-prayer-alert-type": setPrayerAlertType,
+		"zenith-prayer-pre-alert": setPrayerPreAlert,
+		"zenith-prayer-notch-popup": setPrayerNotchPopup,
+		"zenith-notifications-enabled": setNotificationsEnabled,
+		"zenith-notifications-silent": setNotificationsSilent,
+		"zenith-notifications-notch-enabled": setNotificationsNotchEnabled,
+		"zenith-timer-sound-enabled": setTimerSoundEnabled,
+		"zenith-music-mode-enabled": setMusicModeEnabled,
+		"zenith-notch-remember-panel": setNotchRememberPanel,
+		"zenith-notch-default-panel": (v: unknown) =>
 			setNotchDefaultPanel(v === "command-center" || v === "prayer" ? (v as "command-center" | "prayer") : "calendar"),
-		"bloom-music-compact-notch": setMusicCompactNotch,
-		"bloom-media-ambience-enabled": setMediaAmbienceEnabled,
-		"bloom-media-compact-glow-enabled": setMediaCompactGlowEnabled,
-		"bloom-media-layout": setMediaLayout,
-		"bloom-corners-enabled": setCornersEnabled,
-		"bloom-show-update-indicator": setShowUpdateIndicator,
-		"bloom-time-format-24h": setTimeFormat24h,
-		"bloom-low-battery-threshold": setLowBatteryThreshold,
-		"bloom-scale": setScale,
-		"bloom-temp-unit": (v) => setTempUnitFahrenheit(v === "fahrenheit"),
-		"bloom-auto-update": setAutoUpdate,
-		"bloom-volume-overlay-enabled": setVolumeOverlayEnabled,
-		"bloom-volume-edge-enabled": setVolumeEdgeEnabled,
-		"bloom-brightness-overlay-enabled": setBrightnessOverlayEnabled,
-		"bloom-brightness-edge-enabled": setBrightnessEdgeEnabled,
-		"bloom-theme-mode": setThemeMode,
-		"bloom-theme-color": setThemeColor,
-		"bloom-theme-opacity": setThemeOpacity,
-		"bloom-theme-saturation": setThemeSaturation,
-		"bloom-theme-brightness": setThemeBrightness,
-		"bloom-weather-city": (v) => setCityName(v || ""),
+		"zenith-music-compact-notch": setMusicCompactNotch,
+		"zenith-media-ambience-enabled": setMediaAmbienceEnabled,
+		"zenith-media-compact-glow-enabled": setMediaCompactGlowEnabled,
+		"zenith-media-layout": setMediaLayout,
+		"zenith-corners-enabled": setCornersEnabled,
+		"zenith-show-update-indicator": setShowUpdateIndicator,
+		"zenith-time-format-24h": setTimeFormat24h,
+		"zenith-low-battery-threshold": setLowBatteryThreshold,
+		"zenith-scale": setScale,
+		"zenith-temp-unit": (v) => setTempUnitFahrenheit(v === "fahrenheit"),
+		"zenith-auto-update": setAutoUpdate,
+		"zenith-volume-overlay-enabled": setVolumeOverlayEnabled,
+		"zenith-volume-edge-enabled": setVolumeEdgeEnabled,
+		"zenith-brightness-overlay-enabled": setBrightnessOverlayEnabled,
+		"zenith-brightness-edge-enabled": setBrightnessEdgeEnabled,
+		"zenith-theme-mode": setThemeMode,
+		"zenith-theme-color": setThemeColor,
+		"zenith-theme-opacity": setThemeOpacity,
+		"zenith-theme-saturation": setThemeSaturation,
+		"zenith-theme-brightness": setThemeBrightness,
+		"zenith-weather-city": (v) => setCityName(v || ""),
 
 		// Mouse & Radial Settings Sync
 		"zenith-mouse-radial-enabled": setMouseRadialEnabled,
@@ -628,6 +723,32 @@ export function useSettings() {
 		"zenith-mouse-game-mode-blocked-apps": setMouseGameModeBlockedApps,
 		"zenith-mouse-game-mode-auto-detect": setMouseGameModeAutoDetect,
 		"zenith-mouse-sound-enabled": setMouseSoundEnabled,
+
+		// Translator Settings Sync
+		"zenith-translator-enabled": setTranslatorEnabled,
+		"zenith-translator-engine": (v: unknown) => setTranslatorEngine(v === "local" ? "local" : "cloud"),
+		"zenith-translator-provider": (v: unknown) =>
+			setTranslatorProvider(v === "groq" || v === "openai" ? v : "gemini"),
+		"zenith-translator-api-key": setTranslatorApiKey,
+		"zenith-translator-groq-api-key": setTranslatorGroqApiKey,
+		"zenith-translator-openai-api-key": setTranslatorOpenaiApiKey,
+		"zenith-translator-target-language": setTranslatorTargetLanguage,
+		"zenith-translator-output-mode": (v: unknown) =>
+			setTranslatorOutputMode(v === "explain" || v === "summarize" ? v : "full"),
+		"zenith-translator-screenshot-mode": (v: unknown) =>
+			setTranslatorScreenshotMode(v === "region" ? "region" : "instant"),
+		"zenith-translator-select-all-fallback": setTranslatorSelectAllFallback,
+		"zenith-translator-auto-paste-ar-to-en": setTranslatorAutoPasteArToEn,
+		"zenith-translator-hotkey-ar-to-en": setTranslatorHotkeyArToEn,
+		"zenith-translator-hotkey-any-to-ar": setTranslatorHotkeyAnyToAr,
+		"zenith-translator-hotkey-screen": setTranslatorHotkeyScreen,
+		"zenith-translator-hotkey-fullpage": setTranslatorHotkeyFullpage,
+		"zenith-translator-hotkey-toggle": setTranslatorHotkeyToggle,
+		"zenith-translator-font-size": setTranslatorFontSize,
+		"zenith-translator-card-timeout-sec": setTranslatorCardTimeoutSec,
+		"zenith-translator-overlay-opacity": setTranslatorOverlayOpacity,
+		"zenith-translator-custom-prompt-inplace": setTranslatorCustomPromptInplace,
+		"zenith-translator-custom-prompt-quick": setTranslatorCustomPromptQuick,
 		"zenith-mouse-sound-volume": setMouseSoundVolume,
 		"zenith-mouse-menu-radius": setMouseMenuRadius,
 		"zenith-mouse-icon-size": setMouseIconSize,
@@ -645,7 +766,7 @@ export function useSettings() {
 	// ── Listen for system accent changes (adaptive theme) ──
 	useEffect(() => {
 		const unlisten = listen<string>("system-accent-changed", (event) => {
-			const mode = localStorage.getItem("bloom-theme-mode") || "dark";
+			const mode = localStorage.getItem("zenith-theme-mode") || "dark";
 			if (mode === "adaptive") {
 				try {
 					const hsl = hexToHsl(event.payload);
@@ -766,155 +887,155 @@ export function useSettings() {
 	const toggleWeather = () => {
 		const next = !weatherEnabled;
 		setWeatherEnabled(next);
-		saveSetting("bloom-weather-enabled", String(next));
+		saveSetting("zenith-weather-enabled", String(next));
 	};
 
 	const toggleCalendar = () => {
 		const next = !calendarEnabled;
 		setCalendarEnabled(next);
-		saveSetting("bloom-calendar-enabled", String(next));
+		saveSetting("zenith-calendar-enabled", String(next));
 	};
 
 	const togglePrayer = () => {
 		const next = !prayerEnabled;
 		setPrayerEnabled(next);
-		saveSetting("bloom-prayer-enabled", String(next));
+		saveSetting("zenith-prayer-enabled", String(next));
 	};
 
 	const setPrayerCityValue = (val: string) => {
 		setPrayerCity(val);
-		saveSetting("bloom-prayer-city", val);
+		saveSetting("zenith-prayer-city", val);
 	};
 
 	const setPrayerCountryValue = (val: string) => {
 		setPrayerCountry(val);
-		saveSetting("bloom-prayer-country", val);
+		saveSetting("zenith-prayer-country", val);
 	};
 
 	const setPrayerLocationModeValue = (val: "auto" | "manual") => {
 		setPrayerLocationMode(val);
-		saveSetting("bloom-prayer-location-mode", val);
+		saveSetting("zenith-prayer-location-mode", val);
 	};
 
 	const setPrayerMethodValue = (val: string) => {
 		setPrayerMethod(val);
-		saveSetting("bloom-prayer-method", val);
+		saveSetting("zenith-prayer-method", val);
 	};
 
 	const setPrayerTimeOffsetValue = (val: string) => {
 		setPrayerTimeOffset(val);
-		saveSetting("bloom-prayer-time-offset", val);
+		saveSetting("zenith-prayer-time-offset", val);
 	};
 
 	const setPrayerAlertTypeValue = (val: string) => {
 		setPrayerAlertType(val);
-		saveSetting("bloom-prayer-alert-type", val);
+		saveSetting("zenith-prayer-alert-type", val);
 	};
 
 	const togglePrayerPreAlert = () => {
 		const next = !prayerPreAlert;
 		setPrayerPreAlert(next);
-		saveSetting("bloom-prayer-pre-alert", String(next));
+		saveSetting("zenith-prayer-pre-alert", String(next));
 	};
 
 	const togglePrayerNotchPopup = () => {
 		const next = !prayerNotchPopup;
 		setPrayerNotchPopup(next);
-		saveSetting("bloom-prayer-notch-popup", String(next));
+		saveSetting("zenith-prayer-notch-popup", String(next));
 	};
 
 	const toggleNotifications = () => {
 		const next = !notificationsEnabled;
 		setNotificationsEnabled(next);
-		saveSetting("bloom-notifications-enabled", String(next));
+		saveSetting("zenith-notifications-enabled", String(next));
 	};
 
 	const toggleNotificationsSilent = () => {
 		const next = !notificationsSilent;
 		setNotificationsSilent(next);
-		saveSetting("bloom-notifications-silent", String(next));
+		saveSetting("zenith-notifications-silent", String(next));
 	};
 
 	const toggleNotificationsNotch = () => {
 		const next = !notificationsNotchEnabled;
 		setNotificationsNotchEnabled(next);
-		saveSetting("bloom-notifications-notch-enabled", String(next));
+		saveSetting("zenith-notifications-notch-enabled", String(next));
 	};
 
 	const toggleTimerSound = () => {
 		const next = !timerSoundEnabled;
 		setTimerSoundEnabled(next);
-		saveSetting("bloom-timer-sound-enabled", String(next));
+		saveSetting("zenith-timer-sound-enabled", String(next));
 	};
 
 	const toggleMusicMode = () => {
 		const next = !musicModeEnabled;
 		setMusicModeEnabled(next);
-		saveSetting("bloom-music-mode-enabled", String(next));
+		saveSetting("zenith-music-mode-enabled", String(next));
 	};
 
 	const toggleNotchRememberPanel = () => {
 		const next = !notchRememberPanel;
 		setNotchRememberPanel(next);
-		saveSetting("bloom-notch-remember-panel", String(next));
+		saveSetting("zenith-notch-remember-panel", String(next));
 	};
 
 	const changeNotchDefaultPanel = (panel: "calendar" | "command-center" | "prayer") => {
 		setNotchDefaultPanel(panel);
-		saveSetting("bloom-notch-default-panel", panel);
+		saveSetting("zenith-notch-default-panel", panel);
 	};
 
 	const toggleMusicCompactNotch = () => {
 		const next = !musicCompactNotch;
 		setMusicCompactNotch(next);
-		saveSetting("bloom-music-compact-notch", String(next));
+		saveSetting("zenith-music-compact-notch", String(next));
 	};
 
 	const toggleShelfPersist = () => {
 		const next = !shelfPersist;
 		setShelfPersist(next);
-		saveSetting("bloom-shelf-persist", String(next));
+		saveSetting("zenith-shelf-persist", String(next));
 	};
 
 	const toggleMediaLayout = (layout: "classic" | "compact") => {
 		setMediaLayout(layout);
-		saveSetting("bloom-media-layout", layout);
+		saveSetting("zenith-media-layout", layout);
 	};
 
 	const toggleVolumeOverlay = () => {
 		const next = !volumeOverlayEnabled;
 		setVolumeOverlayEnabled(next);
-		saveSetting("bloom-volume-overlay-enabled", String(next));
+		saveSetting("zenith-volume-overlay-enabled", String(next));
 	};
 
 	const toggleVolumeEdge = () => {
 		const next = !volumeEdgeEnabled;
 		setVolumeEdgeEnabled(next);
-		saveSetting("bloom-volume-edge-enabled", String(next));
+		saveSetting("zenith-volume-edge-enabled", String(next));
 	};
 
 	const toggleBrightnessOverlay = () => {
 		const next = !brightnessOverlayEnabled;
 		setBrightnessOverlayEnabled(next);
-		saveSetting("bloom-brightness-overlay-enabled", String(next));
+		saveSetting("zenith-brightness-overlay-enabled", String(next));
 	};
 
 	const toggleBrightnessEdge = () => {
 		const next = !brightnessEdgeEnabled;
 		setBrightnessEdgeEnabled(next);
-		saveSetting("bloom-brightness-edge-enabled", String(next));
+		saveSetting("zenith-brightness-edge-enabled", String(next));
 	};
 
 	const toggleAmbience = () => {
 		const next = !mediaAmbienceEnabled;
 		setMediaAmbienceEnabled(next);
-		saveSetting("bloom-media-ambience-enabled", String(next));
+		saveSetting("zenith-media-ambience-enabled", String(next));
 	};
 
 	const toggleCompactGlow = () => {
 		const next = !mediaCompactGlowEnabled;
 		setMediaCompactGlowEnabled(next);
-		saveSetting("bloom-media-compact-glow-enabled", String(next));
+		saveSetting("zenith-media-compact-glow-enabled", String(next));
 	};
 
 	// Mouse & Radial Menu Actions
@@ -1092,102 +1213,102 @@ export function useSettings() {
 	const toggleCorners = () => {
 		const next = !cornersEnabled;
 		setCornersEnabled(next);
-		saveSetting("bloom-corners-enabled", String(next));
+		saveSetting("zenith-corners-enabled", String(next));
 	};
 
 	const toggleUpdateIndicator = () => {
 		const next = !showUpdateIndicator;
 		setShowUpdateIndicator(next);
-		saveSetting("bloom-show-update-indicator", String(next));
+		saveSetting("zenith-show-update-indicator", String(next));
 	};
 
 	const toggleTimeFormat24h = () => {
 		const next = !timeFormat24h;
 		setTimeFormat24h(next);
-		saveSetting("bloom-time-format-24h", String(next));
+		saveSetting("zenith-time-format-24h", String(next));
 	};
 
 	const toggleTempUnit = () => {
 		const next = !tempUnitFahrenheit;
 		setTempUnitFahrenheit(next);
-		saveSetting("bloom-temp-unit", next ? "fahrenheit" : "celsius");
+		saveSetting("zenith-temp-unit", next ? "fahrenheit" : "celsius");
 	};
 
 	const toggleDock = () => {
 		const next = !dockEnabled;
 		setDockEnabled(next);
-		saveSetting("bloom-dock-enabled", String(next));
+		saveSetting("zenith-dock-enabled", String(next));
 		saveSetting("zenith-dock-enabled", String(next));
 	};
 
 	const toggleDockPreview = () => {
 		const next = !dockPreviewEnabled;
 		setDockPreviewEnabled(next);
-		saveSetting("bloom-dock-preview-enabled", String(next));
+		saveSetting("zenith-dock-preview-enabled", String(next));
 	};
 
 	const toggleDockIconOnly = () => {
 		const next = !dockIconOnly;
 		setDockIconOnly(next);
-		saveSetting("bloom-dock-icon-only", String(next));
+		saveSetting("zenith-dock-icon-only", String(next));
 	};
 
 	const toggleDockSeparator = () => {
 		const next = !dockSeparatorEnabled;
 		setDockSeparatorEnabled(next);
-		saveSetting("bloom-dock-separator-enabled", String(next));
+		saveSetting("zenith-dock-separator-enabled", String(next));
 	};
 
 	const handleStartIconChange = (icon: string) => {
 		setStartIcon(icon);
-		saveSetting("bloom-start-icon", icon);
+		saveSetting("zenith-start-icon", icon);
 	};
 
 	const toggleDockAdaptive = () => {
 		const next = !dockAdaptive;
 		setDockAdaptive(next);
-		saveSetting("bloom-dock-adaptive", String(next));
+		saveSetting("zenith-dock-adaptive", String(next));
 	};
 
 	const toggleDockWinNumber = () => {
 		const next = !dockWinNumberEnabled;
 		setDockWinNumberEnabled(next);
-		saveSetting("bloom-dock-win-number-enabled", String(next));
+		saveSetting("zenith-dock-win-number-enabled", String(next));
 	};
 
 	const handleDockExtrasPositionChange = (position: string) => {
 		setDockExtrasPosition(position);
-		saveSetting("bloom-dock-extras-position", position);
+		saveSetting("zenith-dock-extras-position", position);
 	};
 
 	const toggleDockExtrasDrives = () => {
 		const next = !dockExtrasDrives;
 		setDockExtrasDrives(next);
-		saveSetting("bloom-dock-extras-drives", String(next));
+		saveSetting("zenith-dock-extras-drives", String(next));
 	};
 
 	const toggleDockExtrasDrive = (letter: string) => {
 		const next = toggleHiddenDrive(dockExtrasHiddenDrives, letter);
 		setDockExtrasHiddenDrives(next);
-		saveSetting("bloom-dock-extras-hidden-drives", next);
+		saveSetting("zenith-dock-extras-hidden-drives", next);
 	};
 
 	const toggleDockExtrasRecycleBin = () => {
 		const next = !dockExtrasRecycleBin;
 		setDockExtrasRecycleBin(next);
-		saveSetting("bloom-dock-extras-recycle-bin", String(next));
+		saveSetting("zenith-dock-extras-recycle-bin", String(next));
 	};
 
 	const toggleDockTaskView = () => {
 		const next = !dockTaskView;
 		setDockTaskView(next);
-		saveSetting("bloom-dock-task-view", String(next));
+		saveSetting("zenith-dock-task-view", String(next));
 	};
 
 	const toggleDockExtraFolder = (id: string) => {
 		const next = toggleEnabledFolder(dockExtrasFolders, id);
 		setDockExtrasFolders(next);
-		saveSetting("bloom-dock-extras-folders", next);
+		saveSetting("zenith-dock-extras-folders", next);
 	};
 
 	const handleAddDockExtraFolder = async () => {
@@ -1201,7 +1322,7 @@ export function useSettings() {
 			if (typeof selected === "string") {
 				const next = addCustomFolder(dockExtrasCustomFolders, selected);
 				setDockExtrasCustomFolders(next);
-				saveSetting("bloom-dock-extras-custom-folders", next);
+				saveSetting("zenith-dock-extras-custom-folders", next);
 			}
 		} catch (e) {
 			console.error("Folder picker failed:", e);
@@ -1211,82 +1332,159 @@ export function useSettings() {
 	const handleRemoveDockExtraFolder = (path: string) => {
 		const next = removeCustomFolder(dockExtrasCustomFolders, path);
 		setDockExtrasCustomFolders(next);
-		saveSetting("bloom-dock-extras-custom-folders", next);
+		saveSetting("zenith-dock-extras-custom-folders", next);
 	};
 
 	const toggleAutoUpdate = () => {
 		const next = !autoUpdate;
 		setAutoUpdate(next);
-		saveSetting("bloom-auto-update", String(next));
+		saveSetting("zenith-auto-update", String(next));
 	};
 
 	// ── Value setters ──
 	const setDockModeValue = (newMode: string) => {
 		setDockMode(newMode);
-		saveSetting("bloom-dock-mode", newMode);
+		saveSetting("zenith-dock-mode", newMode);
 	};
 
 	const setNotchModeValue = (newMode: string) => {
 		setNotchMode(newMode);
-		saveSetting("bloom-notch-mode", newMode);
+		saveSetting("zenith-notch-mode", newMode);
 	};
 
 	const setNotchDisplayValue = (val: string) => {
 		const target = displays.length <= 1 ? "primary" : val;
 		setNotchDisplay(target);
-		saveSetting("bloom-notch-display", target);
+		saveSetting("zenith-notch-display", target);
 	};
 
 	const setDockDisplayValue = (val: string) => {
 		const target = displays.length <= 1 ? "primary" : val;
 		setDockDisplay(target);
-		saveSetting("bloom-dock-display", target);
+		saveSetting("zenith-dock-display", target);
 	};
 
 	const toggleDockIsolation = () => {
 		const next = !dockIsolation;
 		setDockIsolation(next);
-		saveSetting("bloom-dock-isolation", String(next));
+		saveSetting("zenith-dock-isolation", String(next));
 	};
 
 	const handleDockEdgeDelayChange = (val: number) => {
 		setDockEdgeDelay(val);
-		saveSetting("bloom-dock-edge-delay", val.toString());
+		saveSetting("zenith-dock-edge-delay", val.toString());
 	};
 
 	const handleNotchEdgeDelayChange = (val: number) => {
 		setNotchEdgeDelay(val);
-		saveSetting("bloom-notch-edge-delay", val.toString());
+		saveSetting("zenith-notch-edge-delay", val.toString());
 	};
 
 	const handleThresholdChange = (val: number) => {
 		setLowBatteryThreshold(val);
-		saveSetting("bloom-low-battery-threshold", val.toString());
+		saveSetting("zenith-low-battery-threshold", val.toString());
 	};
 
 	const handleScaleChange = (val: number) => {
 		setScale(val);
-		saveSetting("bloom-scale", val.toString());
+		saveSetting("zenith-scale", val.toString());
 	};
 
 	const handleWidgetsChange = (config: WidgetConfig) => {
 		setStatusWidgets(config);
-		saveSetting("bloom-status-widgets", JSON.stringify(config));
+		saveSetting("zenith-status-widgets", JSON.stringify(config));
+	};
+
+	// ── Translator handlers ──
+	const toggleTranslatorEnabled = () => {
+		const next = !translatorEnabled;
+		setTranslatorEnabled(next);
+		saveSetting("zenith-translator-enabled", String(next));
+	};
+	const handleTranslatorEngineChange = (v: "cloud" | "local") => {
+		setTranslatorEngine(v);
+		saveSetting("zenith-translator-engine", v);
+	};
+	const handleTranslatorProviderChange = (v: "gemini" | "groq" | "openai") => {
+		setTranslatorProvider(v);
+		saveSetting("zenith-translator-provider", v);
+	};
+	const handleTranslatorApiKeyChange = (v: string) => {
+		setTranslatorApiKey(v);
+		saveSetting("zenith-translator-api-key", v);
+	};
+	const handleTranslatorGroqApiKeyChange = (v: string) => {
+		setTranslatorGroqApiKey(v);
+		saveSetting("zenith-translator-groq-api-key", v);
+	};
+	const handleTranslatorOpenaiApiKeyChange = (v: string) => {
+		setTranslatorOpenaiApiKey(v);
+		saveSetting("zenith-translator-openai-api-key", v);
+	};
+	const handleTranslatorTargetLanguageChange = (v: string) => {
+		setTranslatorTargetLanguage(v);
+		saveSetting("zenith-translator-target-language", v);
+	};
+	const handleTranslatorOutputModeChange = (v: "full" | "explain" | "summarize") => {
+		setTranslatorOutputMode(v);
+		saveSetting("zenith-translator-output-mode", v);
+	};
+	const handleTranslatorScreenshotModeChange = (v: "instant" | "region") => {
+		setTranslatorScreenshotMode(v);
+		saveSetting("zenith-translator-screenshot-mode", v);
+	};
+	const toggleTranslatorSelectAllFallback = () => {
+		const next = !translatorSelectAllFallback;
+		setTranslatorSelectAllFallback(next);
+		saveSetting("zenith-translator-select-all-fallback", String(next));
+	};
+	const toggleTranslatorAutoPasteArToEn = () => {
+		const next = !translatorAutoPasteArToEn;
+		setTranslatorAutoPasteArToEn(next);
+		saveSetting("zenith-translator-auto-paste-ar-to-en", String(next));
+	};
+	const handleTranslatorHotkeyChange = (key: string, val: string) => {
+		if (key === "zenith-translator-hotkey-ar-to-en") setTranslatorHotkeyArToEn(val);
+		else if (key === "zenith-translator-hotkey-any-to-ar") setTranslatorHotkeyAnyToAr(val);
+		else if (key === "zenith-translator-hotkey-screen") setTranslatorHotkeyScreen(val);
+		else if (key === "zenith-translator-hotkey-fullpage") setTranslatorHotkeyFullpage(val);
+		else if (key === "zenith-translator-hotkey-toggle") setTranslatorHotkeyToggle(val);
+		saveSetting(key, val);
+	};
+	const handleTranslatorFontSizeChange = (v: number) => {
+		setTranslatorFontSize(v);
+		saveSetting("zenith-translator-font-size", String(v));
+	};
+	const handleTranslatorCardTimeoutSecChange = (v: number) => {
+		setTranslatorCardTimeoutSec(v);
+		saveSetting("zenith-translator-card-timeout-sec", String(v));
+	};
+	const handleTranslatorOverlayOpacityChange = (v: number) => {
+		setTranslatorOverlayOpacity(v);
+		saveSetting("zenith-translator-overlay-opacity", String(v));
+	};
+	const handleTranslatorCustomPromptInplaceChange = (v: string) => {
+		setTranslatorCustomPromptInplace(v);
+		saveSetting("zenith-translator-custom-prompt-inplace", v);
+	};
+	const handleTranslatorCustomPromptQuickChange = (v: string) => {
+		setTranslatorCustomPromptQuick(v);
+		saveSetting("zenith-translator-custom-prompt-quick", v);
 	};
 
 	// ── Theme handlers ──
 	const handleThemeModeChange = async (mode: string) => {
 		setThemeMode(mode);
-		saveSetting("bloom-theme-mode", mode);
+		saveSetting("zenith-theme-mode", mode);
 
 		if (mode === "adaptive") {
 			try {
 				const accentHex = await invoke<string>("get_system_accent_color");
 				const hsl = hexToHsl(accentHex);
 				setThemeSaturation(hsl.s / 100);
-				saveSetting("bloom-theme-saturation", String(hsl.s / 100));
+				saveSetting("zenith-theme-saturation", String(hsl.s / 100));
 				setThemeBrightness(hsl.l / 100);
-				saveSetting("bloom-theme-brightness", String(hsl.l / 100));
+				saveSetting("zenith-theme-brightness", String(hsl.l / 100));
 			} catch (e) {
 				console.error("Failed to parse adaptive accent HSL:", e);
 			}
@@ -1295,14 +1493,14 @@ export function useSettings() {
 
 	const handleThemeColorChange = (color: string) => {
 		setThemeColor(color);
-		saveSetting("bloom-theme-color", color);
+		saveSetting("zenith-theme-color", color);
 
 		try {
 			const hsl = hexToHsl(color);
 			setThemeSaturation(hsl.s / 100);
-			saveSetting("bloom-theme-saturation", String(hsl.s / 100));
+			saveSetting("zenith-theme-saturation", String(hsl.s / 100));
 			setThemeBrightness(hsl.l / 100);
-			saveSetting("bloom-theme-brightness", String(hsl.l / 100));
+			saveSetting("zenith-theme-brightness", String(hsl.l / 100));
 		} catch (e) {
 			console.error("Failed to parse custom color HSL:", e);
 		}
@@ -1310,17 +1508,17 @@ export function useSettings() {
 
 	const handleOpacityChange = (value: number) => {
 		setThemeOpacity(value);
-		saveSetting("bloom-theme-opacity", String(value));
+		saveSetting("zenith-theme-opacity", String(value));
 	};
 
 	const handleSaturationChange = (value: number) => {
 		setThemeSaturation(value);
-		saveSetting("bloom-theme-saturation", String(value));
+		saveSetting("zenith-theme-saturation", String(value));
 	};
 
 	const handleBrightnessChange = (value: number) => {
 		setThemeBrightness(value);
-		saveSetting("bloom-theme-brightness", String(value));
+		saveSetting("zenith-theme-brightness", String(value));
 	};
 
 	// ── City search ──
@@ -1334,9 +1532,9 @@ export function useSettings() {
 		setShowCityDropdown(false);
 		setCitySearchResults([]);
 		const saved =
-			(await saveLocation("bloom-weather-lat", city.latitude.toString())) &&
-			(await saveLocation("bloom-weather-lon", city.longitude.toString())) &&
-			(await saveSetting("bloom-weather-city", city.name));
+			(await saveLocation("zenith-weather-lat", city.latitude.toString())) &&
+			(await saveLocation("zenith-weather-lon", city.longitude.toString())) &&
+			(await saveSetting("zenith-weather-city", city.name));
 		if (saved) emit("weather-refresh", { lat: city.latitude, lon: city.longitude });
 	};
 
@@ -1345,9 +1543,9 @@ export function useSettings() {
 		setShowCityDropdown(false);
 		setCitySearchResults([]);
 		const saved =
-			(await saveLocation("bloom-weather-lat", null)) &&
-			(await saveLocation("bloom-weather-lon", null)) &&
-			(await saveSetting("bloom-weather-city", null));
+			(await saveLocation("zenith-weather-lat", null)) &&
+			(await saveLocation("zenith-weather-lon", null)) &&
+			(await saveSetting("zenith-weather-city", null));
 		if (saved) emit("weather-refresh", true);
 	};
 
@@ -1368,9 +1566,9 @@ export function useSettings() {
 
 			await invoke("reset_settings");
 
-			const keep = new Set(["bloom-first-run", "bloom-app-version"]);
+			const keep = new Set(["zenith-first-run", "zenith-app-version"]);
 			for (const key of Object.keys(localStorage)) {
-				if ((key.startsWith("bloom-") || key.startsWith("zenith-")) && !keep.has(key)) {
+				if ((key.startsWith("zenith-") || key.startsWith("zenith-")) && !keep.has(key)) {
 					localStorage.removeItem(key);
 				}
 			}
@@ -1635,6 +1833,46 @@ export function useSettings() {
 		notificationsNotchEnabled,
 		toggleNotificationsNotch,
 
+		// Translator
+		translatorEnabled,
+		toggleTranslatorEnabled,
+		translatorEngine,
+		handleTranslatorEngineChange,
+		translatorProvider,
+		handleTranslatorProviderChange,
+		translatorApiKey,
+		handleTranslatorApiKeyChange,
+		translatorGroqApiKey,
+		handleTranslatorGroqApiKeyChange,
+		translatorOpenaiApiKey,
+		handleTranslatorOpenaiApiKeyChange,
+		translatorTargetLanguage,
+		handleTranslatorTargetLanguageChange,
+		translatorOutputMode,
+		handleTranslatorOutputModeChange,
+		translatorScreenshotMode,
+		handleTranslatorScreenshotModeChange,
+		translatorSelectAllFallback,
+		toggleTranslatorSelectAllFallback,
+		translatorAutoPasteArToEn,
+		toggleTranslatorAutoPasteArToEn,
+		translatorHotkeyArToEn,
+		translatorHotkeyAnyToAr,
+		translatorHotkeyScreen,
+		translatorHotkeyFullpage,
+		translatorHotkeyToggle,
+		handleTranslatorHotkeyChange,
+		translatorFontSize,
+		handleTranslatorFontSizeChange,
+		translatorCardTimeoutSec,
+		handleTranslatorCardTimeoutSecChange,
+		translatorOverlayOpacity,
+		handleTranslatorOverlayOpacityChange,
+		translatorCustomPromptInplace,
+		handleTranslatorCustomPromptInplaceChange,
+		translatorCustomPromptQuick,
+		handleTranslatorCustomPromptQuickChange,
+
 		// Updates
 		updateStatus,
 		updateVersion,
@@ -1650,9 +1888,7 @@ export function useSettings() {
 
 		// Utilities
 		restartZenith: () => invoke("restart_zenith"),
-		restartBloom: () => invoke("restart_zenith"),
 		resetToDefaults,
 		quitZenith: () => invoke("quit_zenith"),
-		quitBloom: () => invoke("quit_zenith")
 	};
 }

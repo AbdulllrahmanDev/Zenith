@@ -13,7 +13,7 @@
 	display: flex;
 	flex-direction: column;
 	gap: 6px;
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	border-radius: 0 0 18px 18px;
 	overflow: hidden;
 	font-size: 11px;
@@ -42,7 +42,7 @@
 	border: none;
 	border-radius: 8px;
 	background: transparent;
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.6));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.6));
 	cursor: pointer;
 	transition:
 		background 0.15s ease,
@@ -50,8 +50,8 @@
 }
 
 .qp-icon-btn:hover:not(:disabled) {
-	background: var(--bloom-group-bg, rgba(255, 255, 255, 0.08));
-	color: var(--bloom-text, white);
+	background: var(--zenith-group-bg, rgba(255, 255, 255, 0.08));
+	color: var(--zenith-text, white);
 }
 
 .qp-icon-btn:disabled {
@@ -73,7 +73,7 @@
 	padding: 0;
 	border: none;
 	border-radius: 9px;
-	background: var(--bloom-group-bg, rgba(255, 255, 255, 0.15));
+	background: var(--zenith-group-bg, rgba(255, 255, 255, 0.15));
 	cursor: pointer;
 	transition: background 0.2s ease;
 }
@@ -85,19 +85,19 @@
 	width: 13px;
 	height: 13px;
 	border-radius: 50%;
-	background: var(--bloom-text-muted, rgba(255, 255, 255, 0.7));
+	background: var(--zenith-text-muted, rgba(255, 255, 255, 0.7));
 	transition:
 		transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
 		background 0.2s ease;
 }
 
 .qp-switch.on {
-	background: var(--bloom-text, white);
+	background: var(--zenith-text, white);
 }
 
 .qp-switch.on span {
 	transform: translateX(13px);
-	background: var(--bloom-bg-expanded, black);
+	background: var(--zenith-bg-expanded, black);
 }
 
 .qp-body {
@@ -128,7 +128,7 @@
 }
 
 .qp-list::-webkit-scrollbar-thumb {
-	background: var(--bloom-scrollbar-thumb, rgba(255, 255, 255, 0.1));
+	background: var(--zenith-scrollbar-thumb, rgba(255, 255, 255, 0.1));
 	border-radius: 2px;
 }
 
@@ -142,7 +142,7 @@
 }
 
 .qp-row.expanded {
-	background: var(--bloom-group-bg, rgba(255, 255, 255, 0.06));
+	background: var(--zenith-group-bg, rgba(255, 255, 255, 0.06));
 }
 
 .qp-row-main {
@@ -161,7 +161,7 @@
 }
 
 .qp-row:not(.expanded) .qp-row-main:hover {
-	background: var(--bloom-group-bg, rgba(255, 255, 255, 0.06));
+	background: var(--zenith-group-bg, rgba(255, 255, 255, 0.06));
 }
 
 .qp-row-icon {
@@ -172,7 +172,7 @@
 	align-items: center;
 	justify-content: center;
 	border-radius: 50%;
-	background: var(--bloom-group-bg, rgba(255, 255, 255, 0.08));
+	background: var(--zenith-group-bg, rgba(255, 255, 255, 0.08));
 }
 
 .qp-row-icon svg {
@@ -181,8 +181,8 @@
 }
 
 .qp-row.active .qp-row-icon {
-	background: var(--bloom-text, white);
-	color: var(--bloom-bg-expanded, black);
+	background: var(--zenith-text, white);
+	color: var(--zenith-bg-expanded, black);
 }
 
 .qp-row-text {
@@ -202,14 +202,14 @@
 
 .qp-row-sub {
 	font-size: 9.5px;
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.5));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.5));
 }
 
 .qp-row-badge {
 	flex: none;
 	width: 11px;
 	height: 11px;
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.45));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.45));
 }
 
 .qp-row-actions {
@@ -231,10 +231,10 @@
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	border: 1px solid var(--bloom-border, rgba(255, 255, 255, 0.1));
+	border: 1px solid var(--zenith-border, rgba(255, 255, 255, 0.1));
 	border-radius: 8px;
-	background: var(--bloom-group-bg, rgba(255, 255, 255, 0.06));
-	color: var(--bloom-text, white);
+	background: var(--zenith-group-bg, rgba(255, 255, 255, 0.06));
+	color: var(--zenith-text, white);
 	font: inherit;
 	font-size: 10.5px;
 	font-weight: 600;
@@ -245,18 +245,18 @@
 }
 
 .qp-btn:hover:not(:disabled) {
-	background: var(--bloom-border, rgba(255, 255, 255, 0.14));
+	background: var(--zenith-border, rgba(255, 255, 255, 0.14));
 }
 
 .qp-btn.primary {
-	background: var(--bloom-text, white);
-	border-color: var(--bloom-text, white);
-	color: var(--bloom-bg-expanded, black);
+	background: var(--zenith-text, white);
+	border-color: var(--zenith-text, white);
+	color: var(--zenith-bg-expanded, black);
 }
 
 .qp-btn.primary:hover:not(:disabled) {
 	opacity: 0.9;
-	background: var(--bloom-text, white);
+	background: var(--zenith-text, white);
 }
 
 .qp-btn:disabled {
@@ -273,20 +273,20 @@
 	height: 26px;
 	padding: 0 9px;
 	box-sizing: border-box;
-	border: 1px solid var(--bloom-border, rgba(255, 255, 255, 0.14));
+	border: 1px solid var(--zenith-border, rgba(255, 255, 255, 0.14));
 	border-radius: 8px;
-	background: var(--bloom-group-bg, rgba(255, 255, 255, 0.06));
-	color: var(--bloom-text, white);
+	background: var(--zenith-group-bg, rgba(255, 255, 255, 0.06));
+	color: var(--zenith-text, white);
 	font: inherit;
 	outline: none;
 }
 
 .qp-input:focus {
-	border-color: var(--bloom-text-muted, rgba(255, 255, 255, 0.5));
+	border-color: var(--zenith-text-muted, rgba(255, 255, 255, 0.5));
 }
 
 .qp-note {
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.55));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.55));
 	font-size: 10px;
 }
 
@@ -305,7 +305,7 @@
 	gap: 8px;
 	padding: 0 24px;
 	text-align: center;
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.55));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.55));
 }
 
 .qp-empty > svg {
@@ -320,14 +320,14 @@
 	border: none;
 	border-radius: 6px;
 	background: transparent;
-	color: var(--bloom-text-muted, rgba(255, 255, 255, 0.55));
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.55));
 	font: inherit;
 	font-size: 10px;
 	cursor: pointer;
 }
 
 .qp-footer:hover {
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 }
 
 .qp-spin {
@@ -346,7 +346,7 @@
 
 /* A pairing PIN, spaced so it's easy to compare with the device's. */
 .qp-pin {
-	color: var(--bloom-text, white);
+	color: var(--zenith-text, white);
 	font-variant-numeric: tabular-nums;
 	letter-spacing: 0.08em;
 }

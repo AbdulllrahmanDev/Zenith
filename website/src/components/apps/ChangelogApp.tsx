@@ -237,7 +237,7 @@ export default function ChangelogApp() {
 						GitHub <ExternalLink size={10} />
 					</a>
 				</div>
-				<p className="text-[12px] text-white/35">What's new in Bloom</p>
+				<p className="text-[12px] text-white/35">What's new in Zenith</p>
 			</div>
 
 			{/* Content */}

@@ -94,7 +94,7 @@ const startIconTileStyle = (active: boolean): CSSProperties => ({
 	width: "48px",
 	height: "48px",
 	borderRadius: "12px",
-	border: active ? "2px solid var(--bloom-accent, #007aff)" : "2px solid rgba(255,255,255,0.1)",
+	border: active ? "2px solid var(--zenith-accent, #007aff)" : "2px solid rgba(255,255,255,0.1)",
 	background: active ? "rgba(0,122,255,0.15)" : "rgba(255,255,255,0.05)",
 	display: "flex",
 	alignItems: "center",

@@ -82,7 +82,7 @@ interface RadialSliceProps {
 	hoverColor: string;
 	showLabels: boolean;
 	alwaysShowAppLabels: boolean;
-	bloom: boolean;
+	revealed: boolean;
 	numberHint?: string;
 	dwellMs?: number;
 	dwellKey?: number;
@@ -104,7 +104,7 @@ const RadialSlice = React.memo(
 		hoverColor,
 		showLabels,
 		alwaysShowAppLabels,
-		bloom,
+		revealed,
 		numberHint,
 		dwellMs,
 		dwellKey,
@@ -146,7 +146,7 @@ const RadialSlice = React.memo(
 					top: 0,
 					left: 0,
 					pointerEvents: "none",
-					["--zn-tf" as string]: bloom
+					["--zn-tf" as string]: revealed
 						? `translate3d(${snapToDevicePixel(pos.x)}px, ${snapToDevicePixel(pos.y)}px, 0) scale(${
 								fired
 									? FIRED_SLICE_SCALE
@@ -159,7 +159,7 @@ const RadialSlice = React.memo(
 						? 1
 						: echo === "faded"
 							? 0
-							: bloom
+							: revealed
 								? presence.opacity
 								: 0,
 					...(echoMs ? { ["--zn-echo-ms" as string]: `${echoMs}ms` } : null),
@@ -253,8 +253,8 @@ const RadialSlice = React.memo(
 							zIndex: 20,
 							width: `${actualIconSize}px`,
 							height: `${actualIconSize}px`,
-							pointerEvents: bloom ? "auto" : "none",
-							cursor: bloom ? "pointer" : "default"
+							pointerEvents: revealed ? "auto" : "none",
+							cursor: revealed ? "pointer" : "default"
 						}}
 					>
 						<div
@@ -513,7 +513,7 @@ export default function RadialMenu({
 	// Active slice & center state
 	const [activeIndex, setActiveIndex] = useState<number | null>(null);
 	const [isCenterActive, setIsCenterActive] = useState(false);
-	const [bloom, setBloom] = useState(false);
+	const [revealed, setRevealed] = useState(false);
 	const [isExiting, setIsExiting] = useState(false);
 	const [launchEcho, setLaunchEcho] = useState<{ index: number; key: number } | null>(null);
 
@@ -574,7 +574,7 @@ export default function RadialMenu({
 		return { open: openId, hover: hoverId };
 	}, [soundEnabled, cfg.openSoundId, cfg.hoverSoundId]);
 
-	const bloomedAtRef = useRef<number | null>(null);
+	const openedAtRef = useRef<number | null>(null);
 	const aimedAwayRef = useRef(false);
 	const soundedHighlightRef = useRef<string | null>(null);
 
@@ -591,16 +591,16 @@ export default function RadialMenu({
 		return () => sleepRadialSound();
 	}, [sounds.open, sounds.hover]);
 
-	// Bloom entrance animation + open sound
+	// Radial entrance animation + open sound
 	const paintReadyAtRef = useRef<number | null>(null);
 	useLayoutEffect(() => {
-		setBloom(false);
+		setRevealed(false);
 		paintReadyAtRef.current = null;
 		const raf = requestAnimationFrame(() => {
 			paintReadyAtRef.current = Date.now();
-			setBloom(true);
-			if (bloomedAtRef.current === null) {
-				bloomedAtRef.current = performance.now();
+			setRevealed(true);
+			if (openedAtRef.current === null) {
+				openedAtRef.current = performance.now();
 				if (sounds.open) playRadialSound(sounds.open);
 			}
 		});
@@ -621,9 +621,9 @@ export default function RadialMenu({
 		if (highlight === prev) return;
 		const aimedAway = aimedAwayRef.current;
 		if (highlight !== null && highlight !== HUB_TARGET) aimedAwayRef.current = true;
-		const bloomedAt = bloomedAtRef.current;
-		if (isExiting || closingRef.current || bloomedAt === null) return;
-		const note = noteForHighlight(highlight, aimedAway, performance.now() - bloomedAt, sounds);
+		const openedAt = openedAtRef.current;
+		if (isExiting || closingRef.current || openedAt === null) return;
+		const note = noteForHighlight(highlight, aimedAway, performance.now() - openedAt, sounds);
 		if (note) playRadialSound(note);
 	}, [highlight, isExiting, sounds]);
 
@@ -759,7 +759,7 @@ export default function RadialMenu({
 			launchEchoTimerRef.current = null;
 		}
 		setIsExiting(true);
-		setBloom(false);
+		setRevealed(false);
 		window.setTimeout(() => {
 			invoke("close_radial_menu").catch(() => {});
 			onClose();
@@ -1333,7 +1333,7 @@ export default function RadialMenu({
 				style={{
 					pointerEvents: !isExiting && !echoActive ? "auto" : "none",
 					background: overlayDim,
-					["--zn-op" as string]: !isExiting && bloom ? 1 : 0,
+					["--zn-op" as string]: !isExiting && revealed ? 1 : 0,
 					["--zn-dur-op" as string]: !isExiting ? "180ms" : "120ms",
 					...(echoActive ? { ["--zn-echo-ms" as string]: `${LAUNCH_ECHO_MS}ms` } : null)
 				}}
@@ -1379,7 +1379,7 @@ export default function RadialMenu({
 						radiusOuter={sectorOuterRadius}
 						falloffRadius={backdropRadius}
 						hoverColor={hoverColor}
-						visible={!isExiting && bloom}
+						visible={!isExiting && revealed}
 						dimmed={echoActive}
 					/>
 				)}
@@ -1433,9 +1433,9 @@ export default function RadialMenu({
 							? `0 0 22px ${hoverColor}3d, 0 8px 22px rgba(0,0,0,0.55)`
 							: "0 1px 3px rgba(0,0,0,0.55), 0 8px 20px rgba(0,0,0,0.5)",
 						["--zn-tf" as string]: `translate(-50%, -50%) scale(${
-							bloom && !isExiting ? (isCenterActive ? 1.06 : 1) : 0.82
+							revealed && !isExiting ? (isCenterActive ? 1.06 : 1) : 0.82
 						})`,
-						["--zn-op" as string]: echoActive ? 0 : bloom && !isExiting ? 1 : 0,
+						["--zn-op" as string]: echoActive ? 0 : revealed && !isExiting ? 1 : 0,
 						["--zn-dur" as string]: isExiting ? "120ms" : "160ms",
 						...(echoActive ? { ["--zn-dur-op" as string]: "140ms" } : null)
 					}}
@@ -1523,7 +1523,7 @@ export default function RadialMenu({
 							["--zn-tf" as string]: `translate(-50%, 0) translate3d(0, ${Math.round(
 								actualMenuRadius + actualIconSize * 0.75 + 34
 							)}px, 0)`,
-							["--zn-op" as string]: !isExiting && bloom && !echoActive ? 1 : 0,
+							["--zn-op" as string]: !isExiting && revealed && !echoActive ? 1 : 0,
 							...(echoActive ? { ["--zn-dur-op" as string]: "130ms" } : null)
 						}}
 					>
@@ -1651,7 +1651,7 @@ export default function RadialMenu({
 							hoverColor={hoverColor}
 							showLabels={cfg.showLabels}
 							alwaysShowAppLabels={cfg.alwaysShowAppLabels}
-							bloom={!isExiting && bloom}
+							revealed={!isExiting && revealed}
 							numberHint={numberHint}
 							dwellMs={dwellTick && dwellTick.index === index ? dwellRunMs : undefined}
 							dwellKey={dwellTick && dwellTick.index === index ? dwellTick.key : undefined}

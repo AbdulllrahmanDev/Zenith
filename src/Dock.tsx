@@ -127,12 +127,12 @@ function TaskViewIcon() {
 }
 
 function resolveStartIcon(startIcon: string): string {
-	if (startIcon === "zenith-holographic" || startIcon === "bloom-colorful") return "/zenith-color-1-holographic.svg";
+	if (startIcon === "zenith-holographic") return "/zenith-color-1-holographic.svg";
 	if (startIcon === "zenith-emerald") return "/zenith-color-2-emerald.svg";
-	if (startIcon === "zenith-gold" || startIcon === "bloom-golden") return "/zenith-color-3-gold.svg";
+	if (startIcon === "zenith-gold") return "/zenith-color-3-gold.svg";
 	if (startIcon === "zenith-iznik-blue") return "/zenith-color-4-iznik-blue.svg";
 	if (startIcon === "zenith-midnight-gold") return "/zenith-color-5-midnight-gold.svg";
-	if (startIcon === "zenith-ivory-emerald" || startIcon === "bloom-biscuit") return "/zenith-color-6-ivory-emerald.svg";
+	if (startIcon === "zenith-ivory-emerald") return "/zenith-color-6-ivory-emerald.svg";
 	if (startIcon === "windows") return "/windows-11.png";
 	if (startIcon.startsWith("custom:")) return startIcon.slice("custom:".length);
 	return "/zenith-white-no-bg-nosmile.svg";
@@ -173,34 +173,34 @@ const Dock = memo(function Dock() {
 	const iconsRef = useRef<Record<string, string>>({});
 	const [, setIconsTick] = useState(0);
 	const [dockMode, setDockMode] = useState(() => {
-		const raw = localStorage.getItem("bloom-dock-mode") || "smart";
+		const raw = localStorage.getItem("zenith-dock-mode") || "smart";
 		if (raw === "auto-hide") return "smart";
 		return raw;
 	});
 	const [dockPreviewEnabled, setDockPreviewEnabled] = useState(
-		() => localStorage.getItem("bloom-dock-preview-enabled") !== "false"
+		() => localStorage.getItem("zenith-dock-preview-enabled") !== "false"
 	);
 	const [dockIconOnly, setDockIconOnly] = useState(
-		() => localStorage.getItem("bloom-dock-icon-only") === "true"
+		() => localStorage.getItem("zenith-dock-icon-only") === "true"
 	);
 	const [dockSeparatorEnabled, setDockSeparatorEnabled] = useState(
-		() => localStorage.getItem("bloom-dock-separator-enabled") !== "false"
+		() => localStorage.getItem("zenith-dock-separator-enabled") !== "false"
 	);
 	const [dockAdaptive, setDockAdaptive] = useState(
-		() => localStorage.getItem("bloom-dock-adaptive") === "true"
+		() => localStorage.getItem("zenith-dock-adaptive") === "true"
 	);
 	const [dockIsolation, setDockIsolation] = useState(
-		() => localStorage.getItem("bloom-dock-isolation") === "true"
+		() => localStorage.getItem("zenith-dock-isolation") === "true"
 	);
 	const [currentMonitorId, setCurrentMonitorId] = useState<string | null>(null);
 	const [dockTaskView, setDockTaskView] = useState(
-		() => localStorage.getItem("bloom-dock-task-view") === "true"
+		() => localStorage.getItem("zenith-dock-task-view") === "true"
 	);
 	const [startIcon, setStartIcon] = useState(
-		() => localStorage.getItem("bloom-start-icon") || "default"
+		() => localStorage.getItem("zenith-start-icon") || "default"
 	);
 	const [dockExtrasPosition, setDockExtrasPosition] = useState(
-		() => localStorage.getItem("bloom-dock-extras-position") || "off"
+		() => localStorage.getItem("zenith-dock-extras-position") || "off"
 	);
 	const [dockExtras, setDockExtras] = useState<DockExtra[]>([]);
 	const [dockExtrasRevision, setDockExtrasRevision] = useState(0);
@@ -241,7 +241,7 @@ const Dock = memo(function Dock() {
 	const pinnedItemsRef = useRef<AppInfo[]>([]);
 	const handleAppClickRef = useRef<(app: AppInfo) => void>(() => {});
 	const [scale, setScale] = useState(() =>
-		parseFloat(localStorage.getItem("bloom-scale") || "1.0")
+		parseFloat(localStorage.getItem("zenith-scale") || "1.0")
 	);
 	const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
 
@@ -394,34 +394,34 @@ const Dock = memo(function Dock() {
 				return fallback;
 			};
 
-			const dMode = getVal("bloom-dock-mode", "smart");
+			const dMode = getVal("zenith-dock-mode", "smart");
 			if (dMode) {
 				const mapped = dMode === "auto-hide" ? "smart" : dMode;
 				setDockMode(mapped);
 			}
 
-			const preview = getVal("bloom-dock-preview-enabled", "true");
+			const preview = getVal("zenith-dock-preview-enabled", "true");
 			setDockPreviewEnabled(preview === "true");
 
-			const iconOnly = getVal("bloom-dock-icon-only", "false");
+			const iconOnly = getVal("zenith-dock-icon-only", "false");
 			setDockIconOnly(iconOnly === "true");
 
-			const separator = getVal("bloom-dock-separator-enabled", "true");
+			const separator = getVal("zenith-dock-separator-enabled", "true");
 			setDockSeparatorEnabled(separator === "true");
 
-			const adaptive = getVal("bloom-dock-adaptive", "false");
+			const adaptive = getVal("zenith-dock-adaptive", "false");
 			setDockAdaptive(adaptive === "true");
-			const isolation = getVal("bloom-dock-isolation", "false");
+			const isolation = getVal("zenith-dock-isolation", "false");
 			setDockIsolation(isolation === "true");
-			setDockTaskView(getVal("bloom-dock-task-view", "false") === "true");
+			setDockTaskView(getVal("zenith-dock-task-view", "false") === "true");
 
-			const startIconVal = getVal("bloom-start-icon", "default") || "default";
+			const startIconVal = getVal("zenith-start-icon", "default") || "default";
 			setStartIcon(startIconVal);
 
-			const extrasPosition = getVal("bloom-dock-extras-position", "off");
+			const extrasPosition = getVal("zenith-dock-extras-position", "off");
 			if (extrasPosition) setDockExtrasPosition(extrasPosition);
 
-			const scaleVal = getVal("bloom-scale");
+			const scaleVal = getVal("zenith-scale");
 			if (scaleVal !== null) setScale(parseFloat(scaleVal));
 
 			const pinned = await invoke<AppInfo[]>("load_pinned_apps");
@@ -492,21 +492,21 @@ const Dock = memo(function Dock() {
 	}, []);
 
 	useSettingsSync({
-		"bloom-dock-mode": setDockMode,
-		"bloom-dock-preview-enabled": setDockPreviewEnabled,
-		"bloom-dock-icon-only": setDockIconOnly,
-		"bloom-dock-separator-enabled": setDockSeparatorEnabled,
-		"bloom-dock-adaptive": setDockAdaptive,
-		"bloom-dock-isolation": setDockIsolation,
-		"bloom-dock-task-view": setDockTaskView,
-		"bloom-start-icon": setStartIcon,
-		"bloom-scale": setScale,
-		"bloom-dock-extras-position": setDockExtrasPosition,
-		"bloom-dock-extras-drives": () => setDockExtrasRevision((r) => r + 1),
-		"bloom-dock-extras-recycle-bin": () => setDockExtrasRevision((r) => r + 1),
-		"bloom-dock-extras-hidden-drives": () => setDockExtrasRevision((r) => r + 1),
-		"bloom-dock-extras-folders": () => setDockExtrasRevision((r) => r + 1),
-		"bloom-dock-extras-custom-folders": () => setDockExtrasRevision((r) => r + 1)
+		"zenith-dock-mode": setDockMode,
+		"zenith-dock-preview-enabled": setDockPreviewEnabled,
+		"zenith-dock-icon-only": setDockIconOnly,
+		"zenith-dock-separator-enabled": setDockSeparatorEnabled,
+		"zenith-dock-adaptive": setDockAdaptive,
+		"zenith-dock-isolation": setDockIsolation,
+		"zenith-dock-task-view": setDockTaskView,
+		"zenith-start-icon": setStartIcon,
+		"zenith-scale": setScale,
+		"zenith-dock-extras-position": setDockExtrasPosition,
+		"zenith-dock-extras-drives": () => setDockExtrasRevision((r) => r + 1),
+		"zenith-dock-extras-recycle-bin": () => setDockExtrasRevision((r) => r + 1),
+		"zenith-dock-extras-hidden-drives": () => setDockExtrasRevision((r) => r + 1),
+		"zenith-dock-extras-folders": () => setDockExtrasRevision((r) => r + 1),
+		"zenith-dock-extras-custom-folders": () => setDockExtrasRevision((r) => r + 1)
 	});
 
 	useEffect(() => {
@@ -822,12 +822,12 @@ const Dock = memo(function Dock() {
 
 	const removeExtraFromDock = (extra: DockExtra) => {
 		const next = removeCustomFolder(
-			localStorage.getItem("bloom-dock-extras-custom-folders"),
+			localStorage.getItem("zenith-dock-extras-custom-folders"),
 			extra.path
 		);
-		localStorage.setItem("bloom-dock-extras-custom-folders", next);
+		localStorage.setItem("zenith-dock-extras-custom-folders", next);
 		invoke("save_setting", {
-			key: "bloom-dock-extras-custom-folders",
+			key: "zenith-dock-extras-custom-folders",
 			value: next
 		}).catch(console.error);
 		closeMenu();
@@ -837,9 +837,9 @@ const Dock = memo(function Dock() {
 	const hideDriveFromDock = (extra: DockExtra) => {
 		const letter = driveLetter(extra);
 		if (!letter) return;
-		const next = hideDrive(localStorage.getItem("bloom-dock-extras-hidden-drives"), letter);
-		localStorage.setItem("bloom-dock-extras-hidden-drives", next);
-		invoke("save_setting", { key: "bloom-dock-extras-hidden-drives", value: next }).catch(
+		const next = hideDrive(localStorage.getItem("zenith-dock-extras-hidden-drives"), letter);
+		localStorage.setItem("zenith-dock-extras-hidden-drives", next);
+		invoke("save_setting", { key: "zenith-dock-extras-hidden-drives", value: next }).catch(
 			showActionError
 		);
 		closeMenu();
@@ -852,8 +852,8 @@ const Dock = memo(function Dock() {
 	// Like the taskbar's "Hide Task View button"; Settings turns it back on.
 	const hideTaskView = () => {
 		setDockTaskView(false);
-		localStorage.setItem("bloom-dock-task-view", "false");
-		invoke("save_setting", { key: "bloom-dock-task-view", value: "false" }).catch(
+		localStorage.setItem("zenith-dock-task-view", "false");
+		invoke("save_setting", { key: "zenith-dock-task-view", value: "false" }).catch(
 			showActionError
 		);
 		closeMenu();
@@ -1039,7 +1039,7 @@ const Dock = memo(function Dock() {
 			}
 
 			// A pinned shell id and a visible window can have different paths
-			// (for example com.sehaz.bloom and bloom.exe). Match both visible
+			// (for example io.github.abdulllrahmandev.zenith and zenith.exe). Match both visible
 			// and background apps so the window cannot become a second dock item.
 			const equivalent = activeApps.find(
 				(app) => !matchedRunningKeys.has(itemKey(app)) && isSameApp(p, app)
@@ -1377,7 +1377,7 @@ const Dock = memo(function Dock() {
 											<img
 												src={resolveStartIcon(startIcon)}
 												alt="Start"
-												className="bloom-icon-img"
+												className="zenith-icon-img"
 												style={
 													startIcon.startsWith("custom:") ? { borderRadius: "8px" } : undefined
 												}
@@ -1572,14 +1572,12 @@ const Dock = memo(function Dock() {
 														// browser and its PWAs share one path, so it would leak one item's
 														// icon onto the others.
 														const allowPathFallback = !isHost || !app.is_running;
-														const isBloomOrSettings =
+														const isZenithOrSettings =
 															app.name.toLowerCase() === "settings" ||
-															app.name.toLowerCase() === "bloom" ||
-															app.name.toLowerCase() === "zenith" ||
-															app.path.toLowerCase().includes("bloom.exe") ||
-															app.path.toLowerCase().includes("zenith.exe");
+																	app.name.toLowerCase() === "zenith" ||
+																	app.path.toLowerCase().includes("zenith.exe");
 
-														const icon = isBloomOrSettings
+														const icon = isZenithOrSettings
 															? (customIcons[cacheKey] || resolveStartIcon(startIcon))
 															: (customIcons[cacheKey] ||
 																(allowPathFallback && customIcons[app.path]) ||
@@ -1591,7 +1589,7 @@ const Dock = memo(function Dock() {
 															<img
 																src={icon}
 																alt={app.name}
-																className={isBloomOrSettings ? "bloom-icon-img" : ""}
+																className={isZenithOrSettings ? "zenith-icon-img" : ""}
 																draggable={false}
 															/>
 														) : (
@@ -1734,14 +1732,12 @@ const Dock = memo(function Dock() {
 												// browser and its PWAs share one path, so it would leak one item's
 												// icon onto the others.
 												const allowPathFallback = !isHost || !app.is_running;
-												const isBloomOrSettings =
+												const isZenithOrSettings =
 													app.name.toLowerCase() === "settings" ||
-													app.name.toLowerCase() === "bloom" ||
 													app.name.toLowerCase() === "zenith" ||
-													app.path.toLowerCase().includes("bloom.exe") ||
 													app.path.toLowerCase().includes("zenith.exe");
 
-												const icon = isBloomOrSettings
+												const icon = isZenithOrSettings
 													? (customIcons[cacheKey] || resolveStartIcon(startIcon))
 													: (customIcons[cacheKey] ||
 														(allowPathFallback && customIcons[app.path]) ||
@@ -1753,7 +1749,7 @@ const Dock = memo(function Dock() {
 													<img
 														src={icon}
 														alt={app.name}
-														className={isBloomOrSettings ? "bloom-icon-img" : ""}
+														className={isZenithOrSettings ? "zenith-icon-img" : ""}
 														draggable={false}
 													/>
 												) : (
@@ -1948,7 +1944,7 @@ const Dock = memo(function Dock() {
 							</div>
 							<div
 								className="menu-item has-submenu"
-								onMouseEnter={() => setActiveSubmenu("bloom")}
+								onMouseEnter={() => setActiveSubmenu("zenith")}
 								onMouseLeave={() => setActiveSubmenu(null)}
 							>
 								Zenith Options
@@ -2047,7 +2043,7 @@ const Dock = memo(function Dock() {
 							</div>
 							<div
 								className="menu-item has-submenu"
-								onMouseEnter={() => setActiveSubmenu("bloom")}
+								onMouseEnter={() => setActiveSubmenu("zenith")}
 								onMouseLeave={() => setActiveSubmenu(null)}
 							>
 								Zenith Options

@@ -2,8 +2,9 @@ import { StrictMode, useState, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { X, Minus, Maximize2, Minimize2, Settings, Palette, PanelTop, Monitor, Layers, MousePointer, Info, Megaphone } from "lucide-react";
+import { X, Minus, Maximize2, Minimize2, Settings, Palette, PanelTop, Monitor, Layers, MousePointer, Languages, Info, Megaphone } from "lucide-react";
 import {
 	useSettings,
 	GeneralTab,
@@ -12,6 +13,7 @@ import {
 	DockTab,
 	OverlaysTab,
 	MouseTab,
+	TranslatorTab,
 	AboutTab
 } from "./settings/index";
 import type { SettingsTab } from "./settings/index";
@@ -28,6 +30,7 @@ const TABS: { id: SettingsTab; label: string; icon: typeof Settings }[] = [
 	{ id: "dock", label: "Dock", icon: Monitor },
 	{ id: "overlays", label: "Overlays", icon: Layers },
 	{ id: "mouse", label: "Mouse", icon: MousePointer },
+	{ id: "translator", label: "المترجم", icon: Languages },
 	{ id: "about", label: "About", icon: Info }
 ];
 
@@ -39,6 +42,22 @@ function SettingsApp() {
 
 	useEffect(() => {
 		return initTheme();
+	}, []);
+
+	useEffect(() => {
+		let unlisten: (() => void) | undefined;
+		listen<string>("open-settings-tab", (ev) => {
+			if (ev.payload === "translator") {
+				setActiveTab("translator");
+			}
+		})
+			.then((fn) => {
+				unlisten = fn;
+			})
+			.catch(() => {});
+		return () => {
+			unlisten?.();
+		};
 	}, []);
 
 	useEffect(() => {
@@ -210,9 +229,9 @@ function SettingsApp() {
 							toggleUpdateIndicator={settings.toggleUpdateIndicator}
 							lowBatteryThreshold={settings.lowBatteryThreshold}
 							handleThresholdChange={settings.handleThresholdChange}
-							restartBloom={settings.restartBloom}
+							restartZenith={settings.restartZenith}
 							resetToDefaults={settings.resetToDefaults}
-							quitBloom={settings.quitBloom}
+							quitZenith={settings.quitZenith}
 						/>
 					)}
 					{activeTab === "appearance" && (
@@ -419,6 +438,48 @@ function SettingsApp() {
 							handleMouseOpenSoundChange={settings.handleMouseOpenSoundChange}
 							mouseHoverSound={settings.mouseHoverSound}
 							handleMouseHoverSoundChange={settings.handleMouseHoverSoundChange}
+						/>
+					)}
+					{activeTab === "translator" && (
+						<TranslatorTab
+							translatorEnabled={settings.translatorEnabled}
+							toggleTranslatorEnabled={settings.toggleTranslatorEnabled}
+							translatorEngine={settings.translatorEngine}
+							handleTranslatorEngineChange={settings.handleTranslatorEngineChange}
+							translatorProvider={settings.translatorProvider}
+							handleTranslatorProviderChange={settings.handleTranslatorProviderChange}
+							translatorApiKey={settings.translatorApiKey}
+							handleTranslatorApiKeyChange={settings.handleTranslatorApiKeyChange}
+							translatorGroqApiKey={settings.translatorGroqApiKey}
+							handleTranslatorGroqApiKeyChange={settings.handleTranslatorGroqApiKeyChange}
+							translatorOpenaiApiKey={settings.translatorOpenaiApiKey}
+							handleTranslatorOpenaiApiKeyChange={settings.handleTranslatorOpenaiApiKeyChange}
+							translatorTargetLanguage={settings.translatorTargetLanguage}
+							handleTranslatorTargetLanguageChange={settings.handleTranslatorTargetLanguageChange}
+							translatorOutputMode={settings.translatorOutputMode}
+							handleTranslatorOutputModeChange={settings.handleTranslatorOutputModeChange}
+							translatorScreenshotMode={settings.translatorScreenshotMode}
+							handleTranslatorScreenshotModeChange={settings.handleTranslatorScreenshotModeChange}
+							translatorSelectAllFallback={settings.translatorSelectAllFallback}
+							toggleTranslatorSelectAllFallback={settings.toggleTranslatorSelectAllFallback}
+							translatorAutoPasteArToEn={settings.translatorAutoPasteArToEn}
+							toggleTranslatorAutoPasteArToEn={settings.toggleTranslatorAutoPasteArToEn}
+							translatorHotkeyArToEn={settings.translatorHotkeyArToEn}
+							translatorHotkeyAnyToAr={settings.translatorHotkeyAnyToAr}
+							translatorHotkeyScreen={settings.translatorHotkeyScreen}
+							translatorHotkeyFullpage={settings.translatorHotkeyFullpage}
+							translatorHotkeyToggle={settings.translatorHotkeyToggle}
+							handleTranslatorHotkeyChange={settings.handleTranslatorHotkeyChange}
+							translatorFontSize={settings.translatorFontSize}
+							handleTranslatorFontSizeChange={settings.handleTranslatorFontSizeChange}
+							translatorCardTimeoutSec={settings.translatorCardTimeoutSec}
+							handleTranslatorCardTimeoutSecChange={settings.handleTranslatorCardTimeoutSecChange}
+							translatorOverlayOpacity={settings.translatorOverlayOpacity}
+							handleTranslatorOverlayOpacityChange={settings.handleTranslatorOverlayOpacityChange}
+							translatorCustomPromptInplace={settings.translatorCustomPromptInplace}
+							handleTranslatorCustomPromptInplaceChange={settings.handleTranslatorCustomPromptInplaceChange}
+							translatorCustomPromptQuick={settings.translatorCustomPromptQuick}
+							handleTranslatorCustomPromptQuickChange={settings.handleTranslatorCustomPromptQuickChange}
 						/>
 					)}
 					{activeTab === "about" && (

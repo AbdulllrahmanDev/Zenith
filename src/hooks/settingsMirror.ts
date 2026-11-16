@@ -2,15 +2,15 @@ import { invoke } from "@tauri-apps/api/core";
 
 // Keys that live only in localStorage by design and never in settings.json.
 const LOCAL_ONLY_KEYS = new Set([
-	"bloom-first-run",
-	"bloom-app-version",
-	"bloom-timer-last-duration",
-	"bloom-announcement-cache",
-	"bloom-announcement-cache-at",
-	// Notch shelf contents; persisted only when bloom-shelf-persist is on.
-	"bloom-shelf-items",
-	// Legacy name, only read as a fallback for bloom-media-visualizer-enabled.
-	"bloom-visualizer-enabled",
+	"zenith-first-run",
+	"zenith-app-version",
+	"zenith-timer-last-duration",
+	"zenith-announcement-cache",
+	"zenith-announcement-cache-at",
+	// Notch shelf contents; persisted only when zenith-shelf-persist is on.
+	"zenith-shelf-items",
+	// Legacy name, only read as a fallback for zenith-media-visualizer-enabled.
+	"zenith-visualizer-enabled",
 	"zenith-prayer-date-cache",
 	"zenith-prayer-hijri-cache",
 	"zenith-prayer-timings-cache",
@@ -20,11 +20,11 @@ const LOCAL_ONLY_KEYS = new Set([
 ]);
 
 // What this window's first render saw: useState initializers read localStorage.
-const mirroredAtStartup = Object.keys(localStorage).filter((key) => key.startsWith("bloom-"));
+const mirroredAtStartup = Object.keys(localStorage).filter((key) => key.startsWith("zenith-"));
 
 /**
  * localStorage mirrors settings.json so windows can paint before settings
- * load. A key that settings.json no longer has (edited while Bloom was closed,
+ * load. A key that settings.json no longer has (edited while Zenith was closed,
  * or dropped by an import) would otherwise keep coming back from the mirror.
  * If this window started from such a stale value, the stale keys are removed
  * and the window reloads once, so it starts from the defaults. Resolves to
@@ -40,9 +40,7 @@ export async function reloadIfMirrorWasStale(settings: Record<string, unknown> |
 			}
 		}
 	}
-	const fileKeys = Object.keys(settings ?? {}).filter(
-		(key) => key.startsWith("bloom-") || key.startsWith("zenith-")
-	);
+	const fileKeys = Object.keys(settings ?? {}).filter((key) => key.startsWith("zenith-"));
 	const stale = mirroredAtStartup.filter(
 		(key) => !fileKeys.includes(key) && !LOCAL_ONLY_KEYS.has(key)
 	);
