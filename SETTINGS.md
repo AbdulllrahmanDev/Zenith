@@ -265,13 +265,14 @@ with open(path, 'w') as f: json.dump(settings, f)
 | `zenith-translator-local-model-id` | string | `"qwen2.5-1.5b-instruct-q4_k_m"` | Offline local GGUF model identifier |
 | `zenith-translator-target-language` | string | `"Arabic"` | Target language for quick card and screen overlays |
 | `zenith-translator-output-mode` | `"full"` \| `"explain"` \| `"summarize"` | `"full"` | Quick processing mode |
+| `zenith-translator-display-target` | `"floating"` \| `"notch"` | `"floating"` | Where translation card results appear (`floating` popup or `notch`) |
 | `zenith-translator-select-all-fallback` | boolean string | `"true"` | Fallback to Ctrl+A if no text is selected |
 | `zenith-translator-auto-paste-ar-to-en` | boolean string | `"true"` | Auto-paste English translation in-place via Ctrl+V |
 | `zenith-translator-hotkey-ar-to-en` | string | `"Ctrl+Alt+A"` | Global hotkey for instant Arabic→English replacement |
 | `zenith-translator-hotkey-any-to-ar` | string | `"Ctrl+Alt+X"` | Global hotkey for floating card translation/explanation |
 | `zenith-translator-hotkey-screen` | string | `"Ctrl+Alt+S"` | Global hotkey for screen overlay translation |
 | `zenith-translator-hotkey-fullpage` | string | `"Ctrl+Alt+W"` | Global hotkey for scrolling full-page overlay translation |
-| `zenith-translator-hotkey-toggle` | string | `"Ctrl+Alt+Space"` | Global hotkey to open Zenith Settings on the translator tab |
+| `zenith-translator-hotkey-toggle` | string | `"Ctrl+Alt+Space"` | Global hotkey to open Zenith Settings |
 | `zenith-translator-font-size` | integer string | `"15"` | Font size (`11`–`28` px) for floating card and screen overlay |
 | `zenith-translator-card-timeout-sec` | integer string | `"12"` | Auto-dismiss timeout (`3`–`60` seconds) for floating card |
 | `zenith-translator-overlay-opacity` | integer string | `"88"` | Overlay backdrop opacity (`40`–`100`) |

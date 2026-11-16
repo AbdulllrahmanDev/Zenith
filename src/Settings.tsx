@@ -100,8 +100,8 @@ function SettingsApp() {
 	useEffect(() => {
 		if (!isMaximized) {
 			invoke("resize_settings_window", {
-				width: 620 * settings.scale,
-				height: 480 * settings.scale
+				width: 740 * settings.scale,
+				height: 620 * settings.scale
 			}).catch(console.error);
 		}
 	}, [settings.scale, isMaximized]);
@@ -241,6 +241,10 @@ function SettingsApp() {
 							toggleUpdateIndicator={settings.toggleUpdateIndicator}
 							lowBatteryThreshold={settings.lowBatteryThreshold}
 							handleThresholdChange={settings.handleThresholdChange}
+							openSettingsHotkey={settings.translatorHotkeyToggle}
+							onOpenSettingsHotkeyChange={(combo) =>
+								settings.handleTranslatorHotkeyChange("zenith-translator-hotkey-toggle", combo)
+							}
 							restartZenith={settings.restartZenith}
 							resetToDefaults={settings.resetToDefaults}
 							quitZenith={settings.quitZenith}
@@ -471,6 +475,8 @@ function SettingsApp() {
 							handleTranslatorTargetLanguageChange={settings.handleTranslatorTargetLanguageChange}
 							translatorOutputMode={settings.translatorOutputMode}
 							handleTranslatorOutputModeChange={settings.handleTranslatorOutputModeChange}
+							translatorDisplayTarget={settings.translatorDisplayTarget}
+							handleTranslatorDisplayTargetChange={settings.handleTranslatorDisplayTargetChange}
 							translatorSelectAllFallback={settings.translatorSelectAllFallback}
 							toggleTranslatorSelectAllFallback={settings.toggleTranslatorSelectAllFallback}
 							translatorAutoPasteArToEn={settings.translatorAutoPasteArToEn}
@@ -479,7 +485,6 @@ function SettingsApp() {
 							translatorHotkeyAnyToAr={settings.translatorHotkeyAnyToAr}
 							translatorHotkeyScreen={settings.translatorHotkeyScreen}
 							translatorHotkeyFullpage={settings.translatorHotkeyFullpage}
-							translatorHotkeyToggle={settings.translatorHotkeyToggle}
 							handleTranslatorHotkeyChange={settings.handleTranslatorHotkeyChange}
 							translatorFontSize={settings.translatorFontSize}
 							handleTranslatorFontSizeChange={settings.handleTranslatorFontSizeChange}

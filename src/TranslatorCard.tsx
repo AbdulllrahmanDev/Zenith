@@ -100,7 +100,7 @@ function TranslatorCardApp() {
 	};
 
 	const startDrag = async (e: React.MouseEvent) => {
-		if ((e.target as HTMLElement).closest("button")) return;
+		if ((e.target as HTMLElement).closest("button, .tr-card-body-selectable")) return;
 		try {
 			await currentWin.startDragging();
 			const pos = await currentWin.outerPosition();
@@ -114,34 +114,43 @@ function TranslatorCardApp() {
 			onMouseEnter={() => setHovered(true)}
 			onMouseLeave={() => setHovered(false)}
 		>
-			<div className="tr-card" dir="rtl">
-				<div className="tr-card-header" onMouseDown={startDrag}>
-					<div className="tr-card-title-wrap">
-						<span className="tr-card-accent-dot" />
-						<span>{data.title}</span>
-					</div>
-					<div className="tr-card-actions">
-						<button type="button" className="tr-card-btn" onClick={handleCopy}>
-							{copied ? <Check size={12} /> : <Copy size={12} />}
-							<span>{copied ? "تم النسخ" : "نسخ"}</span>
-						</button>
-						<button
-							type="button"
-							className="tr-card-btn"
-							onClick={() => invoke("translator_close_card").catch(() => {})}
-							title="إغلاق"
-						>
-							<X size={13} />
-						</button>
+			<div className="tr-card-glow" aria-hidden="true" />
+			<div className={`tr-card ${data.error ? "is-error" : ""}`} dir="rtl">
+				<div className="tr-card-body-wrap" onMouseDown={startDrag}>
+					<div
+						className={`tr-card-body tr-card-body-selectable ${data.error ? "error" : ""}`}
+						style={{ fontSize: `${data.font_size}px` }}
+						dir="auto"
+					>
+						{data.text}
 					</div>
 				</div>
 
-				<div
-					className={`tr-card-body ${data.error ? "error" : ""}`}
-					style={{ fontSize: `${data.font_size}px` }}
-					dir="auto"
-				>
-					{data.text}
+				<div className="tr-card-footer" onMouseDown={startDrag}>
+					<div className="tr-card-title-wrap">
+						<span className="tr-card-accent-dot" />
+						<span className="tr-card-title-text">{data.title}</span>
+					</div>
+					<div className="tr-card-actions">
+						<button
+							type="button"
+							className="tr-card-ghost-btn"
+							onClick={() => invoke("translator_close_card").catch(() => {})}
+							title="إغلاق"
+							aria-label="إغلاق"
+						>
+							<X size={13} />
+						</button>
+						<button
+							type="button"
+							className={`tr-card-primary-btn ${copied ? "copied" : ""}`}
+							onClick={handleCopy}
+							title={copied ? "تم النسخ" : "نسخ"}
+						>
+							{copied ? <Check size={13} strokeWidth={2.5} /> : <Copy size={12} />}
+							<span>{copied ? "تم النسخ" : "نسخ"}</span>
+						</button>
+					</div>
 				</div>
 
 				<div className="tr-card-footer-bar">

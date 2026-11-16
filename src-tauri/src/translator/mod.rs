@@ -162,10 +162,10 @@ fn ensure_translator_window(app: &AppHandle, label: &str) -> Option<tauri::Webvi
         return Some(win);
     }
     let (url, title, w, h, focused, closable) = match label {
-        "translator-card" => ("translator-card.html", "Zenith Translator Card", 440.0, 220.0, false, true),
+        "translator-card" => ("translator-card.html", "Zenith Translator Card", 464.0, 232.0, false, true),
         "translator-overlay" => ("translator-overlay.html", "Zenith Translator Overlay", 1280.0, 720.0, true, true),
         "translator-region" => ("translator-region.html", "Zenith Translator Region", 1280.0, 720.0, true, true),
-        "translator-spinner" => ("translator-spinner.html", "Zenith Translator Status", 180.0, 70.0, false, false),
+        "translator-spinner" => ("translator-spinner.html", "Zenith Translator Status", 196.0, 78.0, false, false),
         _ => return None,
     };
 
@@ -273,7 +273,7 @@ pub fn sync_hotkeys_from_settings(app: &AppHandle) {
 fn handle_hotkey(app: &AppHandle, id: i32) {
     let cfg = TranslatorConfig::from_app(app);
     if id == HK_TOGGLE_PANEL {
-        open_translator_settings_tab(app);
+        crate::commands::open_settings_window(app.clone());
         return;
     }
     if !cfg.enabled {
@@ -289,22 +289,49 @@ fn handle_hotkey(app: &AppHandle, id: i32) {
     }
 }
 
-pub fn open_translator_settings_tab(app: &AppHandle) {
-    crate::commands::open_settings_window(app.clone());
-    let _ = app.emit("open-settings-tab", "translator");
+fn emit_notch_translation(app: &AppHandle, payload: serde_json::Value) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.emit("translator-notch-state", payload);
+    } else {
+        let _ = app.emit("translator-notch-state", payload);
+    }
+}
+
+fn clear_notch_translation(app: &AppHandle) {
+    emit_notch_translation(app, serde_json::json!({ "status": "idle" }));
 }
 
 fn show_spinner_near_cursor(app: &AppHandle, label: &str) {
+    let cfg = TranslatorConfig::from_app(app);
+    if cfg.display_target == "notch" {
+        clear_window_state("translator-spinner");
+        if let Some(win) = app.get_webview_window("translator-spinner") {
+            let _ = win.hide();
+        }
+        emit_notch_translation(
+            app,
+            serde_json::json!({
+                "status": "loading",
+                "title": label,
+                "text": "",
+                "error": false,
+                "font_size": cfg.font_size,
+                "timeout_sec": cfg.card_timeout_sec,
+            }),
+        );
+        return;
+    }
+
     let cursor = get_cursor_pos();
     let (work, _) = get_monitor_areas(cursor);
-    let pos = compute_card_position(cursor, work, 180, 64, None);
+    let pos = compute_card_position(cursor, work, 196, 74, None);
     let payload = serde_json::json!({ "visible": true, "label": label });
     if let Ok(mut g) = spinner_state_lock().lock() {
         *g = Some(payload.clone());
     }
     if let Some(win) = ensure_translator_window(app, "translator-spinner") {
         let _ = win.set_position(PhysicalPosition::new(pos.0, pos.1));
-        let _ = win.set_size(PhysicalSize::new(180, 64));
+        let _ = win.set_size(PhysicalSize::new(196, 74));
         let _ = win.emit("translator-spinner-state", payload);
         let _ = win.show();
     }
@@ -319,10 +346,31 @@ fn hide_spinner(app: &AppHandle) {
 }
 
 fn show_card(app: &AppHandle, cfg: &TranslatorConfig, cursor: (i32, i32), payload: CardPayload) {
+    if cfg.display_target == "notch" {
+        clear_window_state("translator-card");
+        if let Some(win) = app.get_webview_window("translator-card") {
+            let _ = win.hide();
+        }
+        emit_notch_translation(
+            app,
+            serde_json::json!({
+                "status": "result",
+                "title": payload.title,
+                "mode": payload.mode,
+                "source": payload.source,
+                "text": payload.text,
+                "error": payload.error,
+                "font_size": payload.font_size,
+                "timeout_sec": payload.timeout_sec,
+            }),
+        );
+        return;
+    }
+
     let char_count = payload.text.chars().count();
-    let card_w: i32 = if char_count > 380 { 520 } else { 440 };
+    let card_w: i32 = if char_count > 380 { 544 } else { 464 };
     let est_lines = ((char_count as f64) / 48.0).ceil().clamp(2.0, 12.0) as i32;
-    let card_h: i32 = (128 + est_lines * ((cfg.font_size as i32) + 8)).clamp(170, 440);
+    let card_h: i32 = (144 + est_lines * ((cfg.font_size as i32) + 8)).clamp(182, 464);
     let (work, _) = get_monitor_areas(cursor);
     let pos = compute_card_position(cursor, work, card_w, card_h, cfg.card_pos);
 
@@ -385,6 +433,8 @@ pub fn trigger_ar_to_en(app: AppHandle) {
                                 timeout_sec: cfg.card_timeout_sec,
                             },
                         );
+                    } else if cfg.display_target == "notch" {
+                        clear_notch_translation(&app);
                     }
                 } else {
                     show_card(
@@ -505,7 +555,12 @@ pub fn trigger_screen_overlay(app: AppHandle, mode_override: Option<String>) {
             .and_then(|r| r);
 
         let cap = match cap_res {
-            Ok(c) => c,
+            Ok(c) => {
+                if cfg.display_target == "notch" {
+                    clear_notch_translation(&app);
+                }
+                c
+            }
             Err(err) => {
                 show_card(
                     &app,
@@ -861,7 +916,12 @@ pub fn trigger_fullpage_overlay(app: AppHandle) {
         hide_spinner(&app);
 
         let cap = match cap_res {
-            Ok(c) => c,
+            Ok(c) => {
+                if cfg.display_target == "notch" {
+                    clear_notch_translation(&app);
+                }
+                c
+            }
             Err(err) => {
                 show_card(
                     &app,

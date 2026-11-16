@@ -56,6 +56,8 @@ export const en = {
 		timeFormat24hDesc: "Use 24-hour clock format",
 		lowBatteryAlert: "Low Battery Alert",
 		lowBatteryAlertDesc: (threshold: number) => `Trigger at ${threshold}%`,
+		openSettingsHotkey: "Open Settings Shortcut",
+		openSettingsHotkeyDesc: "Open the Settings window from anywhere",
 		appGroup: "App",
 		resetToDefaults: "Reset to Defaults",
 		resetToDefaultsDesc: "Restore all settings and restart Zenith",

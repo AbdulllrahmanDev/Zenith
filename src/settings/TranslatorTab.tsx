@@ -13,6 +13,7 @@ import {
 	Globe,
 	Keyboard,
 	Languages,
+	PanelTop,
 	Play,
 	Power,
 	Sliders,
@@ -20,6 +21,7 @@ import {
 	Type
 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
+import { HotkeyRecorder } from "./HotkeyRecorder";
 
 export interface LocalDownloadStatus {
 	model_downloaded: boolean;
@@ -50,6 +52,8 @@ export interface TranslatorTabProps {
 	handleTranslatorTargetLanguageChange: (v: string) => void;
 	translatorOutputMode: "full" | "explain" | "summarize";
 	handleTranslatorOutputModeChange: (v: "full" | "explain" | "summarize") => void;
+	translatorDisplayTarget: "floating" | "notch";
+	handleTranslatorDisplayTargetChange: (v: "floating" | "notch") => void;
 	translatorSelectAllFallback: boolean;
 	toggleTranslatorSelectAllFallback: () => void;
 	translatorAutoPasteArToEn: boolean;
@@ -59,7 +63,6 @@ export interface TranslatorTabProps {
 	translatorHotkeyAnyToAr: string;
 	translatorHotkeyScreen: string;
 	translatorHotkeyFullpage: string;
-	translatorHotkeyToggle: string;
 	translatorFontSize: number;
 	handleTranslatorFontSizeChange: (v: number) => void;
 	translatorCardTimeoutSec: number;
@@ -91,135 +94,30 @@ const TARGET_LANGUAGES = [
 	{ value: "Dutch", label: "الهولندية (Dutch)" }
 ];
 
-const ARABIC_TO_LATIN_KEY: Record<string, string> = {
-	ض: "Q",
-	ص: "W",
-	ث: "E",
-	ق: "R",
-	ف: "T",
-	غ: "Y",
-	ع: "U",
-	ه: "I",
-	خ: "O",
-	ح: "P",
-	ش: "A",
-	س: "S",
-	ي: "D",
-	ب: "F",
-	ل: "G",
-	ا: "H",
-	ت: "J",
-	ن: "K",
-	م: "L",
-	ئ: "Z",
-	ء: "X",
-	ؤ: "C",
-	ر: "V",
-	لا: "B",
-	ى: "N",
-	ة: "M"
-};
+type SpeedTier = "fast" | "good" | "moderate" | "slow";
 
-function formatKeyEvent(e: KeyboardEvent): string | null {
-	const ignored = new Set(["Control", "Alt", "Shift", "Meta", "OS", "Process", "Dead"]);
-	if (ignored.has(e.key)) return null;
-
-	const mods: string[] = [];
-	if (e.ctrlKey) mods.push("Ctrl");
-	if (e.altKey) mods.push("Alt");
-	if (e.shiftKey) mods.push("Shift");
-
-	let main = "";
-	if (e.code && e.code.startsWith("Key")) {
-		main = e.code.slice(3);
-	} else if (e.code && e.code.startsWith("Digit")) {
-		main = e.code.slice(5);
-	} else if (e.code === "Space" || e.key === " ") {
-		main = "Space";
-	} else if (/^F([1-9]|1[0-9]|2[0-4])$/i.test(e.key)) {
-		main = e.key.toUpperCase();
-	} else if (ARABIC_TO_LATIN_KEY[e.key]) {
-		main = ARABIC_TO_LATIN_KEY[e.key];
-	} else if (e.key.length === 1) {
-		main = e.key.toUpperCase();
-	} else if (["Enter", "Tab", "Backspace", "Delete", "Insert", "Home", "End", "PageUp", "PageDown"].includes(e.key)) {
-		main = e.key;
-	} else if (e.key.startsWith("Arrow")) {
-		main = e.key.replace("Arrow", "");
+function formatResponseSpeed(ms: number): { timeLabel: string; ratingLabel: string; tier: SpeedTier } {
+	const timeLabel = ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(2)} ث`;
+	if (ms < 800) {
+		return { timeLabel, ratingLabel: "سريع جداً", tier: "fast" };
 	}
-
-	if (!main) return null;
-	if (mods.length === 0 && !main.startsWith("F")) return null;
-	return [...mods, main].join("+");
-}
-
-function HotkeyRecorder({
-	value,
-	recording,
-	onStart,
-	onSave,
-	onCancel
-}: {
-	value: string;
-	recording: boolean;
-	onStart: () => void;
-	onSave: (combo: string) => void;
-	onCancel: () => void;
-}) {
-	useEffect(() => {
-		if (!recording) return;
-		invoke("translator_set_hotkeys_paused", { paused: true }).catch(() => {});
-
-		const onKeyDown = (e: KeyboardEvent) => {
-			e.preventDefault();
-			e.stopPropagation();
-			if (e.key === "Escape") {
-				onCancel();
-				return;
-			}
-			const formatted = formatKeyEvent(e);
-			if (formatted) {
-				onSave(formatted);
-			}
-		};
-
-		window.addEventListener("keydown", onKeyDown, true);
-		return () => {
-			window.removeEventListener("keydown", onKeyDown, true);
-			invoke("translator_set_hotkeys_paused", { paused: false }).catch(() => {});
-		};
-	}, [recording, onSave, onCancel]);
-
-	const parts = value.split("+").filter(Boolean);
-
-	return (
-		<div className="tr-hotkey-control" dir="ltr">
-			<div className="tr-hotkey-pills">
-				{recording ? (
-					<span className="tr-hotkey-recording-badge">اضغط الاختصار الجديد</span>
-				) : (
-					parts.map((part, idx) => (
-						<span key={`${part}-${idx}`} className="tr-hotkey-pill">
-							{part}
-						</span>
-					))
-				)}
-			</div>
-			<button
-				type="button"
-				className={`settings-btn tr-hotkey-btn ${recording ? "recording" : ""}`}
-				onClick={recording ? onCancel : onStart}
-			>
-				{recording ? "إلغاء" : "تغيير"}
-			</button>
-		</div>
-	);
+	if (ms < 2500) {
+		return { timeLabel, ratingLabel: "جيد", tier: "good" };
+	}
+	if (ms < 5000) {
+		return { timeLabel, ratingLabel: "متوسط", tier: "moderate" };
+	}
+	return { timeLabel, ratingLabel: "بطيء", tier: "slow" };
 }
 
 export function TranslatorTab(props: TranslatorTabProps) {
 	const [showKey, setShowKey] = useState(false);
 	const [recordingField, setRecordingField] = useState<string | null>(null);
-	const [testState, setTestState] = useState<{ status: "idle" | "testing" | "ok" | "error"; text: string }>({
+	const [testState, setTestState] = useState<{
+		status: "idle" | "testing" | "ok" | "error";
+		text: string;
+		elapsedMs?: number;
+	}>({
 		status: "idle",
 		text: ""
 	});
@@ -271,14 +169,44 @@ export function TranslatorTab(props: TranslatorTabProps) {
 		}
 	};
 
+	useEffect(() => {
+		if (testState.status !== "ok") return;
+		const timer = window.setTimeout(() => {
+			setTestState((prev) => (prev.status === "ok" ? { status: "idle", text: "" } : prev));
+		}, 5000);
+		return () => window.clearTimeout(timer);
+	}, [testState]);
+
 	const runTest = async () => {
 		setTestState({ status: "testing", text: "جاري الاختبار" });
+		const startedAt = performance.now();
 		try {
 			const reply = await invoke<string>("translator_test_connection");
-			setTestState({ status: "ok", text: reply });
+			const elapsedMs = Math.max(1, Math.round(performance.now() - startedAt));
+			setTestState({ status: "ok", text: reply, elapsedMs });
 		} catch (e) {
 			setTestState({ status: "error", text: String(e) });
 		}
+	};
+
+	const renderTestBanner = () => {
+		if (testState.status === "idle") return null;
+		const speed =
+			testState.status === "ok" && testState.elapsedMs !== undefined
+				? formatResponseSpeed(testState.elapsedMs)
+				: null;
+		return (
+			<div className={`tr-test-banner ${testState.status}`}>
+				{testState.status === "ok" && <CheckCircle2 size={14} />}
+				{testState.status === "error" && <AlertCircle size={14} />}
+				<span className="tr-test-banner-text">{testState.text}</span>
+				{speed && (
+					<span className={`tr-speed-badge tier-${speed.tier}`}>
+						{speed.timeLabel} · {speed.ratingLabel}
+					</span>
+				)}
+			</div>
+		);
 	};
 
 	const startDownload = () => {
@@ -320,6 +248,7 @@ export function TranslatorTab(props: TranslatorTabProps) {
 			</div>
 
 			{/* 1. Activation & AI Engine */}
+			<div className="setting-group-label">التفعيل والمحرك</div>
 			<div className="setting-group">
 				<SettingRow
 					icon={Power}
@@ -415,13 +344,7 @@ export function TranslatorTab(props: TranslatorTabProps) {
 									<span>اختبار الاتصال</span>
 								</button>
 							</div>
-							{testState.status !== "idle" && (
-								<div className={`tr-test-banner ${testState.status}`}>
-									{testState.status === "ok" && <CheckCircle2 size={14} />}
-									{testState.status === "error" && <AlertCircle size={14} />}
-									<span>{testState.text}</span>
-								</div>
-							)}
+							{renderTestBanner()}
 						</div>
 					</>
 				) : (
@@ -483,21 +406,16 @@ export function TranslatorTab(props: TranslatorTabProps) {
 						{localStatus.error && (
 							<div className="tr-test-banner error">
 								<AlertCircle size={14} />
-								<span>{localStatus.error}</span>
+								<span className="tr-test-banner-text">{localStatus.error}</span>
 							</div>
 						)}
-						{testState.status !== "idle" && (
-							<div className={`tr-test-banner ${testState.status}`}>
-								{testState.status === "ok" && <CheckCircle2 size={14} />}
-								{testState.status === "error" && <AlertCircle size={14} />}
-								<span>{testState.text}</span>
-							</div>
-						)}
+						{renderTestBanner()}
 					</div>
 				)}
 			</div>
 
 			{/* 2. Modes & Behavior */}
+			<div className="setting-group-label">الأوضاع والسلوك</div>
 			<div className="setting-group">
 				<SettingRow
 					icon={Languages}
@@ -548,6 +466,29 @@ export function TranslatorTab(props: TranslatorTabProps) {
 				</SettingRow>
 
 				<SettingRow
+					icon={PanelTop}
+					label="مكان عرض نتيجة الترجمة"
+					desc="اختيار ظهور النتيجة في نافذة عائمة بجانب المؤشر أو داخل النوتش"
+				>
+					<div className="tr-segmented">
+						<button
+							type="button"
+							className={`tr-seg-btn ${props.translatorDisplayTarget === "floating" ? "active" : ""}`}
+							onClick={() => props.handleTranslatorDisplayTargetChange("floating")}
+						>
+							نافذة عائمة
+						</button>
+						<button
+							type="button"
+							className={`tr-seg-btn ${props.translatorDisplayTarget === "notch" ? "active" : ""}`}
+							onClick={() => props.handleTranslatorDisplayTargetChange("notch")}
+						>
+							النوتش
+						</button>
+					</div>
+				</SettingRow>
+
+				<SettingRow
 					icon={ClipboardPaste}
 					label="استبدال النص مباشرة عند الترجمة للإنجليزية"
 					desc="لصق الترجمة الإنجليزية مكان النص المحدد تلقائياً عبر Ctrl+V"
@@ -579,6 +520,7 @@ export function TranslatorTab(props: TranslatorTabProps) {
 			</div>
 
 			{/* 3. Global Hotkeys */}
+			<div className="setting-group-label">اختصارات لوحة المفاتيح</div>
 			<div className="setting-group">
 				<SettingRow
 					icon={Keyboard}
@@ -647,26 +589,10 @@ export function TranslatorTab(props: TranslatorTabProps) {
 						}}
 					/>
 				</SettingRow>
-
-				<SettingRow
-					icon={Keyboard}
-					label="فتح تبويب المترجم من أي مكان"
-					desc="يعرض نافذة إعدادات المترجم مباشرة"
-				>
-					<HotkeyRecorder
-						value={props.translatorHotkeyToggle}
-						recording={recordingField === "toggle"}
-						onStart={() => setRecordingField("toggle")}
-						onCancel={() => setRecordingField(null)}
-						onSave={(combo) => {
-							props.handleTranslatorHotkeyChange("zenith-translator-hotkey-toggle", combo);
-							setRecordingField(null);
-						}}
-					/>
-				</SettingRow>
 			</div>
 
 			{/* 4. Appearance & Prompts */}
+			<div className="setting-group-label">المظهر والتوجيهات</div>
 			<div className="setting-group">
 				<SettingRow
 					icon={Type}

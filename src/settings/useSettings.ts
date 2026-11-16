@@ -320,6 +320,9 @@ export function useSettings() {
 		const m = localStorage.getItem("zenith-translator-output-mode");
 		return m === "explain" || m === "summarize" ? m : "full";
 	});
+	const [translatorDisplayTarget, setTranslatorDisplayTarget] = useState<"floating" | "notch">(() =>
+		localStorage.getItem("zenith-translator-display-target") === "notch" ? "notch" : "floating"
+	);
 	const [translatorSelectAllFallback, setTranslatorSelectAllFallback] = useState(
 		() => localStorage.getItem("zenith-translator-select-all-fallback") !== "false"
 	);
@@ -527,6 +530,9 @@ export function useSettings() {
 			apply(getVal("zenith-translator-target-language"), setTranslatorTargetLanguage, (v) => v);
 			apply(getVal("zenith-translator-output-mode"), setTranslatorOutputMode, (v) =>
 				v === "explain" || v === "summarize" ? v : "full"
+			);
+			apply(getVal("zenith-translator-display-target"), setTranslatorDisplayTarget, (v) =>
+				v === "notch" ? "notch" : "floating"
 			);
 			apply(getVal("zenith-translator-select-all-fallback"), setTranslatorSelectAllFallback, (v) => v !== "false");
 			apply(getVal("zenith-translator-auto-paste-ar-to-en"), setTranslatorAutoPasteArToEn, (v) => v !== "false");
@@ -742,6 +748,8 @@ export function useSettings() {
 		"zenith-translator-target-language": setTranslatorTargetLanguage,
 		"zenith-translator-output-mode": (v: unknown) =>
 			setTranslatorOutputMode(v === "explain" || v === "summarize" ? v : "full"),
+		"zenith-translator-display-target": (v: unknown) =>
+			setTranslatorDisplayTarget(v === "notch" ? "notch" : "floating"),
 		"zenith-translator-select-all-fallback": setTranslatorSelectAllFallback,
 		"zenith-translator-auto-paste-ar-to-en": setTranslatorAutoPasteArToEn,
 		"zenith-translator-hotkey-ar-to-en": setTranslatorHotkeyArToEn,
@@ -1449,6 +1457,10 @@ export function useSettings() {
 		setTranslatorOutputMode(v);
 		saveSetting("zenith-translator-output-mode", v);
 	};
+	const handleTranslatorDisplayTargetChange = (v: "floating" | "notch") => {
+		setTranslatorDisplayTarget(v);
+		saveSetting("zenith-translator-display-target", v);
+	};
 	const toggleTranslatorSelectAllFallback = () => {
 		const next = !translatorSelectAllFallback;
 		setTranslatorSelectAllFallback(next);
@@ -1867,6 +1879,8 @@ export function useSettings() {
 		handleTranslatorTargetLanguageChange,
 		translatorOutputMode,
 		handleTranslatorOutputModeChange,
+		translatorDisplayTarget,
+		handleTranslatorDisplayTargetChange,
 		translatorSelectAllFallback,
 		toggleTranslatorSelectAllFallback,
 		translatorAutoPasteArToEn,

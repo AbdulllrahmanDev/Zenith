@@ -1,5 +1,7 @@
-import { Power, Download, Clock, BatteryWarning, RefreshCw, RotateCcw, LogOut, Languages } from "lucide-react";
+import { useState } from "react";
+import { Power, Download, Clock, BatteryWarning, RefreshCw, RotateCcw, LogOut, Languages, Keyboard } from "lucide-react";
 import { SettingRow } from "./SettingRow";
+import { HotkeyRecorder } from "./HotkeyRecorder";
 import { useI18n, type AppLanguage } from "../i18n";
 
 interface GeneralTabProps {
@@ -11,6 +13,8 @@ interface GeneralTabProps {
 	toggleUpdateIndicator: () => void;
 	lowBatteryThreshold: number;
 	handleThresholdChange: (val: number) => void;
+	openSettingsHotkey: string;
+	onOpenSettingsHotkeyChange: (combo: string) => void;
 	restartZenith: () => void;
 	resetToDefaults: () => void;
 	quitZenith: () => void;
@@ -25,12 +29,15 @@ export function GeneralTab({
 	toggleUpdateIndicator,
 	lowBatteryThreshold,
 	handleThresholdChange,
+	openSettingsHotkey,
+	onOpenSettingsHotkeyChange,
 	restartZenith,
 	resetToDefaults,
 	quitZenith
 }: GeneralTabProps) {
 	const { lang, setLanguage, t } = useI18n();
 	const g = t.general;
+	const [recordingHotkey, setRecordingHotkey] = useState(false);
 
 	return (
 		<>
@@ -78,6 +85,23 @@ export function GeneralTab({
 						<input type="checkbox" checked={timeFormat24h} onChange={toggleTimeFormat24h} />
 						<span className="slider"></span>
 					</label>
+				</SettingRow>
+
+				<SettingRow
+					icon={Keyboard}
+					label={g.openSettingsHotkey}
+					desc={g.openSettingsHotkeyDesc}
+				>
+					<HotkeyRecorder
+						value={openSettingsHotkey}
+						recording={recordingHotkey}
+						onStart={() => setRecordingHotkey(true)}
+						onCancel={() => setRecordingHotkey(false)}
+						onSave={(combo) => {
+							onOpenSettingsHotkeyChange(combo);
+							setRecordingHotkey(false);
+						}}
+					/>
 				</SettingRow>
 
 				<SettingRow

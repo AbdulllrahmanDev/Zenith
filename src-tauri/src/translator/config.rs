@@ -17,6 +17,7 @@ pub const KEY_HOTKEY_FULLPAGE: &str = "zenith-translator-hotkey-fullpage";
 pub const KEY_HOTKEY_TOGGLE: &str = "zenith-translator-hotkey-toggle";
 pub const KEY_TARGET_LANGUAGE: &str = "zenith-translator-target-language";
 pub const KEY_OUTPUT_MODE: &str = "zenith-translator-output-mode";
+pub const KEY_DISPLAY_TARGET: &str = "zenith-translator-display-target";
 pub const KEY_SELECT_ALL_FALLBACK: &str = "zenith-translator-select-all-fallback";
 pub const KEY_AUTO_PASTE_AR_TO_EN: &str = "zenith-translator-auto-paste-ar-to-en";
 pub const KEY_CUSTOM_PROMPT_INPLACE: &str = "zenith-translator-custom-prompt-inplace";
@@ -70,6 +71,7 @@ pub struct TranslatorConfig {
     pub hotkey_toggle_panel: String,
     pub target_language: String,
     pub output_mode: String,
+    pub display_target: String,
     pub select_all_fallback: bool,
     pub auto_paste_ar_to_en: bool,
     pub custom_prompt_inplace: String,
@@ -97,6 +99,7 @@ impl Default for TranslatorConfig {
             hotkey_toggle_panel: "Ctrl+Alt+Space".to_string(),
             target_language: "Arabic".to_string(),
             output_mode: "full".to_string(),
+            display_target: "floating".to_string(),
             select_all_fallback: true,
             auto_paste_ar_to_en: true,
             custom_prompt_inplace: String::new(),
@@ -185,6 +188,12 @@ impl TranslatorConfig {
             let norm = v.trim().to_ascii_lowercase();
             if norm == "full" || norm == "explain" || norm == "summarize" {
                 cfg.output_mode = norm;
+            }
+        }
+        if let Some(v) = lookup(KEY_DISPLAY_TARGET) {
+            let norm = v.trim().to_ascii_lowercase();
+            if norm == "floating" || norm == "notch" {
+                cfg.display_target = norm;
             }
         }
         if let Some(v) = lookup(KEY_SELECT_ALL_FALLBACK) {
@@ -365,6 +374,7 @@ mod tests {
         let mut map = HashMap::new();
         map.insert(KEY_ENGINE.to_string(), "LOCAL".to_string());
         map.insert(KEY_PROVIDER.to_string(), "invalid".to_string());
+        map.insert(KEY_DISPLAY_TARGET.to_string(), "NOTCH".to_string());
         map.insert(KEY_FONT_SIZE.to_string(), "99".to_string());
         map.insert(KEY_CARD_TIMEOUT_SEC.to_string(), "1".to_string());
         map.insert(KEY_OVERLAY_OPACITY.to_string(), "200".to_string());
@@ -375,6 +385,7 @@ mod tests {
         assert!(!cfg.enabled);
         assert_eq!(cfg.engine, "local");
         assert_eq!(cfg.provider, "gemini");
+        assert_eq!(cfg.display_target, "notch");
         assert_eq!(cfg.font_size, 28);
         assert_eq!(cfg.card_timeout_sec, 3);
         assert_eq!(cfg.overlay_opacity, 100);

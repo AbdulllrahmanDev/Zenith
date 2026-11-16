@@ -56,6 +56,8 @@ export const ar: TranslationDict = {
 		timeFormat24hDesc: "استخدام نظام الوقت بـ 24 ساعة",
 		lowBatteryAlert: "تنبيه انخفاض البطارية",
 		lowBatteryAlertDesc: (threshold: number) => `التنبيه عند ${threshold}%`,
+		openSettingsHotkey: "اختصار فتح الإعدادات",
+		openSettingsHotkeyDesc: "فتح نافذة الإعدادات من أي مكان",
 		appGroup: "التطبيق",
 		resetToDefaults: "استعادة الإعدادات الافتراضية",
 		resetToDefaultsDesc: "إعادة جميع الإعدادات وإعادة تشغيل Zenith",

@@ -55,6 +55,8 @@ import {
 	Megaphone,
 	Type,
 	X,
+	Check,
+	Copy,
 	ChevronLeft,
 	ChevronRight,
 	Inbox,
@@ -440,11 +442,22 @@ type NotchPanelMode =
 	| "command-center"
 	| "prayer"
 	| "announcement"
+	| "translator"
 	| "status"
 	| "shelf"
 	| "wifi"
 	| "bluetooth"
 	| "notifications";
+
+interface NotchTranslationState {
+	id: number;
+	status: "loading" | "result";
+	title: string;
+	text: string;
+	error: boolean;
+	fontSize: number;
+	timeoutSec: number;
+}
 
 // The shelf is a short-lived stash: one row, newest first, oldest evicted.
 const SHELF_MAX_ITEMS = 10;
@@ -697,6 +710,13 @@ function App() {
 	const announcementOpenRef = useRef(false);
 	announcementOpenRef.current = announcementOpen;
 
+	const [notchTranslation, setNotchTranslation] = useState<NotchTranslationState | null>(null);
+	const [notchTranslationCopied, setNotchTranslationCopied] = useState(false);
+	const [notchTranslationRemainingPct, setNotchTranslationRemainingPct] = useState(100);
+	const notchTranslationOpen = notchTranslation !== null;
+	const notchTranslationOpenRef = useRef(false);
+	notchTranslationOpenRef.current = notchTranslationOpen;
+
 	const [isVisible, setIsVisible] = useState(true);
 	const [isImpacted, setIsImpacted] = useState(false);
 	const [isExpanded, setIsExpanded] = useState(false);
@@ -781,10 +801,11 @@ function App() {
 	const appliedDock = useRef<{ enabled: boolean; mode: string } | null>(null);
 	const appliedNotchMode = useRef<string | null>(null);
 
-	const isAnyInteraction = isHovered || isNotchHovered || isEdgeHovered || eventPeek;
+	const isAnyInteraction = isHovered || isNotchHovered || isEdgeHovered || eventPeek || notchTranslationOpen;
 	const isHidden =
 		!startupAnimating &&
 		!showAthanBanner &&
+		!notchTranslationOpen &&
 		notchMode === "smart" &&
 		isOverlapped &&
 		interactionState === "none";
@@ -1627,6 +1648,9 @@ function App() {
 		if (showAthanBanner) {
 			return;
 		}
+		if (notchPanelModeRef.current === "translator" && notchTranslationOpenRef.current) {
+			return;
+		}
 		setNotchPanelMode((prev) =>
 			prev === "music" ||
 			prev === "command-center" ||
@@ -1863,6 +1887,90 @@ function App() {
 		}
 	}, [notchPanelMode, announcement, announcementDismissed, mediaInfo.has_media, isPlaying]);
 
+	const dismissNotchTranslation = useCallback(() => {
+		setNotchTranslation(null);
+		setNotchTranslationCopied(false);
+		setNotchTranslationRemainingPct(100);
+		setIsOpen(false);
+		setNotchPanelMode(restingModeRef.current);
+	}, []);
+
+	// Listen for translator results routed to the notch.
+	useEffect(() => {
+		if (windowLabel && windowLabel !== "main") return;
+		let unlisten: (() => void) | undefined;
+		listen<{
+			status: "idle" | "loading" | "result";
+			title?: string;
+			text?: string;
+			error?: boolean;
+			font_size?: number;
+			timeout_sec?: number;
+		}>("translator-notch-state", (ev) => {
+			const p = ev.payload;
+			if (!p || p.status === "idle") {
+				dismissNotchTranslation();
+				return;
+			}
+			const nextTimeout = Math.max(3, p.timeout_sec ?? 12);
+			setNotchTranslation({
+				id: Date.now(),
+				status: p.status === "loading" ? "loading" : "result",
+				title: p.title || "المترجم الفوري",
+				text: p.text || "",
+				error: Boolean(p.error),
+				fontSize: p.font_size ?? 15,
+				timeoutSec: nextTimeout
+			});
+			setNotchTranslationCopied(false);
+			setNotchTranslationRemainingPct(100);
+			setIsOpen(true);
+			setNotchPanelMode("translator");
+			if (notchMode === "peek" || notchMode === "smart") {
+				triggerEventPeek(p.status === "loading" ? 15000 : nextTimeout * 1000);
+			}
+		})
+			.then((fn) => {
+				unlisten = fn;
+			})
+			.catch(() => {});
+
+		return () => {
+			unlisten?.();
+		};
+	}, [windowLabel, notchMode, triggerEventPeek, dismissNotchTranslation]);
+
+	// Auto-dismiss notch translation after timeoutSec (paused while hovering the notch).
+	useEffect(() => {
+		if (!notchTranslation || notchTranslation.status !== "result" || isHovered || isNotchHovered) {
+			return;
+		}
+		const totalMs = Math.max(3, notchTranslation.timeoutSec) * 1000;
+		const tickMs = 200;
+		let elapsed = ((100 - notchTranslationRemainingPct) / 100) * totalMs;
+
+		const timer = window.setInterval(() => {
+			elapsed += tickMs;
+			const pct = Math.max(0, 100 - (elapsed / totalMs) * 100);
+			setNotchTranslationRemainingPct(pct);
+			if (elapsed >= totalMs) {
+				window.clearInterval(timer);
+				dismissNotchTranslation();
+			}
+		}, tickMs);
+
+		return () => window.clearInterval(timer);
+		// Re-run only when hover toggles or a new result payload arrives.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [notchTranslation?.id, notchTranslation?.status, isHovered, isNotchHovered, dismissNotchTranslation]);
+
+	// Return to the resting view if another panel replaced "translator".
+	useEffect(() => {
+		if (notchTranslation && notchPanelMode !== "translator") {
+			setNotchTranslation(null);
+		}
+	}, [notchTranslation, notchPanelMode]);
+
 	// Window height is now kept constant to prevent rendering layout lag and sharp corners
 
 	const lastScrollTime = useRef(0);
@@ -1873,7 +1981,8 @@ function App() {
 			target.closest(".timer-column") ||
 			target.closest(".shelf-content") ||
 			target.closest(".qp-list") ||
-			target.closest(".prayer-split-view")
+			target.closest(".prayer-split-view") ||
+			target.closest(".translator-notch-content")
 		) {
 			return;
 		}
@@ -1897,7 +2006,7 @@ function App() {
 	// Wheel and swipe navigate panels, even from a collapsed live activity.
 	// Music and shelf remain entry points through their activity affordances.
 	const cycleNotchPanelMode = (direction: 1 | -1) => {
-		if (notchPanelMode === "announcement") return false;
+		if (notchPanelMode === "announcement" || notchPanelMode === "translator") return false;
 		const panels = NOTCH_PANELS.filter(panelAvailable);
 		const currentIndex = panels.indexOf(notchPanelMode as NotchPanel);
 		const nextMode = currentIndex === -1
@@ -2133,7 +2242,7 @@ function App() {
 
 	// Expands the notch into a panel, or into an activity's own view.
 	const openNotch = (view: NotchPanel | "music" | "shelf") => {
-		if (notchPanelMode === "announcement") return;
+		if (notchPanelMode === "announcement" || notchPanelMode === "translator") return;
 		setIsOpen(true);
 		setNotchPanelMode(view);
 	};
@@ -2199,7 +2308,7 @@ function App() {
 	// session exists, the timer (with music in its bubble) once one is set, and
 	// the clock otherwise. An open notch is left alone.
 	useEffect(() => {
-		if (isOpen || announcementOpenRef.current) return;
+		if (isOpen || announcementOpenRef.current || notchTranslationOpenRef.current) return;
 		if (notchPanelMode !== collapsedMode && notchPanelMode !== "shelf") {
 			setNotchPanelMode(collapsedMode);
 		}
@@ -2899,6 +3008,10 @@ function App() {
 	// Calculate width dynamically based on enabled features
 	const getDynamicWidth = () => {
 		if (showAthanBanner) return isOpen ? 420 : 260;
+		if (notchPanelMode === "translator" && notchTranslation) {
+			if (notchTranslation.status === "loading") return 260;
+			return notchTranslation.text.length > 260 ? 480 : 420;
+		}
 		if (notchPanelMode === "announcement" && announcement && !announcementDismissed) return 380;
 		if (isCalendarMode) return 480;
 		if (notchPanelMode === "prayer" && isOpen) return 480;
@@ -2928,6 +3041,15 @@ function App() {
 		if (showAthanBanner) return isOpen ? 116 : 36;
 		if (!isExpanded || !isVisible || isHidden) {
 			return isImpacted ? 28.9 : 44.2;
+		}
+		if (notchPanelMode === "translator" && notchTranslation) {
+			if (notchTranslation.status === "loading") return 88;
+			const lineChars = notchTranslation.text.length > 260 ? 50 : 42;
+			const explicitLines = notchTranslation.text.split("\n").length;
+			const wrappedLines = Math.ceil(notchTranslation.text.length / lineChars);
+			const estLines = Math.max(2, Math.min(8, Math.max(explicitLines, wrappedLines)));
+			const bodyH = estLines * ((notchTranslation.fontSize || 15) + 8);
+			return Math.min(268, Math.max(146, 36 + 56 + bodyH));
 		}
 		// Announcement card: body is line-clamped, so a fixed size fits both cases.
 		if (notchPanelMode === "announcement" && announcement && !announcementDismissed) {
@@ -3023,7 +3145,10 @@ function App() {
 		mediaInfo.has_media,
 		shelfItems.length,
 		showAthanBanner,
-		announcementOpen
+		announcementOpen,
+		notchTranslation?.id,
+		notchTranslation?.status,
+		notchTranslation?.text
 	]);
 
 	return (
@@ -3059,7 +3184,7 @@ function App() {
 			>
 				<motion.div
 					ref={notchRef}
-					className={`zenith-notch ${isHovered ? "expanded" : ""} ${isImpacted ? "is-impacted" : ""} ${isDragHovering ? "drag-hover" : ""}`}
+					className={`zenith-notch ${isHovered ? "expanded" : ""} ${isImpacted ? "is-impacted" : ""} ${isDragHovering ? "drag-hover" : ""} ${notchPanelMode === "translator" && notchTranslation ? "is-translator" : ""}`}
 					onMouseEnter={() => setIsNotchHovered(true)}
 					onMouseLeave={() => setIsNotchHovered(false)}
 					onWheel={handleWheel}
@@ -3084,8 +3209,8 @@ function App() {
 						scaleY: 1,
 						borderTopLeftRadius: isImpacted ? 0 : 18,
 						borderTopRightRadius: isImpacted ? 0 : 18,
-						borderBottomLeftRadius: (isCalendarMode || notchPanelMode === "prayer" || (showAthanBanner && isOpen)) ? 28 : 18,
-						borderBottomRightRadius: (isCalendarMode || notchPanelMode === "prayer" || (showAthanBanner && isOpen)) ? 28 : 18,
+						borderBottomLeftRadius: (isCalendarMode || notchPanelMode === "prayer" || notchPanelMode === "translator" || (showAthanBanner && isOpen)) ? 26 : 18,
+						borderBottomRightRadius: (isCalendarMode || notchPanelMode === "prayer" || notchPanelMode === "translator" || (showAthanBanner && isOpen)) ? 26 : 18,
 						filter: isVisible ? "blur(0px)" : "blur(8px)",
 						pointerEvents: isVisible ? "auto" : "none"
 					}}
@@ -4093,6 +4218,79 @@ function App() {
 												>
 													{t.common.learnMore}
 												</button>
+											)}
+										</motion.div>
+									)}
+								</AnimatePresence>
+
+								{/* Translator Card in Notch */}
+								<AnimatePresence>
+									{!showAthanBanner && notchPanelMode === "translator" && notchTranslation && (
+										<motion.div
+											key="translator-notch-view"
+											className={`translator-notch-content ${notchTranslation.error ? "is-error" : ""}`}
+											dir="rtl"
+											onClick={(e) => e.stopPropagation()}
+											initial={{ opacity: 0, y: -4 }}
+											animate={{ opacity: 1, y: 0 }}
+											exit={{
+												opacity: 0,
+												filter: "blur(4px)",
+												transition: { duration: 0.1 }
+											}}
+											transition={{ type: "spring", stiffness: 420, damping: 32 }}
+										>
+											{notchTranslation.status === "loading" ? (
+												<div className="translator-notch-loading">
+													<span className="translator-notch-spinner" />
+													<span>{notchTranslation.title}</span>
+												</div>
+											) : (
+												<>
+													<div
+														className={`translator-notch-body ${notchTranslation.error ? "error" : ""}`}
+														style={{ fontSize: `${notchTranslation.fontSize}px` }}
+														dir="auto"
+													>
+														{notchTranslation.text}
+													</div>
+													<div className="translator-notch-footer">
+														<div className="translator-notch-title-wrap">
+															<span className="translator-notch-dot" />
+															<span className="translator-notch-title">{notchTranslation.title}</span>
+														</div>
+														<div className="translator-notch-actions">
+															<button
+																type="button"
+																className="translator-notch-ghost-btn"
+																onClick={dismissNotchTranslation}
+																title={t.common.dismiss}
+																aria-label={t.common.dismiss}
+															>
+																<X size={13} strokeWidth={2.2} />
+															</button>
+															<button
+																type="button"
+																className={`translator-notch-copy-btn ${notchTranslationCopied ? "copied" : ""}`}
+																onClick={() => {
+																	if (!notchTranslation.text) return;
+																	invoke("translator_copy_text", { text: notchTranslation.text }).catch(() => {});
+																	setNotchTranslationCopied(true);
+																	window.setTimeout(() => setNotchTranslationCopied(false), 1600);
+																}}
+															>
+																{notchTranslationCopied ? <Check size={12} strokeWidth={2.5} /> : <Copy size={11} />}
+																<span>{notchTranslationCopied ? "تم النسخ" : "نسخ"}</span>
+															</button>
+														</div>
+													</div>
+													<div className="translator-notch-progress">
+														<div
+															className="translator-notch-progress-fill"
+															style={{ width: `${notchTranslationRemainingPct}%` }}
+														/>
+													</div>
+												</>
 											)}
 										</motion.div>
 									)}
