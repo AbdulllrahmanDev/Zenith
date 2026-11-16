@@ -17,7 +17,6 @@ pub const KEY_HOTKEY_FULLPAGE: &str = "zenith-translator-hotkey-fullpage";
 pub const KEY_HOTKEY_TOGGLE: &str = "zenith-translator-hotkey-toggle";
 pub const KEY_TARGET_LANGUAGE: &str = "zenith-translator-target-language";
 pub const KEY_OUTPUT_MODE: &str = "zenith-translator-output-mode";
-pub const KEY_SCREENSHOT_MODE: &str = "zenith-translator-screenshot-mode";
 pub const KEY_SELECT_ALL_FALLBACK: &str = "zenith-translator-select-all-fallback";
 pub const KEY_AUTO_PASTE_AR_TO_EN: &str = "zenith-translator-auto-paste-ar-to-en";
 pub const KEY_CUSTOM_PROMPT_INPLACE: &str = "zenith-translator-custom-prompt-inplace";
@@ -71,7 +70,6 @@ pub struct TranslatorConfig {
     pub hotkey_toggle_panel: String,
     pub target_language: String,
     pub output_mode: String,
-    pub screenshot_mode: String,
     pub select_all_fallback: bool,
     pub auto_paste_ar_to_en: bool,
     pub custom_prompt_inplace: String,
@@ -99,7 +97,6 @@ impl Default for TranslatorConfig {
             hotkey_toggle_panel: "Ctrl+Alt+Space".to_string(),
             target_language: "Arabic".to_string(),
             output_mode: "full".to_string(),
-            screenshot_mode: "instant".to_string(),
             select_all_fallback: true,
             auto_paste_ar_to_en: true,
             custom_prompt_inplace: String::new(),
@@ -188,12 +185,6 @@ impl TranslatorConfig {
             let norm = v.trim().to_ascii_lowercase();
             if norm == "full" || norm == "explain" || norm == "summarize" {
                 cfg.output_mode = norm;
-            }
-        }
-        if let Some(v) = lookup(KEY_SCREENSHOT_MODE) {
-            let norm = v.trim().to_ascii_lowercase();
-            if norm == "instant" || norm == "region" {
-                cfg.screenshot_mode = norm;
             }
         }
         if let Some(v) = lookup(KEY_SELECT_ALL_FALLBACK) {
@@ -329,7 +320,6 @@ pub fn migrate_legacy_translator_config(app: &AppHandle) {
         ("hotkey_toggle_panel", KEY_HOTKEY_TOGGLE),
         ("target_language", KEY_TARGET_LANGUAGE),
         ("output_mode", KEY_OUTPUT_MODE),
-        ("screenshot_mode", KEY_SCREENSHOT_MODE),
         ("select_all_fallback", KEY_SELECT_ALL_FALLBACK),
         ("auto_paste_ar_to_en", KEY_AUTO_PASTE_AR_TO_EN),
         ("custom_prompt_inplace", KEY_CUSTOM_PROMPT_INPLACE),

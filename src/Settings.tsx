@@ -471,8 +471,6 @@ function SettingsApp() {
 							handleTranslatorTargetLanguageChange={settings.handleTranslatorTargetLanguageChange}
 							translatorOutputMode={settings.translatorOutputMode}
 							handleTranslatorOutputModeChange={settings.handleTranslatorOutputModeChange}
-							translatorScreenshotMode={settings.translatorScreenshotMode}
-							handleTranslatorScreenshotModeChange={settings.handleTranslatorScreenshotModeChange}
 							translatorSelectAllFallback={settings.translatorSelectAllFallback}
 							toggleTranslatorSelectAllFallback={settings.toggleTranslatorSelectAllFallback}
 							translatorAutoPasteArToEn={settings.translatorAutoPasteArToEn}

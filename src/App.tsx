@@ -714,6 +714,8 @@ function App() {
 	const [isNotchHovered, setIsNotchHovered] = useState(false);
 
 	const [isEdgeHovered, setIsEdgeHovered] = useState(false);
+	const isEdgeHoveredRef = useRef(false);
+	isEdgeHoveredRef.current = isEdgeHovered;
 	const [isOverlapped, setIsOverlapped] = useState(false);
 	const [interactionState, setInteractionState] = useState<"active" | "grace" | "none">("none");
 	const notchRef = useRef<HTMLDivElement>(null);
@@ -724,6 +726,8 @@ function App() {
 	const musicBubbleRef = useRef<HTMLButtonElement>(null);
 	const shelfBubbleRef = useRef<HTMLButtonElement>(null);
 	const reportNotchRect = useRef<() => void>(() => {});
+	const lastReportedNotchRectRef = useRef("");
+	const targetBoxRef = useRef({ width: 34, height: 34, y: 250, visible: false });
 	// The pill's target box in window CSS px, and the sender that applies the
 	// notch window's region (holding earlier regions while it shrinks).
 	const pillTargetRef = useRef<RegionRect | null>(null);
@@ -741,6 +745,22 @@ function App() {
 	const updateNotchRegion = () => {
 		const wanted: RegionRect[] = [];
 		if (pillTargetRef.current) wanted.push(pillTargetRef.current);
+		if (
+			targetBoxRef.current.visible &&
+			targetBoxRef.current.y >= 0 &&
+			notchRef.current
+		) {
+			const r = notchRef.current.getBoundingClientRect();
+			if (r.width > 0 && r.height > 0) {
+				const pad = 24 * scale;
+				wanted.push({
+					x: r.left - pad,
+					y: Math.max(0, r.top),
+					width: r.width + pad * 2,
+					height: r.height + pad
+				});
+			}
+		}
 		// Each floating part, padded to cover what it paints outside its box: a
 		// tooltip card's shadow reaches 20px out plus a 6px drop, a bubble's
 		// glow less, and the screen corners nothing.
@@ -796,23 +816,41 @@ function App() {
 
 	useEffect(() => {
 		const updateRect = () => {
-			if (notchRef.current && windowLabel === "main") {
+			if (notchRef.current && windowLabel) {
 				// Activity bubbles sit beside the pill and must stay clickable too.
 				const rects = [notchRef.current, musicBubbleRef.current, shelfBubbleRef.current]
 					.filter((el): el is NonNullable<typeof el> => el !== null)
 					.map((el) => el.getBoundingClientRect());
-				const left = Math.min(...rects.map((r) => r.left));
-				const top = Math.min(...rects.map((r) => r.top));
-				const right = Math.max(...rects.map((r) => r.right));
-				const bottom = Math.max(...rects.map((r) => r.bottom));
-				invoke("update_notch_rect", {
-					rect: {
-						x: Math.round(left),
-						y: Math.round(top),
-						width: Math.round(right - left),
-						height: Math.round(bottom - top)
-					}
-				}).catch(() => {});
+				let left = Math.min(...rects.map((r) => r.left));
+				let top = Math.min(...rects.map((r) => r.top));
+				let right = Math.max(...rects.map((r) => r.right));
+				let bottom = Math.max(...rects.map((r) => r.bottom));
+
+				// Include the target notch box while visible so backend hit-testing
+				// covers the full expanding area immediately instead of closing mid-spring.
+				const tb = targetBoxRef.current;
+				if (tb.visible && tb.y >= 0) {
+					const targetW = tb.width * scale;
+					const targetH = tb.height * scale;
+					const targetLeft = (window.innerWidth - targetW) / 2;
+					const targetTop = tb.y * scale;
+					left = Math.min(left, targetLeft);
+					top = Math.min(Math.max(0, top), targetTop);
+					right = Math.max(right, targetLeft + targetW);
+					bottom = Math.max(bottom, targetTop + targetH);
+				}
+
+				const payload = {
+					x: Math.round(left),
+					y: Math.round(top),
+					width: Math.round(right - left),
+					height: Math.round(bottom - top)
+				};
+				const key = `${payload.x},${payload.y},${payload.width},${payload.height}`;
+				if (key !== lastReportedNotchRectRef.current) {
+					lastReportedNotchRectRef.current = key;
+					invoke("update_notch_rect", { rect: payload }).catch(() => {});
+				}
 				// Bubbles finishing their entrance land here too.
 				updateNotchRegion();
 			}
@@ -2582,7 +2620,21 @@ function App() {
 		// The pill's 12px padding on each side, and a 10px gap to the clock.
 		const needed = Math.ceil(clock + 2 * (side + 10) + 24);
 		if (side > 0 && needed > statusFitWidth) setStatusFitWidth(needed);
-	});
+	}, [
+		isHovered,
+		notchPanelMode,
+		statusWidgets,
+		cpuUsage,
+		ramUsage,
+		diskSpace,
+		netUpSpeed,
+		netDownSpeed,
+		temperature,
+		batteryLevel,
+		time,
+		lang,
+		statusFitWidth
+	]);
 
 	const refreshBatteryDetails = useCallback(() => {
 		invoke<BatteryDetails>("get_battery_details")
@@ -2931,6 +2983,12 @@ function App() {
 				? 39.1
 				: 30.6;
 	const pillTargetHeight = !isReady ? 34 : getDynamicHeight();
+	targetBoxRef.current = {
+		width: pillTargetWidth,
+		height: pillTargetHeight,
+		y: pillTargetY,
+		visible: isVisible && !isHidden
+	};
 	// Shadow and the edge flares beside the pill.
 	pillTargetRef.current = notchPillBox(
 		window.innerWidth,
@@ -2943,10 +3001,30 @@ function App() {
 
 	// Clip the notch window to what it draws (see window_region.rs): outside
 	// these rectangles the window takes no clicks, whatever its click-through
-	// state. Sent after every render, but only when the region changes.
+	// state. Syncs whenever target geometry or floating chrome changes.
 	useEffect(() => {
-		if (windowLabel) updateNotchRegion();
-	});
+		if (windowLabel) reportNotchRect.current();
+	}, [
+		windowLabel,
+		isReady,
+		isVisible,
+		isHidden,
+		isExpanded,
+		isImpacted,
+		isHovered,
+		isOpen,
+		notchPanelMode,
+		pillTargetY,
+		pillTargetWidth,
+		pillTargetHeight,
+		scale,
+		settingsCornersEnabled,
+		statusTooltip?.id,
+		mediaInfo.has_media,
+		shelfItems.length,
+		showAthanBanner,
+		announcementOpen
+	]);
 
 	return (
 		<div className="screen" style={{ overflow: "hidden" }}>
@@ -3025,7 +3103,9 @@ function App() {
 						// Hovering the shelf cancels its post-drop auto-close.
 						if (notchPanelMode === "shelf") clearShelfCollapse();
 					}}
-					onHoverEnd={releaseNotchHover}
+					onHoverEnd={() => {
+						if (!isEdgeHoveredRef.current) releaseNotchHover();
+					}}
 					style={{ originY: 0 }}
 					transition={{
 						width: { type: "spring", stiffness: 400, damping: 31 },

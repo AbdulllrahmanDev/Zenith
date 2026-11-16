@@ -34,10 +34,64 @@ use ocr::{enrich_blocks_with_bg_style, extract_raw_ocr_lines_from_png, group_ocr
 static BUSY: AtomicBool = AtomicBool::new(false);
 static OVERLAY_GENERATION: AtomicU64 = AtomicU64::new(0);
 static LAST_CURSOR_CAPTURE: OnceLock<Mutex<Option<(i32, i32)>>> = OnceLock::new();
+static PENDING_REGION_ACTION: OnceLock<Mutex<RegionAction>> = OnceLock::new();
 static LATEST_CARD: OnceLock<Mutex<Option<CardPayload>>> = OnceLock::new();
 static LATEST_OVERLAY: OnceLock<Mutex<Option<OverlayPayload>>> = OnceLock::new();
 static LATEST_REGION: OnceLock<Mutex<Option<RegionPayload>>> = OnceLock::new();
 static LATEST_SPINNER: OnceLock<Mutex<Option<serde_json::Value>>> = OnceLock::new();
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RegionAction {
+    Overlay,
+    ArToEnCard,
+    AnyToArCard,
+}
+
+fn pending_region_action_lock() -> &'static Mutex<RegionAction> {
+    PENDING_REGION_ACTION.get_or_init(|| Mutex::new(RegionAction::Overlay))
+}
+
+fn set_pending_region_action(action: RegionAction) {
+    if let Ok(mut g) = pending_region_action_lock().lock() {
+        *g = action;
+    }
+}
+
+fn take_pending_region_action() -> RegionAction {
+    if let Ok(mut g) = pending_region_action_lock().lock() {
+        let action = *g;
+        *g = RegionAction::Overlay;
+        action
+    } else {
+        RegionAction::Overlay
+    }
+}
+
+fn quick_mode_title(output_mode: &str) -> &'static str {
+    match output_mode {
+        "explain" => "شرح سريع",
+        "summarize" => "ملخص سريع",
+        _ => "الترجمة",
+    }
+}
+
+fn extract_region_ocr_text(raw_lines: &[ocr::RawOcrLine], blocks: &[OcrBlock]) -> String {
+    if !blocks.is_empty() {
+        blocks
+            .iter()
+            .map(|b| b.text.trim())
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        raw_lines
+            .iter()
+            .map(|l| l.text.trim())
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
 
 fn card_state_lock() -> &'static Mutex<Option<CardPayload>> {
     LATEST_CARD.get_or_init(|| Mutex::new(None))
@@ -299,20 +353,8 @@ pub fn trigger_ar_to_en(app: AppHandle) {
             .flatten();
 
         let Some(text) = selected else {
-            show_card(
-                &app,
-                &cfg,
-                cursor,
-                CardPayload {
-                    title: "ترجمة فورية".to_string(),
-                    mode: cfg.output_mode.clone(),
-                    source: String::new(),
-                    text: "لم يتم تحديد نص للترجمة".to_string(),
-                    error: true,
-                    font_size: cfg.font_size,
-                    timeout_sec: cfg.card_timeout_sec,
-                },
-            );
+            drop(_reset);
+            start_region_selection_with(app, RegionAction::ArToEnCard);
             return;
         };
 
@@ -397,20 +439,8 @@ pub fn trigger_any_to_ar(app: AppHandle) {
             .flatten();
 
         let Some(text) = selected else {
-            show_card(
-                &app,
-                &cfg,
-                cursor,
-                CardPayload {
-                    title: "المترجم الفوري".to_string(),
-                    mode: cfg.output_mode.clone(),
-                    source: String::new(),
-                    text: "حدد نصاً أولاً ثم اضغط الاختصار".to_string(),
-                    error: true,
-                    font_size: cfg.font_size,
-                    timeout_sec: cfg.card_timeout_sec,
-                },
-            );
+            drop(_reset);
+            start_region_selection_with(app, RegionAction::AnyToArCard);
             return;
         };
 
@@ -418,12 +448,7 @@ pub fn trigger_any_to_ar(app: AppHandle) {
         let res = translate_quick(&app, &cfg, &text).await;
         hide_spinner(&app);
 
-        let title = match cfg.output_mode.as_str() {
-            "explain" => "شرح سريع",
-            "summarize" => "ملخص سريع",
-            _ => "الترجمة",
-        }
-        .to_string();
+        let title = quick_mode_title(&cfg.output_mode).to_string();
 
         match res {
             Ok(out) => show_card(
@@ -459,12 +484,11 @@ pub fn trigger_any_to_ar(app: AppHandle) {
 }
 
 pub fn trigger_screen_overlay(app: AppHandle, mode_override: Option<String>) {
-    let cfg = TranslatorConfig::from_app(&app);
-    let mode = mode_override.unwrap_or_else(|| cfg.screenshot_mode.clone());
-    if mode == "region" {
+    if mode_override.as_deref() == Some("region") {
         start_region_selection(app);
         return;
     }
+    let cfg = TranslatorConfig::from_app(&app);
 
     if BUSY.swap(true, Ordering::SeqCst) {
         return;
@@ -506,6 +530,19 @@ pub fn trigger_screen_overlay(app: AppHandle, mode_override: Option<String>) {
 }
 
 pub fn start_region_selection(app: AppHandle) {
+    start_region_selection_with(app, RegionAction::Overlay);
+}
+
+pub fn cancel_region_selection(app: &AppHandle) {
+    set_pending_region_action(RegionAction::Overlay);
+    clear_window_state("translator-region");
+    if let Some(win) = app.get_webview_window("translator-region") {
+        let _ = win.hide();
+    }
+}
+
+fn start_region_selection_with(app: AppHandle, action: RegionAction) {
+    set_pending_region_action(action);
     let cursor = get_cursor_pos();
     if let Ok(mut g) = LAST_CURSOR_CAPTURE
         .get_or_init(|| Mutex::new(None))
@@ -553,6 +590,7 @@ pub fn start_region_selection(app: AppHandle) {
 }
 
 pub fn submit_region_selection(app: AppHandle, x: i32, y: i32, w: i32, h: i32) {
+    let action = take_pending_region_action();
     clear_window_state("translator-region");
     if let Some(win) = app.get_webview_window("translator-region") {
         let _ = win.hide();
@@ -580,7 +618,18 @@ pub fn submit_region_selection(app: AppHandle, x: i32, y: i32, w: i32, h: i32) {
             return;
         };
 
-        // Check OCR first; if little/no OCR text found and cloud engine active, explain via Vision card.
+        if action != RegionAction::Overlay {
+            show_spinner_near_cursor(
+                &app,
+                if action == RegionAction::ArToEnCard {
+                    "جاري الترجمة"
+                } else {
+                    "جاري التحليل"
+                },
+            );
+        }
+
+        // Extract OCR text from captured region.
         let png_clone = cap.png_bytes.clone();
         let raw_lines =
             tokio::task::spawn_blocking(move || extract_raw_ocr_lines_from_png(&png_clone))
@@ -590,6 +639,162 @@ pub fn submit_region_selection(app: AppHandle, x: i32, y: i32, w: i32, h: i32) {
                 .unwrap_or_default();
 
         let blocks = group_ocr_lines(&raw_lines, cap.rgba.width(), cap.rgba.height());
+        let anchor = (x + w / 2, y + h / 2);
+
+        match action {
+            RegionAction::ArToEnCard => {
+                let ocr_text = extract_region_ocr_text(&raw_lines, &blocks);
+                if ocr_text.is_empty() {
+                    hide_spinner(&app);
+                    show_card(
+                        &app,
+                        &cfg,
+                        anchor,
+                        CardPayload {
+                            title: "ترجمة فورية".to_string(),
+                            mode: "full".to_string(),
+                            source: String::new(),
+                            text: "لم يتم اكتشاف نص واضح في المنطقة المحددة".to_string(),
+                            error: true,
+                            font_size: cfg.font_size,
+                            timeout_sec: cfg.card_timeout_sec,
+                        },
+                    );
+                    return;
+                }
+                let res = translate_inplace(&app, &cfg, &ocr_text).await;
+                hide_spinner(&app);
+                match res {
+                    Ok(translated) => show_card(
+                        &app,
+                        &cfg,
+                        anchor,
+                        CardPayload {
+                            title: "الترجمة الإنجليزية".to_string(),
+                            mode: "full".to_string(),
+                            source: ocr_text,
+                            text: translated,
+                            error: false,
+                            font_size: cfg.font_size,
+                            timeout_sec: cfg.card_timeout_sec,
+                        },
+                    ),
+                    Err(err) => show_card(
+                        &app,
+                        &cfg,
+                        anchor,
+                        CardPayload {
+                            title: "خطأ في الترجمة".to_string(),
+                            mode: "full".to_string(),
+                            source: ocr_text,
+                            text: err,
+                            error: true,
+                            font_size: cfg.font_size,
+                            timeout_sec: cfg.card_timeout_sec,
+                        },
+                    ),
+                }
+                return;
+            }
+            RegionAction::AnyToArCard => {
+                let ocr_text = extract_region_ocr_text(&raw_lines, &blocks);
+                if !ocr_text.is_empty() {
+                    let res = translate_quick(&app, &cfg, &ocr_text).await;
+                    hide_spinner(&app);
+                    let title = quick_mode_title(&cfg.output_mode).to_string();
+                    match res {
+                        Ok(out) => show_card(
+                            &app,
+                            &cfg,
+                            anchor,
+                            CardPayload {
+                                title,
+                                mode: cfg.output_mode.clone(),
+                                source: ocr_text,
+                                text: out,
+                                error: false,
+                                font_size: cfg.font_size,
+                                timeout_sec: cfg.card_timeout_sec,
+                            },
+                        ),
+                        Err(err) => show_card(
+                            &app,
+                            &cfg,
+                            anchor,
+                            CardPayload {
+                                title: "تعذر التنفيذ".to_string(),
+                                mode: cfg.output_mode.clone(),
+                                source: ocr_text,
+                                text: err,
+                                error: true,
+                                font_size: cfg.font_size,
+                                timeout_sec: cfg.card_timeout_sec,
+                            },
+                        ),
+                    }
+                    return;
+                }
+                if cfg.engine == "cloud" {
+                    let annotated = annotate_cursor_reticle(
+                        &cap.rgba,
+                        (cap.rgba.width() / 2) as i32,
+                        (cap.rgba.height() / 2) as i32,
+                    )
+                    .unwrap_or_else(|_| cap.png_bytes.clone());
+                    let res = explain_cursor_region(&app, &cfg, &annotated, &raw_lines, None).await;
+                    hide_spinner(&app);
+                    match res {
+                        Ok(out) => show_card(
+                            &app,
+                            &cfg,
+                            anchor,
+                            CardPayload {
+                                title: "تحليل المنطقة المحددة".to_string(),
+                                mode: cfg.output_mode.clone(),
+                                source: String::new(),
+                                text: out,
+                                error: false,
+                                font_size: cfg.font_size,
+                                timeout_sec: cfg.card_timeout_sec,
+                            },
+                        ),
+                        Err(err) => show_card(
+                            &app,
+                            &cfg,
+                            anchor,
+                            CardPayload {
+                                title: "تعذر التحليل".to_string(),
+                                mode: cfg.output_mode.clone(),
+                                source: String::new(),
+                                text: err,
+                                error: true,
+                                font_size: cfg.font_size,
+                                timeout_sec: cfg.card_timeout_sec,
+                            },
+                        ),
+                    }
+                } else {
+                    hide_spinner(&app);
+                    show_card(
+                        &app,
+                        &cfg,
+                        anchor,
+                        CardPayload {
+                            title: quick_mode_title(&cfg.output_mode).to_string(),
+                            mode: cfg.output_mode.clone(),
+                            source: String::new(),
+                            text: "لم يتم اكتشاف نص واضح في المنطقة المحددة".to_string(),
+                            error: true,
+                            font_size: cfg.font_size,
+                            timeout_sec: cfg.card_timeout_sec,
+                        },
+                    );
+                }
+                return;
+            }
+            RegionAction::Overlay => {}
+        }
+
         if blocks.is_empty() && cfg.engine == "cloud" {
             show_spinner_near_cursor(&app, "تحليل المنطقة");
             let annotated = annotate_cursor_reticle(
@@ -955,5 +1160,52 @@ struct BusyGuard;
 impl Drop for BusyGuard {
     fn drop(&mut self) {
         BUSY.store(false, Ordering::SeqCst);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quick_mode_title_maps_all_modes() {
+        assert_eq!(quick_mode_title("explain"), "شرح سريع");
+        assert_eq!(quick_mode_title("summarize"), "ملخص سريع");
+        assert_eq!(quick_mode_title("full"), "الترجمة");
+        assert_eq!(quick_mode_title("other"), "الترجمة");
+    }
+
+    #[test]
+    fn extract_region_ocr_text_prefers_blocks_and_falls_back_to_raw_lines() {
+        let raw = vec![
+            ocr::RawOcrLine {
+                left: 0.0,
+                top: 0.0,
+                width: 10.0,
+                height: 10.0,
+                text: "  Hello  ".to_string(),
+            },
+            ocr::RawOcrLine {
+                left: 0.0,
+                top: 15.0,
+                width: 10.0,
+                height: 10.0,
+                text: "World".to_string(),
+            },
+        ];
+        assert_eq!(extract_region_ocr_text(&raw, &[]), "Hello\nWorld");
+
+        let blocks = vec![OcrBlock {
+            id: 0,
+            left: 0.0,
+            top: 0.0,
+            width: 50.0,
+            height: 20.0,
+            text: "Hello World".to_string(),
+            bg_color: String::new(),
+            text_color: String::new(),
+            translated: String::new(),
+        }];
+        assert_eq!(extract_region_ocr_text(&raw, &blocks), "Hello World");
     }
 }

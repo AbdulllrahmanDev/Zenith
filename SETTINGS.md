@@ -265,7 +265,6 @@ with open(path, 'w') as f: json.dump(settings, f)
 | `zenith-translator-local-model-id` | string | `"qwen2.5-1.5b-instruct-q4_k_m"` | Offline local GGUF model identifier |
 | `zenith-translator-target-language` | string | `"Arabic"` | Target language for quick card and screen overlays |
 | `zenith-translator-output-mode` | `"full"` \| `"explain"` \| `"summarize"` | `"full"` | Quick processing mode |
-| `zenith-translator-screenshot-mode` | `"instant"` \| `"region"` | `"instant"` | Screen overlay capture mode |
 | `zenith-translator-select-all-fallback` | boolean string | `"true"` | Fallback to Ctrl+A if no text is selected |
 | `zenith-translator-auto-paste-ar-to-en` | boolean string | `"true"` | Auto-paste English translation in-place via Ctrl+V |
 | `zenith-translator-hotkey-ar-to-en` | string | `"Ctrl+Alt+A"` | Global hotkey for instant Arabic→English replacement |

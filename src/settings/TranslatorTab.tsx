@@ -15,10 +15,8 @@ import {
 	Languages,
 	Play,
 	Power,
-	Scan,
 	Sliders,
 	Sparkles,
-	Trash2,
 	Type
 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
@@ -52,8 +50,6 @@ export interface TranslatorTabProps {
 	handleTranslatorTargetLanguageChange: (v: string) => void;
 	translatorOutputMode: "full" | "explain" | "summarize";
 	handleTranslatorOutputModeChange: (v: "full" | "explain" | "summarize") => void;
-	translatorScreenshotMode: "instant" | "region";
-	handleTranslatorScreenshotModeChange: (v: "instant" | "region") => void;
 	translatorSelectAllFallback: boolean;
 	toggleTranslatorSelectAllFallback: () => void;
 	translatorAutoPasteArToEn: boolean;
@@ -296,13 +292,6 @@ export function TranslatorTab(props: TranslatorTabProps) {
 		invoke("translator_cancel_download").catch(() => {});
 	};
 
-	const deleteModel = () => {
-		invoke("translator_delete_local_model")
-			.then(() => invoke<LocalDownloadStatus>("translator_get_local_status"))
-			.then(setLocalStatus)
-			.catch(() => {});
-	};
-
 	const downloadButtonLabel = (() => {
 		if (!localStatus.downloading) {
 			if (!localStatus.model_downloaded && !localStatus.runtime_ready) {
@@ -450,25 +439,15 @@ export function TranslatorTab(props: TranslatorTabProps) {
 							</div>
 							<div className="tr-local-actions">
 								{localStatus.ready && !localStatus.downloading ? (
-									<>
-										<button
-											type="button"
-											className="settings-btn tr-accent-btn"
-											onClick={runTest}
-											disabled={testState.status === "testing"}
-										>
-											<Play size={14} />
-											<span>اختبار الرد</span>
-										</button>
-										<button
-											type="button"
-											className="settings-btn danger tr-icon-btn"
-											onClick={deleteModel}
-											title="حذف الموديل المحلي"
-										>
-											<Trash2 size={15} />
-										</button>
-									</>
+									<button
+										type="button"
+										className="settings-btn tr-accent-btn"
+										onClick={runTest}
+										disabled={testState.status === "testing"}
+									>
+										<Play size={14} />
+										<span>اختبار الرد</span>
+									</button>
 								) : (
 									<>
 										<button
@@ -564,29 +543,6 @@ export function TranslatorTab(props: TranslatorTabProps) {
 							onClick={() => props.handleTranslatorOutputModeChange("summarize")}
 						>
 							اختصار
-						</button>
-					</div>
-				</SettingRow>
-
-				<SettingRow
-					icon={Scan}
-					label="وضع ترجمة الشاشة"
-					desc="ترجمة النافذة كاملة فوق النصوص مباشرة أو تحديد منطقة بالسحب"
-				>
-					<div className="tr-segmented">
-						<button
-							type="button"
-							className={`tr-seg-btn ${props.translatorScreenshotMode === "instant" ? "active" : ""}`}
-							onClick={() => props.handleTranslatorScreenshotModeChange("instant")}
-						>
-							لقطة فورية
-						</button>
-						<button
-							type="button"
-							className={`tr-seg-btn ${props.translatorScreenshotMode === "region" ? "active" : ""}`}
-							onClick={() => props.handleTranslatorScreenshotModeChange("region")}
-						>
-							تحديد منطقة
 						</button>
 					</div>
 				</SettingRow>

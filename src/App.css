@@ -733,8 +733,8 @@ img {
 	display: flex;
 	flex-direction: column;
 	justify-content: center;
-	border-left: 1px solid var(--zenith-border, rgba(255, 255, 255, 0.1));
-	padding-left: 16px;
+	border-inline-start: 1px solid var(--zenith-border, rgba(255, 255, 255, 0.1));
+	padding-inline-start: 16px;
 }
 
 .calendar-container {
@@ -844,6 +844,7 @@ img {
 	justify-content: center;
 	gap: 5px;
 	cursor: text;
+	direction: ltr;
 }
 
 .roll-digit {

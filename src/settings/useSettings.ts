@@ -320,9 +320,6 @@ export function useSettings() {
 		const m = localStorage.getItem("zenith-translator-output-mode");
 		return m === "explain" || m === "summarize" ? m : "full";
 	});
-	const [translatorScreenshotMode, setTranslatorScreenshotMode] = useState<"instant" | "region">(() =>
-		localStorage.getItem("zenith-translator-screenshot-mode") === "region" ? "region" : "instant"
-	);
 	const [translatorSelectAllFallback, setTranslatorSelectAllFallback] = useState(
 		() => localStorage.getItem("zenith-translator-select-all-fallback") !== "false"
 	);
@@ -530,9 +527,6 @@ export function useSettings() {
 			apply(getVal("zenith-translator-target-language"), setTranslatorTargetLanguage, (v) => v);
 			apply(getVal("zenith-translator-output-mode"), setTranslatorOutputMode, (v) =>
 				v === "explain" || v === "summarize" ? v : "full"
-			);
-			apply(getVal("zenith-translator-screenshot-mode"), setTranslatorScreenshotMode, (v) =>
-				v === "region" ? "region" : "instant"
 			);
 			apply(getVal("zenith-translator-select-all-fallback"), setTranslatorSelectAllFallback, (v) => v !== "false");
 			apply(getVal("zenith-translator-auto-paste-ar-to-en"), setTranslatorAutoPasteArToEn, (v) => v !== "false");
@@ -748,8 +742,6 @@ export function useSettings() {
 		"zenith-translator-target-language": setTranslatorTargetLanguage,
 		"zenith-translator-output-mode": (v: unknown) =>
 			setTranslatorOutputMode(v === "explain" || v === "summarize" ? v : "full"),
-		"zenith-translator-screenshot-mode": (v: unknown) =>
-			setTranslatorScreenshotMode(v === "region" ? "region" : "instant"),
 		"zenith-translator-select-all-fallback": setTranslatorSelectAllFallback,
 		"zenith-translator-auto-paste-ar-to-en": setTranslatorAutoPasteArToEn,
 		"zenith-translator-hotkey-ar-to-en": setTranslatorHotkeyArToEn,
@@ -1457,10 +1449,6 @@ export function useSettings() {
 		setTranslatorOutputMode(v);
 		saveSetting("zenith-translator-output-mode", v);
 	};
-	const handleTranslatorScreenshotModeChange = (v: "instant" | "region") => {
-		setTranslatorScreenshotMode(v);
-		saveSetting("zenith-translator-screenshot-mode", v);
-	};
 	const toggleTranslatorSelectAllFallback = () => {
 		const next = !translatorSelectAllFallback;
 		setTranslatorSelectAllFallback(next);
@@ -1879,8 +1867,6 @@ export function useSettings() {
 		handleTranslatorTargetLanguageChange,
 		translatorOutputMode,
 		handleTranslatorOutputModeChange,
-		translatorScreenshotMode,
-		handleTranslatorScreenshotModeChange,
 		translatorSelectAllFallback,
 		toggleTranslatorSelectAllFallback,
 		translatorAutoPasteArToEn,

@@ -5090,10 +5090,7 @@ pub fn translator_submit_region(app: AppHandle, x: i32, y: i32, w: i32, h: i32) 
 
 #[tauri::command]
 pub fn translator_cancel_region(app: AppHandle) {
-    crate::translator::clear_window_state("translator-region");
-    if let Some(win) = app.get_webview_window("translator-region") {
-        let _ = win.hide();
-    }
+    crate::translator::cancel_region_selection(&app);
 }
 
 #[tauri::command]

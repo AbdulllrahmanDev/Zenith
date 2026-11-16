@@ -1558,10 +1558,6 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                                     let prev = notch_overlap_per_window.get(label).copied();
                                     if prev != Some(false) || last_emit.elapsed() >= Duration::from_secs(3) {
                                         notch_overlap_per_window.insert(label.clone(), false);
-                                        let _ = handle_visibility.emit("notch-overlap", serde_json::json!({
-                                            "target": label,
-                                            "overlapped": false
-                                        }));
                                         let _ = handle_visibility.emit_to(label, "notch-overlap", serde_json::json!({
                                             "target": label,
                                             "overlapped": false
@@ -1721,10 +1717,6 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                                                 let prev = notch_overlap_per_window.get(label).copied();
                                                 if prev != Some(this_notch_overlap) || last_emit.elapsed() >= Duration::from_secs(3) {
                                                     notch_overlap_per_window.insert(label.clone(), this_notch_overlap);
-                                                    let _ = handle_visibility.emit("notch-overlap", serde_json::json!({
-                                                        "target": label,
-                                                        "overlapped": this_notch_overlap
-                                                    }));
                                                     let _ = handle_visibility.emit_to(label, "notch-overlap", serde_json::json!({
                                                         "target": label,
                                                         "overlapped": this_notch_overlap
@@ -1768,19 +1760,22 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                     .store(if should_notch_overlap { 1 } else { 0 }, Ordering::Relaxed);
                 CURRENT_FOREGROUND_FULLSCREEN.store(current_is_fs, Ordering::Relaxed);
 
-                if Some(effective_dock_overlap) != last_dock_overlap
-                    || last_emit.elapsed() >= Duration::from_secs(3)
-                {
+                let periodic_emit = last_emit.elapsed() >= Duration::from_secs(3);
+                if Some(effective_dock_overlap) != last_dock_overlap || periodic_emit {
                     let _ = handle_visibility.emit("dock-overlap", effective_dock_overlap);
                     last_dock_overlap = Some(effective_dock_overlap);
-                    last_emit = Instant::now();
                 }
 
-                if Some(should_notch_overlap) != last_notch_overlap
-                    || last_emit.elapsed() >= Duration::from_secs(3)
-                {
+                let no_notch_hwnds = crate::state::NOTCH_HWNDS
+                    .lock()
+                    .map(|g| g.is_empty())
+                    .unwrap_or(true);
+                if no_notch_hwnds && (Some(should_notch_overlap) != last_notch_overlap || periodic_emit) {
                     let _ = handle_visibility.emit("notch-overlap", should_notch_overlap);
                     last_notch_overlap = Some(should_notch_overlap);
+                }
+                if periodic_emit {
+                    last_emit = Instant::now();
                 }
 
                 // Adaptive dock signal: a standard maximized foreground window.
@@ -2725,8 +2720,28 @@ fn run_mouse_hook_thread() {
     }
 }
 
-pub fn get_active_dock_monitors(app: &AppHandle) -> Vec<(i32, i32, i32, i32)> {
-    let mode = crate::utils::get_setting_str(app, "zenith-dock-display").unwrap_or_else(|| "all".to_string());
+type MonitorBounds = (i32, i32, i32, i32);
+type CachedMonitors = (String, Vec<MonitorBounds>, i64);
+
+static CACHED_DOCK_MONITORS: Mutex<Option<CachedMonitors>> = Mutex::new(None);
+static CACHED_NOTCH_MONITORS: Mutex<Option<CachedMonitors>> = Mutex::new(None);
+const MONITOR_CACHE_TTL_MS: i64 = 1000;
+
+fn resolve_active_monitors_cached(
+    app: &AppHandle,
+    setting_key: &str,
+    cache: &Mutex<Option<CachedMonitors>>,
+) -> Vec<MonitorBounds> {
+    let mode = crate::utils::get_setting_str(app, setting_key).unwrap_or_else(|| "all".to_string());
+    let now = now_ms();
+    if let Ok(guard) = cache.lock() {
+        if let Some((cached_mode, bounds, updated_at)) = guard.as_ref() {
+            if cached_mode == &mode && (now - *updated_at) < MONITOR_CACHE_TTL_MS {
+                return bounds.clone();
+            }
+        }
+    }
+
     let mut bounds = Vec::new();
     if let Ok(monitors) = app.available_monitors() {
         if mode == "all" {
@@ -2735,42 +2750,27 @@ pub fn get_active_dock_monitors(app: &AppHandle) -> Vec<(i32, i32, i32, i32)> {
                 let s = m.size();
                 bounds.push((p.x, p.y, s.width as i32, s.height as i32));
             }
-        } else {
-            if let Some(target) = crate::utils::get_target_monitor(app, "zenith-dock-display") {
-                let p = target.position();
-                let s = target.size();
-                bounds.push((p.x, p.y, s.width as i32, s.height as i32));
-            }
+        } else if let Some(target) = crate::utils::get_target_monitor(app, setting_key) {
+            let p = target.position();
+            let s = target.size();
+            bounds.push((p.x, p.y, s.width as i32, s.height as i32));
         }
     }
     if bounds.is_empty() {
         bounds.push((0, 0, 1920, 1080));
+    }
+    if let Ok(mut guard) = cache.lock() {
+        *guard = Some((mode, bounds.clone(), now));
     }
     bounds
 }
 
+pub fn get_active_dock_monitors(app: &AppHandle) -> Vec<(i32, i32, i32, i32)> {
+    resolve_active_monitors_cached(app, "zenith-dock-display", &CACHED_DOCK_MONITORS)
+}
+
 pub fn get_active_notch_monitors(app: &AppHandle) -> Vec<(i32, i32, i32, i32)> {
-    let mode = crate::utils::get_setting_str(app, "zenith-notch-display").unwrap_or_else(|| "all".to_string());
-    let mut bounds = Vec::new();
-    if let Ok(monitors) = app.available_monitors() {
-        if mode == "all" {
-            for m in monitors {
-                let p = m.position();
-                let s = m.size();
-                bounds.push((p.x, p.y, s.width as i32, s.height as i32));
-            }
-        } else {
-            if let Some(target) = crate::utils::get_target_monitor(app, "zenith-notch-display") {
-                let p = target.position();
-                let s = target.size();
-                bounds.push((p.x, p.y, s.width as i32, s.height as i32));
-            }
-        }
-    }
-    if bounds.is_empty() {
-        bounds.push((0, 0, 1920, 1080));
-    }
-    bounds
+    resolve_active_monitors_cached(app, "zenith-notch-display", &CACHED_NOTCH_MONITORS)
 }
 
 /// Top-edge hover-intent delay in milliseconds. `0` disables the gate so the
@@ -2782,11 +2782,12 @@ fn top_edge_dwell_ms(app_handle: &AppHandle) -> i64 {
         .clamp(0, 2000)
 }
 
-/// True when the cursor sits inside the top-edge hot band on an active
-/// monitor. Shared by the dwell gate and top-edge hit-testing continuity.
-fn in_top_edge_band(app_handle: &AppHandle, cursor: windows::Win32::Foundation::POINT, scale: f64) -> bool {
-    let monitors = get_active_notch_monitors(app_handle);
-    monitors.into_iter().any(|(mon_x, mon_y, mon_w, _)| {
+fn in_top_edge_band_with(
+    monitors: &[(i32, i32, i32, i32)],
+    cursor: windows::Win32::Foundation::POINT,
+    scale: f64,
+) -> bool {
+    monitors.iter().any(|&(mon_x, mon_y, mon_w, _)| {
         cursor.y <= (mon_y + (TOP_EDGE_BAND_PX * scale) as i32)
             && cursor.x >= mon_x
             && cursor.x <= (mon_x + mon_w)
@@ -2807,7 +2808,8 @@ fn top_edge_armed_for(
     now: i64,
     scale: f64,
 ) -> bool {
-    if !in_top_edge_band(app_handle, cursor, scale) {
+    let monitors = get_active_notch_monitors(app_handle);
+    if !in_top_edge_band_with(&monitors, cursor, scale) {
         MH_TOP_EDGE_ENTER_MS.store(0, Ordering::Relaxed);
         MH_TOP_EDGE_ARMED.store(false, Ordering::Relaxed);
         return false;
@@ -2817,8 +2819,9 @@ fn top_edge_armed_for(
     }
     let dwell_ms = top_edge_dwell_ms(app_handle);
     // Instant reveal when slammed against the top ceiling (within 2px of screen top)
-    let monitors = get_active_notch_monitors(app_handle);
-    let is_at_ceiling = monitors.iter().any(|(_, mon_y, _, _)| cursor.y <= mon_y + (2.0 * scale) as i32);
+    let is_at_ceiling = monitors
+        .iter()
+        .any(|&(_, mon_y, _, _)| cursor.y <= mon_y + (2.0 * scale) as i32);
     if dwell_ms <= 0 || is_at_ceiling {
         MH_TOP_EDGE_ARMED.store(true, Ordering::Relaxed);
         return true;
@@ -2947,7 +2950,11 @@ fn update_main_interaction(
             let rx = win_rect.left + (r.x as f64 * scale) as i32 - pad_x - hyst;
             let rw = (r.width as f64 * scale) as i32 + (pad_x * 2) + (hyst * 2);
             let ry_top = win_rect.top;
-            let ry_bottom = win_rect.top + (r.height as f64 * scale) as i32 + pad_y_bottom + hyst;
+            let ry_bottom = win_rect.top
+                + (r.y.max(0) as f64 * scale) as i32
+                + (r.height as f64 * scale) as i32
+                + pad_y_bottom
+                + hyst;
 
             in_notch_rect = cursor.x >= rx && cursor.x <= (rx + rw) && cursor.y >= ry_top && cursor.y <= ry_bottom;
 
@@ -2989,22 +2996,43 @@ fn update_main_interaction(
     }
 }
 
+fn any_cached_hover(cache: &Mutex<Option<std::collections::HashMap<String, bool>>>) -> bool {
+    cache
+        .lock()
+        .ok()
+        .and_then(|g| g.as_ref().map(|m| m.values().any(|&v| v)))
+        .unwrap_or(false)
+}
+
 /// Keeps notch hit-testing fresh while the cursor is stationary: completes a
 /// pending top-edge dwell, forces interactivity during a held-button drag, and
 /// catches boundary crossings the movement-only hook misses (so the click-
 /// through flip — and its hover-clear — always happens).
 fn setup_top_edge_watchdog(app_handle: AppHandle) {
-    std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_millis(TOP_EDGE_POLL_MS));
-        if CAPTURE_UI_ACTIVE.load(Ordering::Relaxed) || SHUTTING_DOWN.load(Ordering::Relaxed) {
-            continue;
+    std::thread::spawn(move || {
+        let mut last_pt: Option<(i32, i32)> = None;
+        let mut last_fg_fs = false;
+        loop {
+            std::thread::sleep(Duration::from_millis(TOP_EDGE_POLL_MS));
+            if CAPTURE_UI_ACTIVE.load(Ordering::Relaxed) || SHUTTING_DOWN.load(Ordering::Relaxed) {
+                continue;
+            }
+            let mut pt = windows::Win32::Foundation::POINT::default();
+            if unsafe { windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut pt) }.is_err() {
+                continue;
+            }
+            let fg_fs = CURRENT_FOREGROUND_FULLSCREEN.load(Ordering::Relaxed);
+            let moved = last_pt != Some((pt.x, pt.y));
+            let dwell_pending = MH_TOP_EDGE_ENTER_MS.load(Ordering::Relaxed) != 0
+                && !MH_TOP_EDGE_ARMED.load(Ordering::Relaxed);
+            let hover_active = any_cached_hover(&NOTCH_HOVER_CACHE);
+            if !moved && fg_fs == last_fg_fs && !dwell_pending && !hover_active {
+                continue;
+            }
+            last_pt = Some((pt.x, pt.y));
+            last_fg_fs = fg_fs;
+            update_main_interaction(&app_handle, pt, now_ms(), fg_fs);
         }
-        let mut pt = windows::Win32::Foundation::POINT::default();
-        if unsafe { windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut pt) }.is_err() {
-            continue;
-        }
-        let fg_fs = CURRENT_FOREGROUND_FULLSCREEN.load(Ordering::Relaxed);
-        update_main_interaction(&app_handle, pt, now_ms(), fg_fs);
     });
 }
 
@@ -3186,17 +3214,30 @@ fn update_dock_interaction(
 /// pending bottom-edge dwell and catches boundary crossings the movement-only
 /// hook misses (so the click-through flip always happens).
 fn setup_dock_edge_watchdog(app_handle: AppHandle) {
-    std::thread::spawn(move || loop {
-        std::thread::sleep(Duration::from_millis(BOTTOM_EDGE_POLL_MS));
-        if CAPTURE_UI_ACTIVE.load(Ordering::Relaxed) || SHUTTING_DOWN.load(Ordering::Relaxed) {
-            continue;
+    std::thread::spawn(move || {
+        let mut last_pt: Option<(i32, i32)> = None;
+        let mut last_fg_fs = false;
+        loop {
+            std::thread::sleep(Duration::from_millis(BOTTOM_EDGE_POLL_MS));
+            if CAPTURE_UI_ACTIVE.load(Ordering::Relaxed) || SHUTTING_DOWN.load(Ordering::Relaxed) {
+                continue;
+            }
+            let mut pt = windows::Win32::Foundation::POINT::default();
+            if unsafe { windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut pt) }.is_err() {
+                continue;
+            }
+            let fg_fs = CURRENT_FOREGROUND_FULLSCREEN.load(Ordering::Relaxed);
+            let moved = last_pt != Some((pt.x, pt.y));
+            let dwell_pending = MH_DOCK_EDGE_ENTER_MS.load(Ordering::Relaxed) != 0
+                && !MH_DOCK_EDGE_ARMED.load(Ordering::Relaxed);
+            let hover_active = any_cached_hover(&DOCK_HOVER_CACHE);
+            if !moved && fg_fs == last_fg_fs && !dwell_pending && !hover_active {
+                continue;
+            }
+            last_pt = Some((pt.x, pt.y));
+            last_fg_fs = fg_fs;
+            update_dock_interaction(&app_handle, pt, now_ms(), fg_fs);
         }
-        let mut pt = windows::Win32::Foundation::POINT::default();
-        if unsafe { windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut pt) }.is_err() {
-            continue;
-        }
-        let fg_fs = CURRENT_FOREGROUND_FULLSCREEN.load(Ordering::Relaxed);
-        update_dock_interaction(&app_handle, pt, now_ms(), fg_fs);
     });
 }
 
@@ -3394,8 +3435,6 @@ unsafe extern "system" fn mouse_hook_proc(
         }
     }
 
-    let app_opt = MOUSE_HOOK_APP_HANDLE.get().or_else(|| WINDOW_CHANGE_APP_HANDLE.get()).cloned();
-
     // 1. Mouse Button Recording (when user clicks Record in Settings)
     if MOUSE_RADIAL_RECORDING.load(Ordering::Relaxed) {
         if let Some((btn, true)) = classify_mouse_msg(message, data.mouseData) {
@@ -3421,10 +3460,10 @@ unsafe extern "system" fn mouse_hook_proc(
     }
 
     // 2. Mouse Radial Menu Trigger (Rovyl state machine)
-    if let Some(ref app) = app_opt {
-        let radial_enabled = crate::utils::get_setting_str(app, "zenith-mouse-radial-enabled").as_deref() != Some("false");
-        if radial_enabled {
-            if let Some((btn, is_down)) = classify_mouse_msg(message, data.mouseData) {
+    if let Some((btn, is_down)) = classify_mouse_msg(message, data.mouseData) {
+        if let Some(app) = MOUSE_HOOK_APP_HANDLE.get().or_else(|| WINDOW_CHANGE_APP_HANDLE.get()) {
+            let radial_enabled = crate::utils::get_setting_str(app, "zenith-mouse-radial-enabled").as_deref() != Some("false");
+            if radial_enabled {
                 let trigger_btn = crate::utils::get_setting_str(app, "zenith-mouse-trigger-button").unwrap_or_else(|| "middle".into());
                 if matches_mouse_trigger(btn, &trigger_btn) {
                     // Game mode protection
