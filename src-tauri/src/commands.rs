@@ -29,7 +29,11 @@ pub async fn set_dock_hovered(hovered: bool) {
 }
 
 #[tauri::command]
-pub async fn set_notch_hovered(app: AppHandle, hovered: bool) {
+pub async fn set_notch_hovered(window: tauri::WebviewWindow, app: AppHandle, hovered: bool) {
+    let label = window.label().to_string();
+    if let Ok(mut map) = crate::state::NOTCH_HOVERED_MAP.lock() {
+        map.insert(label, hovered);
+    }
     NOTCH_IS_HOVERED.store(hovered, Ordering::Relaxed);
     // Re-evaluate right away. During a native drag the webview never sees the
     // pointer leave, so waiting for the next mouse move can leave the notch
@@ -38,7 +42,11 @@ pub async fn set_notch_hovered(app: AppHandle, hovered: bool) {
 }
 
 #[tauri::command]
-pub async fn set_notch_visible(visible: bool) {
+pub async fn set_notch_visible(window: tauri::WebviewWindow, visible: bool) {
+    let label = window.label().to_string();
+    if let Ok(mut map) = crate::state::NOTCH_VISIBLE_MAP.lock() {
+        map.insert(label, visible);
+    }
     NOTCH_IS_VISIBLE.store(visible, Ordering::Relaxed);
 }
 
@@ -129,9 +137,15 @@ pub async fn update_dock_rect(rect: IntRect) {
 }
 
 #[tauri::command]
-pub async fn update_notch_rect(rect: IntRect) {
-    if let Ok(mut r) = NOTCH_RECT.lock() {
-        *r = Some(rect);
+pub async fn update_notch_rect(window: tauri::WebviewWindow, rect: IntRect) {
+    let label = window.label().to_string();
+    if let Ok(mut map) = crate::state::NOTCH_RECTS.lock() {
+        map.insert(label.clone(), rect);
+    }
+    if label == "main" {
+        if let Ok(mut r) = NOTCH_RECT.lock() {
+            *r = Some(rect);
+        }
     }
 }
 
@@ -520,8 +534,10 @@ fn get_monitor_model_name(adapter_device_name: &str) -> Option<String> {
     use windows::core::HSTRING;
     unsafe {
         let adapter = HSTRING::from(adapter_device_name);
-        let mut monitor_dev = DISPLAY_DEVICEW::default();
-        monitor_dev.cb = std::mem::size_of::<DISPLAY_DEVICEW>() as u32;
+        let mut monitor_dev = DISPLAY_DEVICEW {
+            cb: std::mem::size_of::<DISPLAY_DEVICEW>() as u32,
+            ..Default::default()
+        };
         if EnumDisplayDevicesW(
             windows::core::PCWSTR(adapter.as_ptr()),
             0,
@@ -582,6 +598,41 @@ pub fn get_available_displays(app: AppHandle) -> Vec<crate::types::DisplayInfo> 
     displays
 }
 
+fn position_notch_window(win: &tauri::WebviewWindow, monitor: &tauri::Monitor, zenith_scale: f64) {
+    let m_pos = monitor.position();
+    let m_size = monitor.size();
+    let scale = monitor.scale_factor();
+    let target_height = (420.0 * zenith_scale * scale) as u32;
+    let _ = win.set_position(tauri::PhysicalPosition::new(m_pos.x, m_pos.y));
+    let _ = win.set_size(tauri::PhysicalSize::new(m_size.width, target_height));
+    let _ = win.show();
+    if let Ok(hwnd) = win.hwnd() {
+        unsafe {
+            use windows::Win32::UI::WindowsAndMessaging::{
+                SetWindowPos, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOZORDER,
+            };
+            let _ = SetWindowPos(
+                hwnd,
+                None,
+                m_pos.x,
+                m_pos.y,
+                m_size.width as i32,
+                target_height as i32,
+                SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+            );
+        }
+        crate::utils::re_assert_topmost(hwnd);
+    }
+}
+
+fn clear_window_region(hwnd: windows::Win32::Foundation::HWND) {
+    unsafe {
+        use windows::Win32::Graphics::Gdi::{CreateRectRgn, SetWindowRgn};
+        let rgn = CreateRectRgn(0, 0, 0, 0);
+        let _ = SetWindowRgn(hwnd, Some(rgn), false);
+    }
+}
+
 #[tauri::command]
 pub fn reposition_displays(app: AppHandle) {
     let monitors = match app.available_monitors() {
@@ -601,16 +652,7 @@ pub fn reposition_displays(app: AppHandle) {
         for (idx, m) in monitors.iter().enumerate() {
             let win_label = if idx == 0 { "main".to_string() } else { format!("main-{}", idx + 1) };
             if let Some(win) = app.get_webview_window(&win_label) {
-                let m_pos = m.position();
-                let m_size = m.size();
-                let scale = m.scale_factor();
-                let target_height = (420.0 * zenith_scale * scale) as u32;
-                let _ = win.set_position(tauri::PhysicalPosition::new(m_pos.x, m_pos.y));
-                let _ = win.set_size(tauri::PhysicalSize::new(m_size.width, target_height));
-                let _ = win.show();
-                if let Ok(hwnd) = win.hwnd() {
-                    crate::utils::re_assert_topmost(hwnd);
-                }
+                position_notch_window(&win, m, zenith_scale);
             }
         }
         for idx in monitors.len()..5 {
@@ -622,16 +664,7 @@ pub fn reposition_displays(app: AppHandle) {
     } else {
         if let Some(monitor) = crate::utils::get_target_monitor(&app, "zenith-notch-display") {
             if let Some(main_win) = app.get_webview_window("main") {
-                let m_pos = monitor.position();
-                let m_size = monitor.size();
-                let scale = monitor.scale_factor();
-                let target_height = (420.0 * zenith_scale * scale) as u32;
-                let _ = main_win.set_position(tauri::PhysicalPosition::new(m_pos.x, m_pos.y));
-                let _ = main_win.set_size(tauri::PhysicalSize::new(m_size.width, target_height));
-                let _ = main_win.show();
-                if let Ok(hwnd) = main_win.hwnd() {
-                    crate::utils::re_assert_topmost(hwnd);
-                }
+                position_notch_window(&main_win, &monitor, zenith_scale);
             }
         }
         for (label, win) in app.webview_windows() {
@@ -2526,8 +2559,8 @@ pub fn close_radial_menu(app: AppHandle) {
         if let Ok(hwnd) = win.hwnd() {
             crate::utils::set_click_through(hwnd, true);
             crate::services::MH_LAST_OV_IGNORE.store(1, Ordering::Relaxed);
+            clear_window_region(hwnd);
         }
-        let _ = win.hide();
     }
 }
 
@@ -2560,7 +2593,9 @@ pub async fn launch_radial_item(
         }
         if echo_ms.unwrap_or(0) == 0 {
             let _ = app.emit("radial-close", ());
-            let _ = win.hide();
+            if let Ok(hwnd) = win.hwnd() {
+                clear_window_region(hwnd);
+            }
         }
     }
 
@@ -2764,7 +2799,9 @@ pub fn set_splash_fullscreen(app: AppHandle, fullscreen: bool) {
             }
             let _ = win.show();
         } else {
-            let _ = win.hide();
+            if let Ok(hwnd) = win.hwnd() {
+                clear_window_region(hwnd);
+            }
             crate::services::sync_overlays(&app);
         }
     }
@@ -3654,21 +3691,53 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
-    let settings = crate::utils::save_setting_file(&path, key.clone(), value.clone())?;
+    let mut settings = crate::utils::save_setting_file(&path, key.clone(), value.clone())?;
 
-    // Broadcast so all windows sync
+    let alt_key = if let Some(rest) = key.strip_prefix("zenith-") {
+        Some(format!("bloom-{rest}"))
+    } else {
+        key.strip_prefix("bloom-").map(|rest| format!("zenith-{rest}"))
+    };
+
+    // If an alternate prefix key already exists in settings, keep it synchronized
+    if let Some(ref alt) = alt_key {
+        if settings.contains_key(alt) {
+            settings = crate::utils::save_setting_file(&path, alt.clone(), value.clone()).unwrap_or(settings);
+        }
+    }
+
+    // Broadcast so all windows sync (using the new value for both keys to avoid stale overrides)
     let _ = app.emit(
         "settings-changed",
-        serde_json::json!({ "key": &key, "value": &settings[&key] }),
+        serde_json::json!({ "key": &key, "value": &value }),
     );
+    if let Some(ref alt) = alt_key {
+        let _ = app.emit(
+            "settings-changed",
+            serde_json::json!({ "key": alt, "value": &value }),
+        );
+    }
 
-    if key == "zenith-scale" {
+    if key == "zenith-scale" || key == "bloom-scale" {
         re_register_appbars(&app, &settings);
-    } else if key == "zenith-notch-mode" {
-        let mode_val = settings.get("zenith-notch-mode").and_then(|v| v.as_str());
+    } else if key == "zenith-notch-mode" || key == "bloom-notch-mode" {
+        let mode_val = settings
+            .get("zenith-notch-mode")
+            .or_else(|| settings.get("bloom-notch-mode"))
+            .and_then(|v| v.as_str());
         let reserve = crate::services::notch_mode_reserves_work_area(mode_val);
         crate::services::apply_main_appbar_mode(&app, reserve);
-    } else if key == "zenith-notch-display" || key == "zenith-dock-display" {
+    } else if key == "zenith-notch-display"
+        || key == "bloom-notch-display"
+        || key == "zenith-dock-display"
+        || key == "bloom-dock-display"
+    {
+        if let Some(main_win) = app.get_webview_window("main") {
+            if let Ok(hwnd) = main_win.hwnd() {
+                crate::services::unregister_appbar_native(hwnd);
+                crate::state::MAIN_APPBAR_REGISTERED.store(false, std::sync::atomic::Ordering::Relaxed);
+            }
+        }
         reposition_displays(app.clone());
         re_register_appbars(&app, &settings);
     } else if key == "zenith-translator-enabled" || key.starts_with("zenith-translator-hotkey-") {
@@ -4351,7 +4420,7 @@ fn apply_imported_settings(app: &AppHandle, settings: &str) -> Result<(), String
         );
     }
 
-    if imported.get("zenith-scale").is_some() {
+    if imported.contains_key("zenith-scale") {
         re_register_appbars(app, &imported);
     }
 
@@ -4454,8 +4523,10 @@ pub fn setup_settings_watcher(app: AppHandle) {
 
             let mut notify_buffer = [0u8; 4096];
             let mut bytes_returned = 0u32;
-            let mut overlapped = OVERLAPPED::default();
-            overlapped.hEvent = h_event;
+            let mut overlapped = OVERLAPPED {
+                hEvent: h_event,
+                ..Default::default()
+            };
 
             loop {
                 let success = ReadDirectoryChangesW(

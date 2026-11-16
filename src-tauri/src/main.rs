@@ -261,6 +261,141 @@ fn main() {
             // invoke save_setting as soon as it loads, which happens before the
             // rest of this hook runs.
             crate::utils::init_settings_cache(app.handle());
+
+            // Register system tray icon immediately on startup with a persistent ID
+            {
+                use tauri::menu::{Menu, MenuItem};
+                use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+                let quit_item = MenuItem::with_id(app, "quit", "Quit Zenith", true, None::<&str>)?;
+                let restart_item =
+                    MenuItem::with_id(app, "restart", "Restart Zenith", true, None::<&str>)?;
+                let settings_item =
+                    MenuItem::with_id(app, "settings", "Open Settings", true, None::<&str>)?;
+                let menu = Menu::with_items(app, &[&settings_item, &restart_item, &quit_item])?;
+                let ah = app.handle().clone();
+                let default_icon = app.default_window_icon().cloned().or_else(|| {
+                    tauri::image::Image::from_bytes(include_bytes!("../icons/32x32.png")).ok()
+                });
+                let icon_pixels = default_icon
+                    .as_ref()
+                    .map(|img| (img.rgba().to_vec(), img.width(), img.height()));
+
+                if let Some(icon) = default_icon {
+                    let tray = TrayIconBuilder::with_id("zenith-tray")
+                        .icon(icon)
+                        .tooltip("Zenith")
+                        .menu(&menu)
+                        .show_menu_on_left_click(false)
+                        .on_menu_event(move |_, event| match event.id().as_ref() {
+                            "quit" => {
+                                diagnostics::record("shutdown", "source=tray");
+                                SHUTTING_DOWN.store(true, Ordering::Relaxed);
+                                cleanup_win32_tray_icon();
+                                crate::translator::shutdown();
+                                crate::commands::release_appbars(&ah);
+                                set_taskbar_visibility(true, true);
+                                NATIVE_TASKBAR_HIDDEN.store(false, Ordering::Relaxed);
+                                set_native_osd_suppressed(false);
+
+                                ah.exit(0);
+                            }
+                            "restart" => {
+                                diagnostics::record("restart", "source=tray");
+                                SHUTTING_DOWN.store(true, Ordering::Relaxed);
+                                cleanup_win32_tray_icon();
+                                crate::translator::shutdown();
+                                crate::commands::release_appbars(&ah);
+                                if let Some(w) = ah.get_webview_window("settings") {
+                                    let _ = w.destroy();
+                                }
+                                set_taskbar_visibility(true, true);
+                                NATIVE_TASKBAR_HIDDEN.store(false, Ordering::Relaxed);
+                                set_native_osd_suppressed(false);
+                                close_single_instance_handles();
+
+                                ah.restart();
+                            }
+                            "settings" => {
+                                crate::commands::open_settings_window(ah.clone());
+                            }
+                            _ => {}
+                        })
+                        .on_tray_icon_event(|tray, event| {
+                            if let TrayIconEvent::Click {
+                                button: MouseButton::Left,
+                                button_state: MouseButtonState::Up,
+                                ..
+                            } = event
+                            {
+                                crate::commands::open_settings_window(tray.app_handle().clone());
+                            }
+                        })
+                        .build(app);
+
+                    match tray {
+                        Ok(tray_icon) => {
+                            app.manage(tray_icon.clone());
+                            diagnostics::record("tray", "tray icon registered successfully");
+                            let tray_hwnd = tray_icon
+                                .with_inner_tray_icon(|inner| inner.window_handle() as isize)
+                                .unwrap_or(0);
+                            let verify_app = app.handle().clone();
+                            let _keep_tray = tray_icon;
+                            tauri::async_runtime::spawn(async move {
+                                for (attempt, delay_ms) in
+                                    [150u64, 1000, 2500, 5000].into_iter().enumerate()
+                                {
+                                    tokio::time::sleep(std::time::Duration::from_millis(delay_ms))
+                                        .await;
+                                    if SHUTTING_DOWN.load(Ordering::Relaxed) {
+                                        return;
+                                    }
+                                    let (tx, rx) = tokio::sync::oneshot::channel();
+                                    let pixels = icon_pixels.clone();
+                                    let dispatch_res = verify_app.run_on_main_thread(move || {
+                                        let res = ensure_win32_tray_icon_on_main(
+                                            tray_hwnd,
+                                            pixels
+                                                .as_ref()
+                                                .map(|(bytes, w, h)| (bytes.as_slice(), *w, *h)),
+                                        );
+                                        let _ = tx.send(res);
+                                    });
+                                    match (dispatch_res, rx.await) {
+                                        (Ok(()), Ok(Ok(mode))) => {
+                                            diagnostics::record(
+                                                "tray_confirmed",
+                                                &format!("attempt={attempt} {mode}"),
+                                            );
+                                            return;
+                                        }
+                                        (Ok(()), Ok(Err(err))) => {
+                                            diagnostics::record(
+                                                "tray_retry",
+                                                &format!("attempt={attempt} err={err}"),
+                                            );
+                                        }
+                                        (dispatch_err, recv_res) => {
+                                            diagnostics::record(
+                                                "tray_retry",
+                                                &format!(
+                                                    "attempt={attempt} dispatch={:?} recv={:?}",
+                                                    dispatch_err.is_ok(),
+                                                    recv_res.is_ok()
+                                                ),
+                                            );
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                        Err(e) => diagnostics::record(
+                            "tray_error",
+                            &format!("failed to register tray icon: {e}"),
+                        ),
+                    }
+                }
+            }
             // Crash-recovery: if a previous session was force-killed while the native
             // taskbar was hidden, restore it now. Runs before the frontend re-hides it
             // (init_dock fires after a delay), so the flag must be removed first.
@@ -429,10 +564,15 @@ fn main() {
                                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
                             );
                         }
+                        use windows::Win32::Graphics::Gdi::{CreateRectRgn, SetWindowRgn};
+                        use windows::Win32::UI::WindowsAndMessaging::{SetWindowTextW, ShowWindow, SW_SHOWNA};
+                        use windows::core::w;
+                        let _ = SetWindowTextW(hwnd, w!(""));
+                        let rgn = CreateRectRgn(0, 0, 0, 0);
+                        let _ = SetWindowRgn(hwnd, Some(rgn), false);
+                        let _ = ShowWindow(hwnd, SW_SHOWNA);
                     }
                 }
-                let _ = ov_win.show();
-                let _ = ov_win.hide();
                 let overlay_handle = app.handle().clone();
                 ov_win.on_window_event(move |e| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = e {
@@ -493,129 +633,6 @@ fn main() {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                         api.prevent_close();
                         let _ = win_clone.hide();
-                    }
-                });
-            }
-            {
-                use tauri::menu::{Menu, MenuItem};
-                use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-                let quit_item = MenuItem::with_id(app, "quit", "Quit Zenith", true, None::<&str>)?;
-                let restart_item =
-                    MenuItem::with_id(app, "restart", "Restart Zenith", true, None::<&str>)?;
-                let settings_item =
-                    MenuItem::with_id(app, "settings", "Open Settings", true, None::<&str>)?;
-                let menu = Menu::with_items(app, &[&settings_item, &restart_item, &quit_item])?;
-                let default_icon = app.default_window_icon().cloned();
-                let icon_pixels = default_icon
-                    .as_ref()
-                    .map(|img| (img.rgba().to_vec(), img.width(), img.height()));
-                let ah = app.handle().clone();
-                let mut builder = TrayIconBuilder::new()
-                    .tooltip("Zenith")
-                    .menu(&menu);
-                if let Some(icon) = default_icon {
-                    builder = builder.icon(icon);
-                }
-                let tray_icon = builder
-                    .on_menu_event(move |_, event| match event.id().as_ref() {
-                        "quit" => {
-                            diagnostics::record("shutdown", "source=tray");
-                            SHUTTING_DOWN.store(true, Ordering::Relaxed);
-                            cleanup_win32_tray_icon();
-                            crate::translator::shutdown();
-                            crate::commands::release_appbars(&ah);
-                            set_taskbar_visibility(true, true);
-                            NATIVE_TASKBAR_HIDDEN.store(false, Ordering::Relaxed);
-                            set_native_osd_suppressed(false);
-
-                            ah.exit(0);
-                        }
-                        "restart" => {
-                            diagnostics::record("restart", "source=tray");
-                            SHUTTING_DOWN.store(true, Ordering::Relaxed);
-                            cleanup_win32_tray_icon();
-                            crate::translator::shutdown();
-                            crate::commands::release_appbars(&ah);
-                            if let Some(w) = ah.get_webview_window("settings") {
-                                let _ = w.destroy();
-                            }
-                            set_taskbar_visibility(true, true);
-                            NATIVE_TASKBAR_HIDDEN.store(false, Ordering::Relaxed);
-                            set_native_osd_suppressed(false);
-                            close_single_instance_handles();
-
-                            ah.restart();
-                        }
-                        "settings" => {
-                            crate::commands::open_settings_window(ah.clone());
-                        }
-                        _ => {}
-                    })
-                    .on_tray_icon_event(|tray, event| {
-                        if let TrayIconEvent::Click {
-                            button: MouseButton::Left,
-                            button_state: MouseButtonState::Up,
-                            ..
-                        } = event
-                        {
-                            crate::commands::open_settings_window(tray.app_handle().clone());
-                        }
-                    })
-                    .build(app)?;
-                app.manage(tray_icon.clone());
-                diagnostics::record("tray_ready", "tray icon built");
-
-                let tray_hwnd = tray_icon
-                    .with_inner_tray_icon(|inner| inner.window_handle() as isize)
-                    .unwrap_or(0);
-
-                // tray-icon 0.24.1 on Windows constructs NOTIFYICONDATAW with
-                // cbSize = 0 (via ..mem::zeroed()), which causes Shell_NotifyIconW
-                // to fail silently without showing any tray icon. Verify via
-                // Shell_NotifyIconGetRect (which sets cbSize) on the main GUI thread
-                // and repair directly with cbSize populated when missing.
-                let verify_app = app.handle().clone();
-                let _keep_tray = tray_icon;
-                tauri::async_runtime::spawn(async move {
-                    for (attempt, delay_ms) in [150u64, 1000, 2500, 5000].into_iter().enumerate() {
-                        tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
-                        if SHUTTING_DOWN.load(Ordering::Relaxed) {
-                            return;
-                        }
-                        let (tx, rx) = tokio::sync::oneshot::channel();
-                        let pixels = icon_pixels.clone();
-                        let dispatch_res = verify_app.run_on_main_thread(move || {
-                            let res = ensure_win32_tray_icon_on_main(
-                                tray_hwnd,
-                                pixels.as_ref().map(|(bytes, w, h)| (bytes.as_slice(), *w, *h)),
-                            );
-                            let _ = tx.send(res);
-                        });
-                        match (dispatch_res, rx.await) {
-                            (Ok(()), Ok(Ok(mode))) => {
-                                diagnostics::record(
-                                    "tray_confirmed",
-                                    &format!("attempt={attempt} {mode}"),
-                                );
-                                return;
-                            }
-                            (Ok(()), Ok(Err(err))) => {
-                                diagnostics::record(
-                                    "tray_retry",
-                                    &format!("attempt={attempt} err={err}"),
-                                );
-                            }
-                            (dispatch_err, recv_res) => {
-                                diagnostics::record(
-                                    "tray_retry",
-                                    &format!(
-                                        "attempt={attempt} dispatch={:?} recv={:?}",
-                                        dispatch_err.is_ok(),
-                                        recv_res.is_ok()
-                                    ),
-                                );
-                            }
-                        }
                     }
                 });
             }

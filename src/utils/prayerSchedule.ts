@@ -205,15 +205,28 @@ export interface CacheKeyParts {
 	locationMode: "auto" | "manual";
 	city: string;
 	country: string;
+	latitude?: number | null;
+	longitude?: number | null;
 	method: string;
 }
 
 /** Cached timings are only valid for the same day, place and calculation method. */
 export function cacheKeyFor(parts: CacheKeyParts): string {
-	const place =
-		parts.locationMode === "manual"
-			? `${parts.city.trim().toLowerCase()},${parts.country.trim().toLowerCase()}`
-			: "auto";
+	let place: string;
+	if (parts.locationMode === "manual") {
+		place = `${parts.city.trim().toLowerCase()},${parts.country.trim().toLowerCase()}`;
+	} else if (
+		typeof parts.latitude === "number" &&
+		typeof parts.longitude === "number" &&
+		!isNaN(parts.latitude) &&
+		!isNaN(parts.longitude)
+	) {
+		place = `coords:${parts.latitude.toFixed(3)},${parts.longitude.toFixed(3)}`;
+	} else if (parts.city.trim()) {
+		place = `city:${parts.city.trim().toLowerCase()},${parts.country.trim().toLowerCase()}`;
+	} else {
+		place = "auto";
+	}
 	return [dayStamp(parts.date), parts.locationMode, place, parts.method].join("|");
 }
 
@@ -251,8 +264,11 @@ export interface HijriDateInfo {
 }
 
 export interface Place {
-	city: string;
-	country: string;
+	city?: string;
+	country?: string;
+	latitude?: number;
+	longitude?: number;
+	label?: string;
 }
 
 const API_BASE = "https://api.aladhan.com/v1";
@@ -262,9 +278,17 @@ const API_BASE = "https://api.aladhan.com/v1";
  * address rather than guessing a country.
  */
 export function buildTimingsUrl(place: Place, method: string): string {
-	const city = encodeURIComponent(place.city.trim());
-	const country = place.country.trim();
 	const calc = encodeURIComponent(method || "5");
+	if (
+		typeof place.latitude === "number" &&
+		typeof place.longitude === "number" &&
+		!isNaN(place.latitude) &&
+		!isNaN(place.longitude)
+	) {
+		return `${API_BASE}/timings?latitude=${place.latitude}&longitude=${place.longitude}&method=${calc}`;
+	}
+	const city = encodeURIComponent((place.city || "").trim());
+	const country = (place.country || "").trim();
 	if (country) {
 		return `${API_BASE}/timingsByCity?city=${city}&country=${encodeURIComponent(country)}&method=${calc}`;
 	}

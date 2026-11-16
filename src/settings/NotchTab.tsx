@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useState, useRef } from "react";
 import { triggerTestAthan, triggerTestNotification } from "../hooks/usePrayerTimes";
+import { detectLocation } from "../utils/locationService";
 import { SettingRow } from "./SettingRow";
 import { StatusWidgetConfig } from "../components/StatusWidgetConfig";
 import type { WidgetConfig } from "./types";
@@ -64,6 +65,7 @@ interface NotchTabProps {
 	setPrayerAlertTypeValue: (val: string) => void;
 	prayerPreAlert: boolean;
 	togglePrayerPreAlert: () => void;
+	setPrayerCoordsValue: (lat: string, lon: string, city?: string, country?: string) => void;
 	timerSoundEnabled: boolean;
 	toggleTimerSound: () => void;
 	musicModeEnabled: boolean;
@@ -134,6 +136,7 @@ export function NotchTab({
 	setPrayerAlertTypeValue,
 	prayerPreAlert,
 	togglePrayerPreAlert,
+	setPrayerCoordsValue,
 	timerSoundEnabled,
 	toggleTimerSound,
 	musicModeEnabled,
@@ -218,48 +221,25 @@ export function NotchTab({
 		setPrayerCityValue(cityName);
 	};
 
-	const handleDetectDeviceLocation = () => {
-		if (!navigator.geolocation) {
-			setGpsStatusMsg("Geolocation is not supported by your browser or system.");
-			return;
-		}
+	const handleDetectDeviceLocation = async () => {
 		setDetectingGps(true);
 		setGpsStatusMsg(null);
 
-		navigator.geolocation.getCurrentPosition(
-			async (pos) => {
-				const { latitude, longitude } = pos.coords;
-				try {
-					const res = await fetch(
-						`https://geocoding-api.open-meteo.com/v1/search?name=&latitude=${latitude}&longitude=${longitude}&count=1&format=json`
-					);
-					let label = `${latitude.toFixed(2)}°, ${longitude.toFixed(2)}°`;
-					if (res.ok) {
-						const data = await res.json();
-						if (data?.results?.[0]?.name) {
-							label = `${data.results[0].name}${data.results[0].country ? `, ${data.results[0].country}` : ""}`;
-						}
-					}
-					localStorage.setItem("zenith-prayer-lat", String(latitude));
-					localStorage.setItem("zenith-prayer-lon", String(longitude));
-					window.dispatchEvent(new Event("storage"));
-					setGpsStatusMsg(`Location acquired: ${label}`);
-				} catch {
-					setGpsStatusMsg(`Coordinates acquired: ${latitude.toFixed(2)}°, ${longitude.toFixed(2)}°`);
-				} finally {
-					setDetectingGps(false);
-				}
-			},
-			(err) => {
-				setDetectingGps(false);
-				if (err.code === 1) {
-					setGpsStatusMsg("Windows location permission is disabled. Falling back to IP-based detection.");
-				} else {
-					setGpsStatusMsg("Could not retrieve GPS location. Falling back to IP-based detection.");
-				}
-			},
-			{ enableHighAccuracy: true, timeout: 8000 }
-		);
+		try {
+			const detected = await detectLocation({ allowGps: true });
+			if (detected) {
+				const city = detected.city || "";
+				const country = detected.country || "";
+				setPrayerCoordsValue(String(detected.latitude), String(detected.longitude), city, country);
+				setGpsStatusMsg(`Location acquired: ${detected.label}`);
+			} else {
+				setGpsStatusMsg("Could not resolve location automatically.");
+			}
+		} catch {
+			setGpsStatusMsg("Error detecting location.");
+		} finally {
+			setDetectingGps(false);
+		}
 	};
 
 	const handleToggleTestAthan = () => {
@@ -627,7 +607,7 @@ export function NotchTab({
 								desc={
 									gpsStatusMsg
 										? gpsStatusMsg
-										: "Detects device GPS location (or falls back to IP network)"
+										: "Detects your location automatically and securely"
 								}
 							>
 								<button
@@ -635,10 +615,10 @@ export function NotchTab({
 									className="settings-btn-detect"
 									onClick={handleDetectDeviceLocation}
 									disabled={detectingGps}
-									title="Request device location"
+									title="Detect current location"
 								>
 									<RotateCcw size={11} className={detectingGps ? "animate-spin" : ""} />
-									<span>{detectingGps ? "Detecting..." : "Detect Device GPS"}</span>
+									<span>{detectingGps ? "Detecting..." : "Auto-Detect Location"}</span>
 								</button>
 							</SettingRow>
 						)}

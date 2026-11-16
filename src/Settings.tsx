@@ -279,6 +279,7 @@ function SettingsApp() {
 							setPrayerAlertTypeValue={settings.setPrayerAlertTypeValue}
 							prayerPreAlert={settings.prayerPreAlert}
 							togglePrayerPreAlert={settings.togglePrayerPreAlert}
+							setPrayerCoordsValue={settings.setPrayerCoordsValue}
 							notchRememberPanel={settings.notchRememberPanel}
 							toggleNotchRememberPanel={settings.toggleNotchRememberPanel}
 							notchDefaultPanel={settings.notchDefaultPanel}

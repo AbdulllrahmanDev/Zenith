@@ -57,6 +57,12 @@ export function useSettings() {
 	const [prayerNotchPopup, setPrayerNotchPopup] = useState(
 		() => localStorage.getItem("zenith-prayer-notch-popup") !== "false"
 	);
+	const [prayerLat, setPrayerLat] = useState<string>(
+		() => localStorage.getItem("zenith-prayer-lat") || localStorage.getItem("bloom-prayer-lat") || ""
+	);
+	const [prayerLon, setPrayerLon] = useState<string>(
+		() => localStorage.getItem("zenith-prayer-lon") || localStorage.getItem("bloom-prayer-lon") || ""
+	);
 	const [notificationsEnabled, setNotificationsEnabled] = useState(
 		() => localStorage.getItem("zenith-notifications-enabled") !== "false"
 	);
@@ -500,6 +506,8 @@ export function useSettings() {
 			apply(getVal("zenith-prayer-alert-type"), setPrayerAlertType, (v) => v);
 			apply(getVal("zenith-prayer-pre-alert"), setPrayerPreAlert, readBool);
 			apply(getVal("zenith-prayer-notch-popup"), setPrayerNotchPopup, readBool);
+			apply(getVal("zenith-prayer-lat"), setPrayerLat, (v) => v);
+			apply(getVal("zenith-prayer-lon"), setPrayerLon, (v) => v);
 			apply(getVal("zenith-notifications-enabled"), setNotificationsEnabled, readBool);
 			apply(getVal("zenith-notifications-silent"), setNotificationsSilent, readBool);
 			apply(getVal("zenith-notifications-notch-enabled"), setNotificationsNotchEnabled, readBool);
@@ -643,6 +651,8 @@ export function useSettings() {
 
 	// ── Sync settings from other windows ──
 	useSettingsSync({
+		"zenith-dock-display": setDockDisplay,
+		"zenith-notch-display": setNotchDisplay,
 		"zenith-dock-mode": setDockMode,
 		"zenith-dock-edge-delay": setDockEdgeDelay,
 		"zenith-notch-mode": setNotchMode,
@@ -672,6 +682,8 @@ export function useSettings() {
 		"zenith-prayer-alert-type": setPrayerAlertType,
 		"zenith-prayer-pre-alert": setPrayerPreAlert,
 		"zenith-prayer-notch-popup": setPrayerNotchPopup,
+		"zenith-prayer-lat": setPrayerLat,
+		"zenith-prayer-lon": setPrayerLon,
 		"zenith-notifications-enabled": setNotificationsEnabled,
 		"zenith-notifications-silent": setNotificationsSilent,
 		"zenith-notifications-notch-enabled": setNotificationsNotchEnabled,
@@ -942,6 +954,21 @@ export function useSettings() {
 		const next = !prayerNotchPopup;
 		setPrayerNotchPopup(next);
 		saveSetting("zenith-prayer-notch-popup", String(next));
+	};
+
+	const setPrayerCoordsValue = (lat: string, lon: string, city?: string, country?: string) => {
+		setPrayerLat(lat);
+		setPrayerLon(lon);
+		saveSetting("zenith-prayer-lat", lat);
+		saveSetting("zenith-prayer-lon", lon);
+		if (city !== undefined && city.trim()) {
+			setPrayerCity(city);
+			saveSetting("zenith-prayer-city", city);
+		}
+		if (country !== undefined && country.trim()) {
+			setPrayerCountry(country);
+			saveSetting("zenith-prayer-country", country);
+		}
 	};
 
 	const toggleNotifications = () => {
@@ -1674,6 +1701,9 @@ export function useSettings() {
 		togglePrayerPreAlert,
 		prayerNotchPopup,
 		togglePrayerNotchPopup,
+		prayerLat,
+		prayerLon,
+		setPrayerCoordsValue,
 		timerSoundEnabled,
 		toggleTimerSound,
 		musicModeEnabled,

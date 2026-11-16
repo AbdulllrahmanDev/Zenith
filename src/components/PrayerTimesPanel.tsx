@@ -29,7 +29,12 @@ function statusLine(data: PrayerTimesState): { text: string; tone: "error" | "st
 	if (data.error === "network") return { text: PRAYER_STATUS_AR.errorNetwork, tone: "error" };
 	if (data.error === "invalid") return { text: PRAYER_STATUS_AR.errorInvalid, tone: "error" };
 	if (data.stale) return { text: PRAYER_STATUS_AR.stale, tone: "stale" };
-	const place = data.city || data.country ? [data.city, data.country].filter(Boolean).join(" · ") : "";
+	const place =
+		data.resolvedPlace?.label ||
+		(data.resolvedPlace?.city && data.resolvedPlace?.country
+			? `${data.resolvedPlace.city} · ${data.resolvedPlace.country}`
+			: data.resolvedPlace?.city) ||
+		(data.city || data.country ? [data.city, data.country].filter(Boolean).join(" · ") : "");
 	return { text: place || PRAYER_STATUS_AR.autoLocation, tone: "place" };
 }
 
@@ -104,7 +109,7 @@ export const PrayerTimesPanel: React.FC<PrayerTimesPanelProps> = ({
 						</span>
 						<button
 							className="prayer-refresh-btn"
-							onClick={() => fetchTimings()}
+							onClick={() => fetchTimings({ force: true, reDetect: true })}
 							title={PRAYER_STATUS_AR.refresh}
 							aria-label={PRAYER_STATUS_AR.refresh}
 							disabled={loading}

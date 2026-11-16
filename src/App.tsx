@@ -776,7 +776,7 @@ function App() {
 	}, [isAnyInteraction]);
 
 	useEffect(() => {
-		if (windowLabel === "main") {
+		if (windowLabel) {
 			invoke("set_notch_hovered", { hovered: isNotchHovered }).catch(() => {});
 		}
 	}, [isNotchHovered, windowLabel]);
@@ -785,7 +785,7 @@ function App() {
 	// notch (smart/peek mode) stays click-through instead of swallowing clicks
 	// in its footprint.
 	useEffect(() => {
-		if (windowLabel === "main") {
+		if (windowLabel) {
 			invoke("set_notch_visible", { visible: isVisible && !isHidden }).catch(() => {});
 		}
 	}, [isVisible, isHidden, windowLabel]);
@@ -834,6 +834,7 @@ function App() {
 			setIsReady(true);
 			setIsImpacted(true);
 			setIsExpanded(true);
+			invoke("setup_shelf_drop").catch(() => {});
 			return;
 		}
 
@@ -1029,9 +1030,14 @@ function App() {
 				if (await reloadIfMirrorWasStale(settings)) return;
 				if (cancelled) return;
 				const getVal = (key: string, fallback: string | null = null) => {
-					const val = settings[key];
+					const altKey = key.startsWith("bloom-")
+						? "zenith-" + key.slice("bloom-".length)
+						: key.startsWith("zenith-")
+						? "bloom-" + key.slice("zenith-".length)
+						: key;
+					const val = settings[key] ?? settings[altKey];
 					if (val !== undefined && val !== null) return String(val);
-					const local = localStorage.getItem(key);
+					const local = localStorage.getItem(key) ?? localStorage.getItem(altKey);
 					if (local !== null) return local;
 					return fallback;
 				};
@@ -1129,8 +1135,14 @@ function App() {
 			setIsVisible(event.payload);
 		});
 
-		const unlistenNotchOverlap = listen<boolean>("notch-overlap", (event) => {
-			setIsOverlapped(event.payload);
+		const unlistenNotchOverlap = listen<any>("notch-overlap", (event) => {
+			const payload = event.payload;
+			if (typeof payload === "object" && payload !== null) {
+				if (payload.target && payload.target !== windowLabel) return;
+				setIsOverlapped(Boolean(payload.overlapped));
+			} else {
+				setIsOverlapped(Boolean(payload));
+			}
 		});
 
 		const unlistenNotchEdgeHover = listen<boolean | { target?: string; hovered: boolean; in_top_span?: boolean }>("notch-edge-hover", (event) => {
@@ -2926,7 +2938,7 @@ function App() {
 	// these rectangles the window takes no clicks, whatever its click-through
 	// state. Sent after every render, but only when the region changes.
 	useEffect(() => {
-		if (windowLabel === "main") updateNotchRegion();
+		if (windowLabel) updateNotchRegion();
 	});
 
 	return (

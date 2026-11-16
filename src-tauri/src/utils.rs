@@ -807,8 +807,14 @@ pub fn get_target_monitor(app: &tauri::AppHandle, key: &str) -> Option<tauri::Mo
     if let Ok(monitors) = app.available_monitors() {
         if let Some(target_id) = chosen_display {
             if target_id != "all" && target_id != "primary" && !target_id.is_empty() {
-                if let Some(m) = monitors.into_iter().find(|m| m.name() == Some(&target_id)) {
-                    return Some(m);
+                for (idx, m) in monitors.iter().enumerate() {
+                    let fallback_id = format!("display-{}", idx + 1);
+                    if m.name() == Some(&target_id)
+                        || fallback_id == target_id
+                        || m.name().map(|n| n.eq_ignore_ascii_case(&target_id)).unwrap_or(false)
+                    {
+                        return Some(m.clone());
+                    }
                 }
             }
         }

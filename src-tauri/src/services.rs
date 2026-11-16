@@ -880,13 +880,12 @@ pub fn setup_audio_visualization(app_handle: AppHandle) {
                                         {
                                             let mut total_mag = 0.0f32;
                                             let mut count = 0u32;
-                                            for bin in bin_start..bin_end {
-                                                if bin >= FFT_SIZE / 2 {
-                                                    break;
+                                            let end = bin_end.min(FFT_SIZE / 2);
+                                            if bin_start < end {
+                                                for val in &fft_input[bin_start..end] {
+                                                    total_mag += val.norm();
+                                                    count += 1;
                                                 }
-                                                let mag = fft_input[bin].norm();
-                                                total_mag += mag;
-                                                count += 1;
                                             }
                                             let avg_mag = total_mag / count.max(1) as f32;
                                             let mut scaled_mag = avg_mag;
@@ -1377,6 +1376,7 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
         let mut last_visible = true;
         let mut last_dock_overlap: Option<bool> = None;
         let mut last_notch_overlap: Option<bool> = None;
+        let mut notch_overlap_per_window: std::collections::HashMap<String, bool> = std::collections::HashMap::new();
         let mut last_dock_maximized: Option<bool> = None;
         let mut last_fg_maximized = false;
         let mut last_hwnd = HWND(std::ptr::null_mut());
@@ -1549,6 +1549,27 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                     if is_known_shell {
                         should_overlap = false;
                         current_is_fs = false;
+                        let shell_hmon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+                        if let Ok(notch_hwnds) = crate::state::NOTCH_HWNDS.lock() {
+                            for (label, hwnd_val) in notch_hwnds.iter() {
+                                let notch_hwnd = HWND(*hwnd_val as *mut _);
+                                let notch_hmon = MonitorFromWindow(notch_hwnd, MONITOR_DEFAULTTONEAREST);
+                                if shell_hmon == notch_hmon {
+                                    let prev = notch_overlap_per_window.get(label).copied();
+                                    if prev != Some(false) || last_emit.elapsed() >= Duration::from_secs(3) {
+                                        notch_overlap_per_window.insert(label.clone(), false);
+                                        let _ = handle_visibility.emit("notch-overlap", serde_json::json!({
+                                            "target": label,
+                                            "overlapped": false
+                                        }));
+                                        let _ = handle_visibility.emit_to(label, "notch-overlap", serde_json::json!({
+                                            "target": label,
+                                            "overlapped": false
+                                        }));
+                                    }
+                                }
+                            }
+                        }
                     } else {
                         // Current hwnd is now guaranteed to be visible, non-iconic and non-cloaked
                         use windows::Win32::UI::WindowsAndMessaging::{
@@ -1657,6 +1678,60 @@ pub fn setup_system_worker(app_handle: AppHandle) -> Sender<SystemCommand> {
                                                     && rect.top < trigger_y - 4
                                                 {
                                                     should_notch_overlap = true;
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Multi-monitor notch overlap: evaluate overlap per monitor
+                                    if let Ok(notch_hwnds) = crate::state::NOTCH_HWNDS.lock() {
+                                        for (label, hwnd_val) in notch_hwnds.iter() {
+                                            let notch_hwnd = HWND(*hwnd_val as *mut _);
+                                            let notch_hmon = MonitorFromWindow(notch_hwnd, MONITOR_DEFAULTTONEAREST);
+
+                                            if h_monitor == notch_hmon {
+                                                let mut this_notch_overlap = false;
+                                                if is_maximized || is_matches_screen || is_client_fullscreen {
+                                                    this_notch_overlap = true;
+                                                } else {
+                                                    let mut notch_win_rect = RECT::default();
+                                                    let _ = GetWindowRect(notch_hwnd, &mut notch_win_rect);
+                                                    let notch_scale = windows::Win32::UI::HiDpi::GetDpiForWindow(notch_hwnd) as f64 / 96.0;
+                                                    let nr_opt = crate::state::NOTCH_RECTS
+                                                        .lock()
+                                                        .ok()
+                                                        .and_then(|m| m.get(label).copied())
+                                                        .or_else(|| NOTCH_RECT.lock().ok().and_then(|g| *g));
+
+                                                    if let Some(nr) = nr_opt {
+                                                        let n_left = notch_win_rect.left + (nr.x as f64 * notch_scale) as i32;
+                                                        let n_right = n_left + (nr.width as f64 * notch_scale) as i32;
+                                                        let res_h = (36.0 * notch_scale) as i32;
+                                                        let trigger_y = screen_rect.top + res_h;
+
+                                                        if rect.left < n_right - 4
+                                                            && rect.right > n_left + 4
+                                                            && rect.top < trigger_y - 4
+                                                        {
+                                                            this_notch_overlap = true;
+                                                        }
+                                                    }
+                                                }
+
+                                                let prev = notch_overlap_per_window.get(label).copied();
+                                                if prev != Some(this_notch_overlap) || last_emit.elapsed() >= Duration::from_secs(3) {
+                                                    notch_overlap_per_window.insert(label.clone(), this_notch_overlap);
+                                                    let _ = handle_visibility.emit("notch-overlap", serde_json::json!({
+                                                        "target": label,
+                                                        "overlapped": this_notch_overlap
+                                                    }));
+                                                    let _ = handle_visibility.emit_to(label, "notch-overlap", serde_json::json!({
+                                                        "target": label,
+                                                        "overlapped": this_notch_overlap
+                                                    }));
+                                                    if label == "main" {
+                                                        should_notch_overlap = this_notch_overlap;
+                                                    }
                                                 }
                                             }
                                         }
@@ -1943,7 +2018,7 @@ pub fn setup_brightness_worker() {
         let locator: IWbemLocator = match CoCreateInstance(&WbemLocator, None, CLSCTX_ALL) {
             Ok(l) => l,
             Err(_) => {
-                let _ = CoUninitialize();
+                CoUninitialize();
                 return;
             }
         };
@@ -1960,7 +2035,7 @@ pub fn setup_brightness_worker() {
         ) {
             Ok(s) => s,
             Err(_) => {
-                let _ = CoUninitialize();
+                CoUninitialize();
                 return;
             }
         };
@@ -2077,7 +2152,7 @@ pub fn setup_brightness_worker() {
             // 2. Desktop external monitor via Physical Monitor API (DXVA2 DDC/CI)
             set_physical_monitors_brightness(brightness);
         }
-        let _ = CoUninitialize();
+        CoUninitialize();
     });
 }
 
@@ -2183,8 +2258,10 @@ fn volume_mixer_physical_rect_for(_app: &AppHandle) -> Option<(i32, i32, i32, i3
     }
     let hwnd = HWND(overlay_hwnd as *mut _);
     let hmon = unsafe { windows::Win32::Graphics::Gdi::MonitorFromWindow(hwnd, windows::Win32::Graphics::Gdi::MONITOR_DEFAULTTONEAREST) };
-    let mut mon_info = windows::Win32::Graphics::Gdi::MONITORINFO::default();
-    mon_info.cbSize = std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32;
+    let mut mon_info = windows::Win32::Graphics::Gdi::MONITORINFO {
+        cbSize: std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32,
+        ..Default::default()
+    };
     let mon_ok = unsafe { windows::Win32::Graphics::Gdi::GetMonitorInfoW(hmon, &mut mon_info) }.as_bool();
     let (pos_x, pos_y) = if mon_ok {
         (mon_info.rcMonitor.left, mon_info.rcMonitor.top)
@@ -2222,8 +2299,10 @@ fn setup_volume_mixer_watchdog(app_handle: AppHandle) {
         }
         let at_left_edge = {
             let hmon = unsafe { windows::Win32::Graphics::Gdi::MonitorFromPoint(pt, windows::Win32::Graphics::Gdi::MONITOR_DEFAULTTOPRIMARY) };
-            let mut mon_info = windows::Win32::Graphics::Gdi::MONITORINFO::default();
-            mon_info.cbSize = std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32;
+            let mut mon_info = windows::Win32::Graphics::Gdi::MONITORINFO {
+                cbSize: std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32,
+                ..Default::default()
+            };
             if unsafe { windows::Win32::Graphics::Gdi::GetMonitorInfoW(hmon, &mut mon_info) }.as_bool() {
                 let rc = mon_info.rcMonitor;
                 pt.x <= rc.left + 8 && pt.y >= rc.top && pt.y <= rc.bottom
@@ -2829,8 +2908,10 @@ fn update_main_interaction(
         let _ = unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowRect(hwnd, &mut win_rect) };
 
         let hmon = unsafe { windows::Win32::Graphics::Gdi::MonitorFromWindow(hwnd, windows::Win32::Graphics::Gdi::MONITOR_DEFAULTTONEAREST) };
-        let mut mon_info = windows::Win32::Graphics::Gdi::MONITORINFO::default();
-        mon_info.cbSize = std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32;
+        let mut mon_info = windows::Win32::Graphics::Gdi::MONITORINFO {
+            cbSize: std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32,
+            ..Default::default()
+        };
         let mon_ok = unsafe { windows::Win32::Graphics::Gdi::GetMonitorInfoW(hmon, &mut mon_info) }.as_bool();
         let mon_rc = if mon_ok { mon_info.rcMonitor } else { win_rect };
 
@@ -2842,6 +2923,18 @@ fn update_main_interaction(
         } else {
             at_top_edge && top_edge_armed_for(app_handle, cursor, now, scale)
         };
+
+        let notch_rect = crate::state::NOTCH_RECTS
+            .lock()
+            .ok()
+            .and_then(|m| m.get(&label).copied())
+            .or(notch_rect);
+
+        let notch_visible = crate::state::NOTCH_VISIBLE_MAP
+            .lock()
+            .ok()
+            .and_then(|m| m.get(&label).copied())
+            .unwrap_or(notch_visible);
 
         let mut is_click_interactive = false;
         let mut in_notch_rect = false;
@@ -3020,8 +3113,10 @@ fn update_dock_interaction(
         let _ = unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowRect(hwnd, &mut win_rect) };
 
         let hmon = unsafe { windows::Win32::Graphics::Gdi::MonitorFromWindow(hwnd, windows::Win32::Graphics::Gdi::MONITOR_DEFAULTTONEAREST) };
-        let mut mon_info = windows::Win32::Graphics::Gdi::MONITORINFO::default();
-        mon_info.cbSize = std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32;
+        let mut mon_info = windows::Win32::Graphics::Gdi::MONITORINFO {
+            cbSize: std::mem::size_of::<windows::Win32::Graphics::Gdi::MONITORINFO>() as u32,
+            ..Default::default()
+        };
         let mon_ok = unsafe { windows::Win32::Graphics::Gdi::GetMonitorInfoW(hmon, &mut mon_info) }.as_bool();
         let mon_rc = if mon_ok { mon_info.rcMonitor } else { win_rect };
 
@@ -3446,15 +3541,16 @@ unsafe extern "system" fn mouse_hook_proc(
                             }
                         }
                     }
-                } else if MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed) {
-                    if btn == MouseBtn::Right && is_down {
-                        // Right-click cancels and closes
-                        let app_clone = app.clone();
-                        std::thread::spawn(move || {
-                            let _ = app_clone.emit("radial-cancel", ());
-                        });
-                        return windows::Win32::Foundation::LRESULT(1);
-                    }
+                } else if MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed)
+                    && btn == MouseBtn::Right
+                    && is_down
+                {
+                    // Right-click cancels and closes
+                    let app_clone = app.clone();
+                    std::thread::spawn(move || {
+                        let _ = app_clone.emit("radial-cancel", ());
+                    });
+                    return windows::Win32::Foundation::LRESULT(1);
                 }
             }
         }
@@ -4077,20 +4173,41 @@ pub fn sync_overlays(app: &AppHandle) {
     // Full-screen overlay — notches render at left/right edges via CSS
     // The window covers the entire primary monitor so it never needs repositioning
     if let Some(ov_win) = app.get_webview_window("overlay") {
-        if let Ok(Some(monitor)) = ov_win.primary_monitor() {
+        if let Some(monitor) = crate::utils::get_target_monitor(app, "zenith-notch-display") {
             let size = monitor.size();
             let pos = monitor.position();
             let _ = ov_win.set_position(tauri::PhysicalPosition::new(pos.x, pos.y));
             let _ = ov_win.set_size(tauri::PhysicalSize::new(size.width, size.height));
+            if let Ok(hwnd) = ov_win.hwnd() {
+                unsafe {
+                    use windows::Win32::UI::WindowsAndMessaging::{
+                        SetWindowPos, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOZORDER,
+                    };
+                    let _ = SetWindowPos(
+                        hwnd,
+                        None,
+                        pos.x,
+                        pos.y,
+                        size.width as i32,
+                        size.height as i32,
+                        SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                    );
+                }
+            }
         }
         if let Ok(hwnd) = ov_win.hwnd() {
+            unsafe {
+                use windows::Win32::UI::WindowsAndMessaging::SetWindowTextW;
+                use windows::core::w;
+                let _ = SetWindowTextW(hwnd, w!(""));
+            }
             re_assert_topmost(hwnd);
         }
     }
 }
 
 pub fn register_appbar(window: tauri::WebviewWindow) {
-    if let Ok(Some(monitor)) = window.app_handle().primary_monitor() {
+    if let Some(monitor) = crate::utils::get_target_monitor(window.app_handle(), "zenith-notch-display") {
         let m_size = monitor.size();
         let m_pos = monitor.position();
         let hwnd = window.hwnd().unwrap();
@@ -4105,7 +4222,7 @@ pub fn register_appbar(window: tauri::WebviewWindow) {
                 SHAppBarMessage, ABE_TOP, ABM_NEW, ABM_QUERYPOS, ABM_REMOVE, ABM_SETPOS, APPBARDATA,
             };
             use windows::Win32::UI::WindowsAndMessaging::{
-                GetWindowLongPtrW, GetWindowRect, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE,
+                GetWindowLongPtrW, GetWindowRect, RegisterWindowMessageW, SetWindowLongPtrW, SetWindowPos, GWL_EXSTYLE,
                 SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOZORDER, WS_EX_NOACTIVATE as WS_EX_NA,
                 WS_EX_TOOLWINDOW,
             };
@@ -4115,10 +4232,11 @@ pub fn register_appbar(window: tauri::WebviewWindow) {
             ex_style |= (WS_EX_TOOLWINDOW.0 | WS_EX_NA.0) as usize;
             let _ = SetWindowLongPtrW(hwnd, GWL_EXSTYLE, ex_style as isize);
 
+            let callback_message = RegisterWindowMessageW(windows::core::w!("ZenithNotchAppBar"));
             let mut abd = APPBARDATA {
                 cbSize: std::mem::size_of::<APPBARDATA>() as u32,
                 hWnd: hwnd,
-                uCallbackMessage: 0x8041, // WM_APP + 0x41, reserved for the notch AppBar
+                uCallbackMessage: if callback_message != 0 { callback_message } else { 0x8041 },
                 ..Default::default()
             };
 
@@ -4193,7 +4311,7 @@ pub fn register_appbar(window: tauri::WebviewWindow) {
         tauri::async_runtime::spawn(async move {
             for _ in 0..10 {
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                if let Ok(Some(_monitor)) = w.app_handle().primary_monitor() {
+                if crate::utils::get_target_monitor(w.app_handle(), "zenith-notch-display").is_some() {
                     // Reconcile rather than register directly: the notch mode
                     // may have changed while waiting for the monitor.
                     reconcile_main_appbar(w.app_handle());
@@ -4541,18 +4659,13 @@ pub unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> B
                 return true.into();
             }
 
-            // Filter out system containers and background stuff
-            if title == "Program Manager"
-                || title == "Zenith"
-                || title == "Zenith Dock"
-                || title == "Zenith"
-                || title == "Zenith Dock"
-            {
-                return true.into();
-            }
-
             let mut process_id = 0u32;
             GetWindowThreadProcessId(hwnd, Some(&mut process_id));
+
+            // Filter out our own windows and system containers
+            if process_id == std::process::id() || title == "Program Manager" {
+                return true.into();
+            }
 
             if let Ok(process_handle) =
                 OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process_id)
@@ -4676,7 +4789,7 @@ pub unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> B
                     let is_browser_pwa = is_browser_host
                         && window_aumid
                             .as_deref()
-                            .map_or(false, crate::commands::is_browser_pwa_aumid);
+                            .is_some_and(crate::commands::is_browser_pwa_aumid);
 
                     let final_name = if ((is_browser_host
                         && (is_browser_pwa || window_aumid.is_none()))
@@ -5224,6 +5337,63 @@ mod tests {
         assert!(!notch_mode_reserves_work_area(Some("auto-hide")));
         // Unset defaults to fixed, matching SETTINGS.md
         assert!(notch_mode_reserves_work_area(None));
+    }
+
+    #[test]
+    #[ignore = "Interactive Win32 experiment testing live shell AppBar registration"]
+    fn test_appbar_experiment() {
+        use windows::Win32::UI::WindowsAndMessaging::*;
+        use windows::Win32::UI::Shell::*;
+        use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+        use windows::Win32::Foundation::{HWND, WPARAM, LPARAM, LRESULT};
+        use windows::core::w;
+
+        unsafe extern "system" fn test_wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+            DefWindowProcA(hwnd, msg, wparam, lparam)
+        }
+
+        unsafe {
+            let h_inst = GetModuleHandleW(None).unwrap_or_default().into();
+            let class_name = windows::core::PCSTR(c"ZenithTestAppBarClass".as_ptr() as *const u8);
+            let wnd_class = WNDCLASSEXA {
+                cbSize: std::mem::size_of::<WNDCLASSEXA>() as u32,
+                lpfnWndProc: Some(test_wndproc),
+                hInstance: h_inst,
+                lpszClassName: class_name,
+                ..Default::default()
+            };
+            let _ = RegisterClassExA(&wnd_class);
+
+            let hwnd = CreateWindowExA(
+                WINDOW_EX_STYLE(WS_EX_TOOLWINDOW.0 | WS_EX_NOACTIVATE.0),
+                class_name,
+                windows::core::PCSTR::null(),
+                WS_POPUP,
+                0, 0, 1920, 420,
+                None, None, Some(h_inst), None,
+            ).unwrap();
+
+            let _ = ShowWindow(hwnd, SW_SHOW);
+
+            let tray_hwnd = FindWindowA(windows::core::PCSTR(c"Shell_TrayWnd".as_ptr() as *const u8), windows::core::PCSTR::null()).unwrap_or_default();
+            eprintln!("TRAY HWND: {:?}", tray_hwnd);
+
+            let msg = RegisterWindowMessageW(w!("ZenithNotchAppBar"));
+            let mut abd = APPBARDATA {
+                cbSize: std::mem::size_of::<APPBARDATA>() as u32,
+                hWnd: hwnd,
+                uCallbackMessage: msg,
+                ..Default::default()
+            };
+
+            let res = SHAppBarMessage(ABM_NEW, &mut abd);
+            let err = windows::Win32::Foundation::GetLastError();
+            eprintln!("TEST RESULT: res={res}, msg={msg}, err={err:?}");
+            if res != 0 {
+                let _ = SHAppBarMessage(ABM_REMOVE, &mut abd);
+            }
+            let _ = DestroyWindow(hwnd);
+        }
     }
 
     #[test]

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { emit, listen } from "@tauri-apps/api/event";
 import { useSettingsSync } from "./useSettingsSync";
 import { PRAYER_NAMES_AR } from "../utils/prayerContent";
+import { detectLocation, geocodeCity } from "../utils/locationService";
 import {
 	PRE_ALERT_MINUTES,
 	buildTimingsUrl,
@@ -85,25 +86,71 @@ async function fetchJson(url: string): Promise<unknown> {
 	}
 }
 
-/** Manual place when set, otherwise the IP location, otherwise the last one that worked. */
+/** Manual place when set, otherwise detected location, otherwise the last one that worked. */
 async function resolvePlace(
 	mode: "auto" | "manual",
 	city: string,
-	country: string
+	country: string,
+	options?: { forceGps?: boolean; savedLat?: number | null; savedLon?: number | null }
 ): Promise<Place | null> {
 	if (mode === "manual" && city.trim()) {
-		return { city: city.trim(), country: country.trim() };
-	}
-	try {
-		const ip = (await fetchJson("https://ipapi.co/json/")) as { city?: string; country_name?: string };
-		if (ip.city) {
-			const place = { city: ip.city, country: ip.country_name || "" };
+		// If manual city is specified, try geocoding it to obtain exact coordinates
+		const geocoded = await geocodeCity(city.trim());
+		if (geocoded) {
+			const finalCountry = country.trim() || geocoded.country || "";
+			const label = [city.trim(), finalCountry].filter(Boolean).join(" · ");
+			const place: Place = {
+				city: city.trim(),
+				country: finalCountry,
+				latitude: geocoded.latitude,
+				longitude: geocoded.longitude,
+				label
+			};
 			localStorage.setItem(STORAGE_KEY_PLACE, JSON.stringify(place));
 			return place;
 		}
-	} catch {
-		// Fall through to the last known place.
+
+		return {
+			city: city.trim(),
+			country: country.trim(),
+			label: [city.trim(), country.trim()].filter(Boolean).join(" · ")
+		};
 	}
+
+	// 1. Automatic multi-tier detection (High-speed legal IP -> Timezone geocoding -> GPS)
+	const detected = await detectLocation({ allowGps: options?.forceGps });
+	if (detected) {
+		const place: Place = {
+			city: detected.city,
+			country: detected.country,
+			latitude: detected.latitude,
+			longitude: detected.longitude,
+			label: detected.label
+		};
+		localStorage.setItem(STORAGE_KEY_PLACE, JSON.stringify(place));
+		return place;
+	}
+
+	// 2. Fallback to saved coordinates from settings
+	if (
+		typeof options?.savedLat === "number" &&
+		typeof options?.savedLon === "number" &&
+		!isNaN(options.savedLat) &&
+		!isNaN(options.savedLon)
+	) {
+		const label = city ? [city, country].filter(Boolean).join(" · ") : `${options.savedLat.toFixed(2)}°, ${options.savedLon.toFixed(2)}°`;
+		const place: Place = {
+			latitude: options.savedLat,
+			longitude: options.savedLon,
+			city: city || undefined,
+			country: country || undefined,
+			label
+		};
+		localStorage.setItem(STORAGE_KEY_PLACE, JSON.stringify(place));
+		return place;
+	}
+
+	// 3. Fall through to last known place
 	return readJson<Place>(STORAGE_KEY_PLACE);
 }
 
@@ -133,6 +180,15 @@ export function usePrayerTimes({ owner = false }: UsePrayerTimesOptions = {}) {
 	);
 	const [city, setCity] = useState<string>(() => localStorage.getItem("zenith-prayer-city") || "");
 	const [country, setCountry] = useState<string>(() => localStorage.getItem("zenith-prayer-country") || "");
+	const [latitude, setLatitude] = useState<number | null>(() => {
+		const val = localStorage.getItem("zenith-prayer-lat") || localStorage.getItem("bloom-prayer-lat");
+		return val ? parseFloat(val) : null;
+	});
+	const [longitude, setLongitude] = useState<number | null>(() => {
+		const val = localStorage.getItem("zenith-prayer-lon") || localStorage.getItem("bloom-prayer-lon");
+		return val ? parseFloat(val) : null;
+	});
+	const [resolvedPlace, setResolvedPlace] = useState<Place | null>(() => readJson<Place>(STORAGE_KEY_PLACE));
 	const [method, setMethod] = useState<string>(() => localStorage.getItem("zenith-prayer-method") || "5");
 	const [timeOffset, setTimeOffset] = useState<number>(() => {
 		const value = localStorage.getItem("zenith-prayer-time-offset");
@@ -164,7 +220,7 @@ export function usePrayerTimes({ owner = false }: UsePrayerTimesOptions = {}) {
 	const lastTickRef = useRef<Date | null>(null);
 	const firedRef = useRef<string[]>(readJson<string[]>(STORAGE_KEY_FIRED) ?? []);
 
-	const wantedKey = cacheKeyFor({ date: today, locationMode, city, country, method });
+	const wantedKey = cacheKeyFor({ date: today, locationMode, city, country, latitude, longitude, method });
 	// Times from another day, place or method are shown only until fresh ones arrive.
 	const stale = timings !== null && cachedKey !== wantedKey;
 
@@ -261,36 +317,61 @@ export function usePrayerTimes({ owner = false }: UsePrayerTimesOptions = {}) {
 
 	// --- fetching (owner only) --------------------------------------------
 
-	const fetchTimings = useCallback(async () => {
-		if (!enabled) return;
-		setLoading(true);
-		setError(null);
-		const requestKey = cacheKeyFor({ date: new Date(), locationMode, city, country, method });
-		try {
-			const place = await resolvePlace(locationMode, city, country);
-			if (!place) {
-				setError("location");
-				return;
+	const fetchTimings = useCallback(
+		async (options?: { force?: boolean; reDetect?: boolean }) => {
+			if (!enabled) return;
+			setLoading(true);
+			setError(null);
+			try {
+				const place = await resolvePlace(locationMode, city, country, {
+					forceGps: options?.reDetect,
+					savedLat: latitude,
+					savedLon: longitude
+				});
+				if (!place) {
+					setError("location");
+					return;
+				}
+				setResolvedPlace(place);
+
+				if (typeof place.latitude === "number" && typeof place.longitude === "number") {
+					setLatitude(place.latitude);
+					setLongitude(place.longitude);
+					localStorage.setItem("zenith-prayer-lat", String(place.latitude));
+					localStorage.setItem("zenith-prayer-lon", String(place.longitude));
+				}
+
+				const requestKey = cacheKeyFor({
+					date: new Date(),
+					locationMode,
+					city,
+					country,
+					latitude: place.latitude ?? latitude,
+					longitude: place.longitude ?? longitude,
+					method
+				});
+
+				const parsed = parseTimingsResponse(await fetchJson(buildTimingsUrl(place, method)));
+				if (!parsed) {
+					setError("invalid");
+					return;
+				}
+				setTimings(parsed.timings);
+				setHijri(parsed.hijri);
+				setCachedKey(requestKey);
+				localStorage.setItem(STORAGE_KEY_TIMINGS, JSON.stringify(parsed.timings));
+				localStorage.setItem(STORAGE_KEY_DATE, new Date().toDateString());
+				localStorage.setItem(STORAGE_KEY_CACHE_KEY, requestKey);
+				if (parsed.hijri) localStorage.setItem(STORAGE_KEY_HIJRI, JSON.stringify(parsed.hijri));
+			} catch (err) {
+				console.error("Prayer times request failed:", err);
+				setError("network");
+			} finally {
+				setLoading(false);
 			}
-			const parsed = parseTimingsResponse(await fetchJson(buildTimingsUrl(place, method)));
-			if (!parsed) {
-				setError("invalid");
-				return;
-			}
-			setTimings(parsed.timings);
-			setHijri(parsed.hijri);
-			setCachedKey(requestKey);
-			localStorage.setItem(STORAGE_KEY_TIMINGS, JSON.stringify(parsed.timings));
-			localStorage.setItem(STORAGE_KEY_DATE, new Date().toDateString());
-			localStorage.setItem(STORAGE_KEY_CACHE_KEY, requestKey);
-			if (parsed.hijri) localStorage.setItem(STORAGE_KEY_HIJRI, JSON.stringify(parsed.hijri));
-		} catch (err) {
-			console.error("Prayer times request failed:", err);
-			setError("network");
-		} finally {
-			setLoading(false);
-		}
-	}, [enabled, locationMode, city, country, method]);
+		},
+		[enabled, locationMode, city, country, method, latitude, longitude]
+	);
 
 	// Fetch when there is nothing cached for this day, place and method.
 	useEffect(() => {
@@ -313,6 +394,8 @@ export function usePrayerTimes({ owner = false }: UsePrayerTimesOptions = {}) {
 		"zenith-prayer-location-mode": (val) => setLocationMode(val === "manual" ? "manual" : "auto"),
 		"zenith-prayer-city": (val) => setCity(typeof val === "string" ? val : ""),
 		"zenith-prayer-country": (val) => setCountry(typeof val === "string" ? val : ""),
+		"zenith-prayer-lat": (val) => setLatitude(typeof val === "number" ? val : parseFloat(val) || null),
+		"zenith-prayer-lon": (val) => setLongitude(typeof val === "number" ? val : parseFloat(val) || null),
 		"zenith-prayer-method": (val) => setMethod(typeof val === "string" ? val : "5"),
 		"zenith-prayer-time-offset": (val) => setTimeOffset(typeof val === "number" ? val : parseInt(val, 10) || 0),
 		"zenith-prayer-alert-type": (val) => setAlertType(typeof val === "string" ? val : "sound_notification"),
@@ -327,6 +410,11 @@ export function usePrayerTimes({ owner = false }: UsePrayerTimesOptions = {}) {
 			setLocationMode(localStorage.getItem("zenith-prayer-location-mode") === "manual" ? "manual" : "auto");
 			setCity(localStorage.getItem("zenith-prayer-city") || "");
 			setCountry(localStorage.getItem("zenith-prayer-country") || "");
+			const latVal = localStorage.getItem("zenith-prayer-lat") || localStorage.getItem("bloom-prayer-lat");
+			const lonVal = localStorage.getItem("zenith-prayer-lon") || localStorage.getItem("bloom-prayer-lon");
+			setLatitude(latVal ? parseFloat(latVal) : null);
+			setLongitude(lonVal ? parseFloat(lonVal) : null);
+			setResolvedPlace(readJson<Place>(STORAGE_KEY_PLACE));
 			setMethod(localStorage.getItem("zenith-prayer-method") || "5");
 			const offset = localStorage.getItem("zenith-prayer-time-offset");
 			setTimeOffset(offset ? parseInt(offset, 10) || 0 : 0);
@@ -417,6 +505,9 @@ export function usePrayerTimes({ owner = false }: UsePrayerTimesOptions = {}) {
 		locationMode,
 		city,
 		country,
+		latitude,
+		longitude,
+		resolvedPlace,
 		method,
 		timeOffset,
 		alertType,
