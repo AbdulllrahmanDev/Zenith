@@ -1,5 +1,6 @@
 import React from "react";
 import { motion } from "framer-motion";
+import { useI18n } from "../i18n";
 import type { BannerVariant } from "../hooks/usePrayerTimes";
 import { PRE_ALERT_MINUTES, type PrayerKey } from "../utils/prayerSchedule";
 import { MosqueScene, PrayerEmblem } from "./prayer/PrayerArt";
@@ -33,6 +34,9 @@ export const AthanNotchBanner: React.FC<AthanNotchBannerProps> = ({
 	isExpanded,
 	onExpand
 }) => {
+	const { t, dir } = useI18n();
+	const b = t.prayer.banner;
+	const resolvedPrayerName = t.prayer.names[prayerKey] ?? prayerNameAr ?? b.fallbackName;
 	const isReminder = variant === "reminder";
 	const waving = isPlaying && !isReminder;
 
@@ -41,6 +45,7 @@ export const AthanNotchBanner: React.FC<AthanNotchBannerProps> = ({
 		return (
 			<motion.div
 				className="athan-compact-pill"
+				dir={dir}
 				onClick={(e) => {
 					e.stopPropagation();
 					onExpand();
@@ -59,7 +64,7 @@ export const AthanNotchBanner: React.FC<AthanNotchBannerProps> = ({
 
 				{/* Center: Prayer Name + Time */}
 				<div className="athan-compact-center">
-					<span className="athan-compact-title">صلاة {prayerNameAr}</span>
+					<span className="athan-compact-title">{b.prayerTitle(resolvedPrayerName)}</span>
 					<span className="athan-compact-dot">·</span>
 					<span className="athan-compact-time">{formattedTime}</span>
 				</div>
@@ -76,6 +81,7 @@ export const AthanNotchBanner: React.FC<AthanNotchBannerProps> = ({
 	return (
 		<motion.div
 			className="athan-banner-container"
+			dir={dir}
 			onClick={(e) => e.stopPropagation()}
 			initial={{ opacity: 0, y: 4 }}
 			animate={{ opacity: 1, y: 0 }}
@@ -85,7 +91,7 @@ export const AthanNotchBanner: React.FC<AthanNotchBannerProps> = ({
 			<div className="athan-banner-content">
 				{/* Info column */}
 				<div className="athan-side-info">
-					<h2 className="athan-prayer-name">صلاة {prayerNameAr}</h2>
+					<h2 className="athan-prayer-name">{b.prayerTitle(resolvedPrayerName)}</h2>
 
 					<div className="athan-meta-line">
 						<span className="athan-time-tag">{formattedTime}</span>
@@ -95,16 +101,16 @@ export const AthanNotchBanner: React.FC<AthanNotchBannerProps> = ({
 						{isReminder ? (
 							<div className="athan-reminder-action">
 								<span className="athan-reminder-text">
-									متبقي {PRE_ALERT_MINUTES} دقيقة
+									{b.remainingMin(PRE_ALERT_MINUTES)}
 								</span>
 								<span className="athan-meta-sep">·</span>
 								<button
 									className="athan-text-action-btn"
 									onClick={onClose}
-									title="إغلاق التنبيه"
-									aria-label="إغلاق التنبيه"
+									title={b.dismissTitle}
+									aria-label={b.dismissTitle}
 								>
-									إغلاق
+									{b.dismissBtn}
 								</button>
 							</div>
 						) : (
@@ -117,10 +123,10 @@ export const AthanNotchBanner: React.FC<AthanNotchBannerProps> = ({
 								<button
 									className="athan-text-action-btn"
 									onClick={isPlaying ? onStopAthan : onClose}
-									title={isPlaying ? "كتم صوت الأذان" : "إغلاق التنبيه"}
-									aria-label={isPlaying ? "كتم صوت الأذان" : "إغلاق التنبيه"}
+									title={isPlaying ? b.muteTitle : b.dismissTitle}
+									aria-label={isPlaying ? b.muteTitle : b.dismissTitle}
 								>
-									{isPlaying ? "كتم" : "إغلاق"}
+									{isPlaying ? b.muteBtn : b.dismissBtn}
 								</button>
 							</div>
 						)}

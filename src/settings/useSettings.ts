@@ -6,6 +6,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import type { UpdateCheckResult } from "../updater";
 import { useSettingsSync } from "../hooks/useSettingsSync";
 import { reloadIfMirrorWasStale } from "../hooks/settingsMirror";
+import { getStoredLanguage, getTranslations } from "../i18n";
 import { hexToHsl } from "../theme";
 import {
 	addCustomFolder,
@@ -1579,16 +1580,14 @@ export function useSettings() {
 	// ── Reset to defaults ──
 	const resetToDefaults = async () => {
 		try {
+			const t = getTranslations(getStoredLanguage()).general;
 			const { ask } = await import("@tauri-apps/plugin-dialog");
-			const confirmed = await ask(
-				"All settings return to their defaults and Zenith restarts. Pinned apps and custom icons are kept.",
-				{
-					title: "Reset Zenith to Defaults",
-					kind: "warning",
-					okLabel: "Reset and Restart",
-					cancelLabel: "Cancel"
-				}
-			);
+			const confirmed = await ask(t.resetConfirmMessage, {
+				title: t.resetConfirmTitle,
+				kind: "warning",
+				okLabel: t.resetConfirmOk,
+				cancelLabel: t.resetConfirmCancel
+			});
 			if (!confirmed) return;
 
 			await invoke("reset_settings");

@@ -233,14 +233,16 @@ export function cacheKeyFor(parts: CacheKeyParts): string {
 export function formatPrayerTime(
 	timeStr: string | undefined | null,
 	is24h: boolean,
-	offsetMinutes = 0
+	offsetMinutes = 0,
+	lang?: "en" | "ar"
 ): string {
 	if (!timeStr || timeStr === "--:--") return "--:--";
 	const clock = parseClock(timeStr);
 	if (!clock) return timeStr;
 	const d = new Date();
 	d.setHours(clock.hours, clock.minutes + offsetMinutes, 0, 0);
-	return d.toLocaleTimeString([], {
+	const locales = lang === "ar" ? "ar-EG" : lang === "en" ? "en-US" : [];
+	return d.toLocaleTimeString(locales, {
 		hour: "2-digit",
 		minute: "2-digit",
 		hour12: !is24h
@@ -260,6 +262,8 @@ export interface HijriDateInfo {
 	day: string;
 	weekdayAr: string;
 	monthAr: string;
+	weekdayEn?: string;
+	monthEn?: string;
 	year: string;
 }
 
@@ -318,7 +322,13 @@ export function parseTimingsResponse(
 	}
 
 	const h = data?.date?.hijri as
-		| { date?: string; day?: string; year?: string; weekday?: { ar?: string }; month?: { ar?: string } }
+		| {
+				date?: string;
+				day?: string;
+				year?: string;
+				weekday?: { ar?: string; en?: string };
+				month?: { ar?: string; en?: string };
+		  }
 		| undefined;
 	const hijri: HijriDateInfo | null = h
 		? {
@@ -326,6 +336,8 @@ export function parseTimingsResponse(
 				day: h.day || "",
 				weekdayAr: h.weekday?.ar || "",
 				monthAr: h.month?.ar || "",
+				weekdayEn: h.weekday?.en || "",
+				monthEn: h.month?.en || "",
 				year: h.year || ""
 			}
 		: null;

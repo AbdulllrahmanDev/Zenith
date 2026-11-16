@@ -2493,6 +2493,7 @@ pub fn hide_native_osd() {
 
 #[tauri::command]
 pub fn open_settings_window(app: AppHandle) {
+    sync_language_from_cache(&app);
     if let Some(win) = app.get_webview_window("settings") {
         unsafe {
             use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
@@ -3718,7 +3719,9 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
         );
     }
 
-    if key == "zenith-scale" || key == "bloom-scale" {
+    if key == "zenith-language" || key == "bloom-language" {
+        apply_language(&app, value.as_str());
+    } else if key == "zenith-scale" || key == "bloom-scale" {
         re_register_appbars(&app, &settings);
     } else if key == "zenith-notch-mode" || key == "bloom-notch-mode" {
         let mode_val = settings
@@ -4423,6 +4426,7 @@ fn apply_imported_settings(app: &AppHandle, settings: &str) -> Result<(), String
     if imported.contains_key("zenith-scale") {
         re_register_appbars(app, &imported);
     }
+    sync_language_from_cache(app);
 
     Ok(())
 }
@@ -4458,6 +4462,8 @@ pub fn reset_settings(app: AppHandle) -> Result<(), String> {
     crate::utils::replace_settings_cache(settings);
     drop(_guard);
 
+
+    apply_language(&app, None);
     // Mirror the external-edit watcher so every open window drops the removed
     // keys from localStorage. The caller restarts Zenith right after, but this
     // keeps the reset correct even if a window lingers.
@@ -4583,12 +4589,18 @@ pub fn setup_settings_watcher(app: AppHandle) {
                 if let Some((changed, removed)) = changes {
                     // Both file and cache locks are released before emitting.
                     for (key, value) in &changed {
+                        if key == "zenith-language" || key == "bloom-language" {
+                            apply_language(&app, value.as_str());
+                        }
                         let _ = app.emit(
                             "settings-external-changed",
                             serde_json::json!({ "key": key, "value": value }),
                         );
                     }
                     for key in removed {
+                        if key == "zenith-language" || key == "bloom-language" {
+                            apply_language(&app, None);
+                        }
                         let _ = app.emit(
                             "settings-external-changed",
                             serde_json::json!({ "key": key, "value": null }),
@@ -5121,5 +5133,73 @@ pub fn translator_trigger_action(app: AppHandle, action: String) {
         "screen_region" => crate::translator::trigger_screen_overlay(app, Some("region".into())),
         "fullpage_overlay" => crate::translator::trigger_fullpage_overlay(app),
         _ => {}
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LocalizedUiStrings {
+    pub settings_window_title: &'static str,
+    pub open_settings: &'static str,
+    pub restart_zenith: &'static str,
+    pub quit_zenith: &'static str,
+}
+
+pub fn localized_strings(lang: Option<&str>) -> LocalizedUiStrings {
+    match lang {
+        Some("ar") => LocalizedUiStrings {
+            settings_window_title: "الإعدادات",
+            open_settings: "فتح الإعدادات",
+            restart_zenith: "إعادة تشغيل Zenith",
+            quit_zenith: "إغلاق Zenith",
+        },
+        _ => LocalizedUiStrings {
+            settings_window_title: "Settings",
+            open_settings: "Open Settings",
+            restart_zenith: "Restart Zenith",
+            quit_zenith: "Quit Zenith",
+        },
+    }
+}
+
+pub fn apply_language(app: &AppHandle, lang: Option<&str>) {
+    let strings = localized_strings(lang);
+    if let Some(handles) = crate::state::TRAY_MENU_HANDLES.get() {
+        let _ = handles.settings.set_text(strings.open_settings);
+        let _ = handles.restart.set_text(strings.restart_zenith);
+        let _ = handles.quit.set_text(strings.quit_zenith);
+    }
+    if let Some(win) = app.get_webview_window("settings") {
+        let _ = win.set_title(strings.settings_window_title);
+    }
+}
+
+pub fn sync_language_from_cache(app: &AppHandle) {
+    let lang = crate::utils::get_setting_str(app, "zenith-language");
+    apply_language(app, lang.as_deref());
+}
+
+#[cfg(test)]
+mod localization_tests {
+    use super::localized_strings;
+
+    #[test]
+    fn defaults_to_english() {
+        let s = localized_strings(None);
+        assert_eq!(s.settings_window_title, "Settings");
+        assert_eq!(s.open_settings, "Open Settings");
+        assert_eq!(s.restart_zenith, "Restart Zenith");
+        assert_eq!(s.quit_zenith, "Quit Zenith");
+
+        assert_eq!(localized_strings(Some("en")).settings_window_title, "Settings");
+        assert_eq!(localized_strings(Some("fr")).settings_window_title, "Settings");
+    }
+
+    #[test]
+    fn supports_arabic() {
+        let s = localized_strings(Some("ar"));
+        assert_eq!(s.settings_window_title, "الإعدادات");
+        assert_eq!(s.open_settings, "فتح الإعدادات");
+        assert_eq!(s.restart_zenith, "إعادة تشغيل Zenith");
+        assert_eq!(s.quit_zenith, "إغلاق Zenith");
     }
 }

@@ -1,5 +1,6 @@
 import { Volume2, Sun, ArrowLeftToLine, ArrowRightToLine } from "lucide-react";
 import { SettingRow } from "./SettingRow";
+import { useI18n } from "../i18n";
 
 interface OverlaysTabProps {
 	volumeOverlayEnabled: boolean;
@@ -22,11 +23,14 @@ export function OverlaysTab({
 	brightnessEdgeEnabled,
 	toggleBrightnessEdge
 }: OverlaysTabProps) {
+	const { t } = useI18n();
+	const ov = t.overlays;
+
 	return (
 		<>
-			<div className="setting-group-label">Overlays</div>
+			<div className="setting-group-label">{ov.group}</div>
 			<div className="setting-group">
-				<SettingRow icon={Volume2} label="Volume HUD" desc="Zenith volume overlay">
+				<SettingRow icon={Volume2} label={ov.volumeHud} desc={ov.volumeHudDesc}>
 					<label className="toggle-switch">
 						<input type="checkbox" checked={volumeOverlayEnabled} onChange={toggleVolumeOverlay} />
 						<span className="slider"></span>
@@ -36,8 +40,8 @@ export function OverlaysTab({
 				{volumeOverlayEnabled && (
 					<SettingRow
 						icon={ArrowLeftToLine}
-						label="Show on Edge Hover"
-						desc="Slide in from left edge"
+						label={ov.showOnEdgeHover}
+						desc={ov.volumeEdgeDesc}
 					>
 						<label className="toggle-switch">
 							<input type="checkbox" checked={volumeEdgeEnabled} onChange={toggleVolumeEdge} />
@@ -46,7 +50,7 @@ export function OverlaysTab({
 					</SettingRow>
 				)}
 
-				<SettingRow icon={Sun} label="Brightness HUD" desc="Zenith brightness overlay">
+				<SettingRow icon={Sun} label={ov.brightnessHud} desc={ov.brightnessHudDesc}>
 					<label className="toggle-switch">
 						<input
 							type="checkbox"
@@ -60,8 +64,8 @@ export function OverlaysTab({
 				{brightnessOverlayEnabled && (
 					<SettingRow
 						icon={ArrowRightToLine}
-						label="Show on Edge Hover"
-						desc="Slide in from right edge"
+						label={ov.showOnEdgeHover}
+						desc={ov.brightnessEdgeDesc}
 						divider={false}
 					>
 						<label className="toggle-switch">

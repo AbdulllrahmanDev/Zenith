@@ -2,6 +2,7 @@ import { Download, RefreshCw, FileDown, Upload } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { GithubIcon } from "../icons";
 import { SettingRow } from "./SettingRow";
+import { useI18n } from "../i18n";
 
 interface AboutTabProps {
 	appVersion: string;
@@ -30,52 +31,55 @@ export function AboutTab({
 	handleExportSettings,
 	handleImportSettings
 }: AboutTabProps) {
+	const { t } = useI18n();
+	const ab = t.about;
+
 	const getUpdateLabel = () => {
 		switch (updateStatus) {
 			case "checking":
-				return "Checking...";
+				return ab.checking;
 			case "available":
-				return `Update Available (v${updateVersion})`;
+				return ab.updateAvailable(updateVersion);
 			case "uptodate":
-				return "Zenith is up to date";
+				return ab.upToDate;
 			case "downloading":
-				return "Downloading Update...";
+				return ab.downloadingUpdate;
 			case "installing":
-				return "Installing...";
+				return ab.installing;
 			case "error":
-				return "No updates found";
+				return ab.noUpdatesFound;
 			default:
-				return "Check for Updates";
+				return ab.checkForUpdates;
 		}
 	};
 
 	const getUpdateDesc = () =>
 		updateStatus === "available"
-			? "Click to install and restart"
-			: `Currently running v${appVersion}`;
+			? ab.clickToInstall
+			: ab.currentlyRunning(appVersion);
 
 	const getExportLabel = () => {
-		if (exportStatus === "exporting") return "Exporting...";
-		if (exportStatus === "success") return "Exported!";
-		if (exportStatus === "error") return "Export failed. Try again.";
-		return "Export Settings";
+		if (exportStatus === "exporting") return ab.exporting;
+		if (exportStatus === "success") return ab.exported;
+		if (exportStatus === "error") return ab.exportFailed;
+		return ab.exportSettings;
 	};
 
 	const getImportLabel = () => {
-		if (importStatus === "importing") return "Importing...";
-		if (importStatus === "success") return "Imported!";
-		if (importStatus === "error") return "Import failed. Check the file and try again.";
-		return "Import Settings";
+		if (importStatus === "importing") return ab.importing;
+		if (importStatus === "success") return ab.imported;
+		if (importStatus === "error") return ab.importFailed;
+		return ab.importSettings;
 	};
 
 	return (
 		<div className="about-tab-container">
 			<div className="about-header">
 				<img src="/zenith-white-no-bg-nosmile.svg" className="about-logo" alt="Zenith Logo" draggable={false} />
-				<h1 className="about-title">Zenith</h1>
-				<p className="about-version">Version {appVersion}</p>
+				<h1 className="about-title">{ab.title}</h1>
+				<p className="about-version">{ab.version(appVersion)}</p>
 				<p className="about-credit">
-					Made with <span className="about-heart">❤️</span> by{" "}
+					{ab.madeWith} <span className="about-heart">❤️</span> {ab.by}{" "}
 					<button
 						className="about-author"
 						onClick={() => openUrl("https://github.com/AbdulllrahmanDev")}
@@ -87,9 +91,9 @@ export function AboutTab({
 				</p>
 			</div>
 
-			<div className="setting-group-label">Software Updates</div>
+			<div className="setting-group-label">{ab.updatesGroup}</div>
 			<div className="setting-group">
-				<SettingRow icon={Download} label="Auto Update" desc="Update automatically on startup">
+				<SettingRow icon={Download} label={ab.autoUpdate} desc={ab.autoUpdateDesc}>
 					<label className="toggle-switch">
 						<input type="checkbox" checked={autoUpdate} onChange={toggleAutoUpdate} />
 						<span className="slider"></span>
@@ -106,19 +110,19 @@ export function AboutTab({
 				/>
 			</div>
 
-			<div className="setting-group-label setting-group-label--spaced">Data</div>
+			<div className="setting-group-label setting-group-label--spaced">{ab.dataGroup}</div>
 			<div className="setting-group">
 				<SettingRow
 					icon={FileDown}
 					label={getExportLabel()}
-					desc="Save settings to a file"
+					desc={ab.exportSettingsDesc}
 					action
 					onClick={handleExportSettings}
 				/>
 				<SettingRow
 					icon={Upload}
 					label={getImportLabel()}
-					desc="Load settings from a file"
+					desc={ab.importSettingsDesc}
 					action
 					divider={false}
 					onClick={handleImportSettings}

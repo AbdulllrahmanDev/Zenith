@@ -350,3 +350,9 @@
 	font-variant-numeric: tabular-nums;
 	letter-spacing: 0.08em;
 }
+
+[dir="rtl"] .qp-switch {
+	direction: ltr;
+	margin-left: 0;
+	margin-right: 4px;
+}

@@ -1,8 +1,8 @@
 import React from "react";
 import { AlertCircle, Check, MapPin, RotateCcw, Square, Volume2 } from "lucide-react";
+import { useI18n, type TranslationDict } from "../i18n";
 import type { PrayerTimesState } from "../hooks/usePrayerTimes";
 import { usePrayerCountdown } from "../hooks/usePrayerCountdown";
-import { PRAYER_NAMES_AR, PRAYER_STATUS_AR } from "../utils/prayerContent";
 import {
 	PRAYER_KEYS,
 	formatPrayerTime,
@@ -24,29 +24,44 @@ export interface PrayerTimesPanelProps {
 	timeFormat24h?: boolean;
 }
 
-function statusLine(data: PrayerTimesState): { text: string; tone: "error" | "stale" | "place" } {
-	if (data.error === "location") return { text: PRAYER_STATUS_AR.errorLocation, tone: "error" };
-	if (data.error === "network") return { text: PRAYER_STATUS_AR.errorNetwork, tone: "error" };
-	if (data.error === "invalid") return { text: PRAYER_STATUS_AR.errorInvalid, tone: "error" };
-	if (data.stale) return { text: PRAYER_STATUS_AR.stale, tone: "stale" };
+function statusLine(
+	data: PrayerTimesState,
+	statusStrings: TranslationDict["prayer"]["status"]
+): { text: string; tone: "error" | "stale" | "place" } {
+	if (data.error === "location") return { text: statusStrings.errorLocation, tone: "error" };
+	if (data.error === "network") return { text: statusStrings.errorNetwork, tone: "error" };
+	if (data.error === "invalid") return { text: statusStrings.errorInvalid, tone: "error" };
+	if (data.stale) return { text: statusStrings.stale, tone: "stale" };
 	const place =
 		data.resolvedPlace?.label ||
 		(data.resolvedPlace?.city && data.resolvedPlace?.country
 			? `${data.resolvedPlace.city} · ${data.resolvedPlace.country}`
 			: data.resolvedPlace?.city) ||
 		(data.city || data.country ? [data.city, data.country].filter(Boolean).join(" · ") : "");
-	return { text: place || PRAYER_STATUS_AR.autoLocation, tone: "place" };
+	return { text: place || statusStrings.autoLocation, tone: "place" };
 }
 
 export const PrayerTimesPanel: React.FC<PrayerTimesPanelProps> = ({
 	prayerData,
 	timeFormat24h: propTimeFormat24h
 }) => {
-	const { timings, hijri, activePrayer, isPlayingAthan, athanPrayerName, loading, stopAthan, fetchTimings, timeOffset } =
-		prayerData;
+	const { t, lang, dir } = useI18n();
+	const pt = t.prayer;
+	const {
+		timings,
+		hijri,
+		activePrayer,
+		isPlayingAthan,
+		athanPrayerName,
+		athanPrayerKey,
+		loading,
+		stopAthan,
+		fetchTimings,
+		timeOffset
+	} = prayerData;
 	const is24h = propTimeFormat24h ?? prayerData.timeFormat24h;
 	const countdown = usePrayerCountdown(timings, timeOffset);
-	const status = statusLine(prayerData);
+	const status = statusLine(prayerData, pt.status);
 
 	const now = new Date();
 	const hasPassed = (key: PrayerKey): boolean => {
@@ -56,15 +71,24 @@ export const PrayerTimesPanel: React.FC<PrayerTimesPanelProps> = ({
 	};
 
 	const progress = countdown?.progress ?? 0;
-	const nextTime = countdown && timings ? formatPrayerTime(timings[countdown.key], is24h, timeOffset) : "--:--";
+	const nextTime =
+		countdown && timings ? formatPrayerTime(timings[countdown.key], is24h, timeOffset, lang) : "--:--";
+	const activeAthanLabel = (athanPrayerKey ? pt.names[athanPrayerKey] : null) ?? athanPrayerName;
+	const hijriDisplay = hijri
+		? lang === "ar"
+			? `${hijri.weekdayAr}، ${hijri.day} ${hijri.monthAr} ${hijri.year} هـ`
+			: hijri.weekdayEn || hijri.monthEn
+				? `${hijri.weekdayEn ? `${hijri.weekdayEn}, ` : ""}${[hijri.day, hijri.monthEn, hijri.year].filter(Boolean).join(" ")} AH`
+				: hijri.date || pt.status.title
+		: pt.status.title;
 
 	return (
-		<div className="prayer-split-view" onClick={(e) => e.stopPropagation()}>
+		<div className="prayer-split-view" dir={dir} onClick={(e) => e.stopPropagation()}>
 			{/* Left Column: Countdown */}
 			<section className="prayer-countdown-column">
-				<span className="prayer-next-label">{PRAYER_STATUS_AR.nextPrayer}</span>
+				<span className="prayer-next-label">{pt.status.nextPrayer}</span>
 
-				<div className="prayer-ring" role="img" aria-label={PRAYER_STATUS_AR.nextPrayer}>
+				<div className="prayer-ring" role="img" aria-label={pt.status.nextPrayer}>
 					<svg className="prayer-ring-svg" viewBox="0 0 108 92" aria-hidden="true" focusable="false">
 						<path className="prayer-ring-track" d={SQUIRCLE_PATH} />
 						<path
@@ -82,7 +106,7 @@ export const PrayerTimesPanel: React.FC<PrayerTimesPanelProps> = ({
 				</div>
 
 				<div className="prayer-next-row">
-					<span className="prayer-next-name">{countdown ? countdown.nameAr : "—"}</span>
+					<span className="prayer-next-name">{countdown ? pt.names[countdown.key] : "—"}</span>
 					<span className="prayer-next-time">{nextTime}</span>
 				</div>
 
@@ -90,11 +114,11 @@ export const PrayerTimesPanel: React.FC<PrayerTimesPanelProps> = ({
 					<div className="prayer-athan-active-box">
 						<Volume2 size={13} className="prayer-athan-icon" />
 						<span>
-							{PRAYER_STATUS_AR.athanPlaying} {athanPrayerName}
+							{pt.status.athanPlaying} {activeAthanLabel}
 						</span>
-						<button className="prayer-athan-stop-btn" onClick={stopAthan} title={PRAYER_STATUS_AR.stopTitle}>
+						<button className="prayer-athan-stop-btn" onClick={stopAthan} title={pt.status.stopTitle}>
 							<Square size={8} fill="currentColor" />
-							<span>{PRAYER_STATUS_AR.stop}</span>
+							<span>{pt.status.stop}</span>
 						</button>
 					</div>
 				) : (
@@ -109,9 +133,9 @@ export const PrayerTimesPanel: React.FC<PrayerTimesPanelProps> = ({
 						</span>
 						<button
 							className="prayer-refresh-btn"
-							onClick={() => fetchTimings({ force: true, reDetect: true })}
-							title={PRAYER_STATUS_AR.refresh}
-							aria-label={PRAYER_STATUS_AR.refresh}
+							onClick={() => fetchTimings({ force: true })}
+							title={pt.status.refresh}
+							aria-label={pt.status.refresh}
 							disabled={loading}
 						>
 							<RotateCcw size={10} className={loading ? "animate-spin" : ""} />
@@ -123,11 +147,7 @@ export const PrayerTimesPanel: React.FC<PrayerTimesPanelProps> = ({
 			{/* Right Column: Prayers List */}
 			<section className="prayer-list-column">
 				<header className="prayer-date-header">
-					<span className="prayer-date-text">
-						{hijri
-							? `${hijri.weekdayAr}، ${hijri.day} ${hijri.monthAr} ${hijri.year} هـ`
-							: PRAYER_STATUS_AR.title}
-					</span>
+					<span className="prayer-date-text">{hijriDisplay}</span>
 				</header>
 
 				<div className="prayer-items-stack">
@@ -135,7 +155,9 @@ export const PrayerTimesPanel: React.FC<PrayerTimesPanelProps> = ({
 						const isNext = countdown?.key === key;
 						const isActive = activePrayer === key;
 						const isPast = !isNext && hasPassed(key);
-						const timeVal = timings ? formatPrayerTime(timings[key], is24h, timeOffset) : "--:--";
+						const timeVal = timings
+							? formatPrayerTime(timings[key], is24h, timeOffset, lang)
+							: "--:--";
 
 						return (
 							<div
@@ -146,7 +168,7 @@ export const PrayerTimesPanel: React.FC<PrayerTimesPanelProps> = ({
 									<span className="prayer-icon-wrapper">
 										<PrayerIcon prayer={key} size={15} />
 									</span>
-									<span className="prayer-name-ar">{PRAYER_NAMES_AR[key]}</span>
+									<span className="prayer-name-ar">{pt.names[key]}</span>
 								</div>
 								<div className="prayer-time-side">
 									{isPast && <Check size={11} strokeWidth={2.2} className="prayer-done-mark" />}

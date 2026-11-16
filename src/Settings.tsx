@@ -18,20 +18,25 @@ import {
 } from "./settings/index";
 import type { SettingsTab } from "./settings/index";
 import { useAnnouncement } from "./hooks/useAnnouncement";
+import { LanguageProvider, useI18n } from "./i18n";
 import { initTheme } from "./theme";
 import "./Settings.css";
 
 const appWindow = getCurrentWebviewWindow();
 
-const TABS: { id: SettingsTab; label: string; icon: typeof Settings }[] = [
-	{ id: "general", label: "General", icon: Settings },
-	{ id: "appearance", label: "Appearance", icon: Palette },
-	{ id: "notch", label: "Notch", icon: PanelTop },
-	{ id: "dock", label: "Dock", icon: Monitor },
-	{ id: "overlays", label: "Overlays", icon: Layers },
-	{ id: "mouse", label: "Mouse", icon: MousePointer },
-	{ id: "translator", label: "المترجم", icon: Languages },
-	{ id: "about", label: "About", icon: Info }
+const TABS: {
+	id: SettingsTab;
+	labelKey: "general" | "appearance" | "notch" | "dock" | "overlays" | "mouse" | "translator" | "about";
+	icon: typeof Settings;
+}[] = [
+	{ id: "general", labelKey: "general", icon: Settings },
+	{ id: "appearance", labelKey: "appearance", icon: Palette },
+	{ id: "notch", labelKey: "notch", icon: PanelTop },
+	{ id: "dock", labelKey: "dock", icon: Monitor },
+	{ id: "overlays", labelKey: "overlays", icon: Layers },
+	{ id: "mouse", labelKey: "mouse", icon: MousePointer },
+	{ id: "translator", labelKey: "translator", icon: Languages },
+	{ id: "about", labelKey: "about", icon: Info }
 ];
 
 function SettingsApp() {
@@ -39,6 +44,12 @@ function SettingsApp() {
 	const [isMaximized, setIsMaximized] = useState(false);
 	const settings = useSettings();
 	const { announcement, dismissed, dismiss } = useAnnouncement();
+	const { dir, t } = useI18n();
+
+	useEffect(() => {
+		document.documentElement.dir = dir;
+		document.title = t.settingsWindow.title;
+	}, [dir, t.settingsWindow.title]);
 
 	useEffect(() => {
 		return initTheme();
@@ -131,19 +142,20 @@ function SettingsApp() {
 	return (
 		<div
 			className={`settings-container ${isMaximized ? "maximized" : ""}`}
+			dir={dir}
 			style={{ zoom: settings.scale }}
 		>
 			<div className="title-bar" data-tauri-drag-region onDoubleClick={handleToggleMaximize}>
 				<span className="title-text" data-tauri-drag-region>
-					Settings
+					{t.settingsWindow.title}
 				</span>
 				<div className="window-controls">
 					<button
 						type="button"
 						className="win-control-btn"
 						onClick={handleMinimize}
-						title="Minimize"
-						aria-label="Minimize"
+						title={t.settingsWindow.minimize}
+						aria-label={t.settingsWindow.minimize}
 					>
 						<Minus size={11} strokeWidth={2} />
 					</button>
@@ -151,8 +163,8 @@ function SettingsApp() {
 						type="button"
 						className="win-control-btn"
 						onClick={handleToggleMaximize}
-						title={isMaximized ? "Restore Window" : "Maximize Window"}
-						aria-label={isMaximized ? "Restore Window" : "Maximize Window"}
+						title={isMaximized ? t.settingsWindow.restore : t.settingsWindow.maximize}
+						aria-label={isMaximized ? t.settingsWindow.restore : t.settingsWindow.maximize}
 					>
 						{isMaximized ? (
 							<Minimize2 size={11} strokeWidth={2} />
@@ -164,8 +176,8 @@ function SettingsApp() {
 						type="button"
 						className="win-control-btn close-btn"
 						onClick={handleClose}
-						title="Close Settings"
-						aria-label="Close Settings"
+						title={t.settingsWindow.close}
+						aria-label={t.settingsWindow.close}
 					>
 						<X size={12} strokeWidth={2} className="close-btn-icon" />
 					</button>
@@ -174,7 +186,7 @@ function SettingsApp() {
 
 			<div className="settings-body">
 				<div className="settings-sidebar">
-					{TABS.map(({ id, label, icon: Icon }) => (
+					{TABS.map(({ id, labelKey, icon: Icon }) => (
 						<button
 							key={id}
 							className={`sidebar-tab ${activeTab === id ? "active" : ""}`}
@@ -183,7 +195,7 @@ function SettingsApp() {
 							<div className="sidebar-tab-icon">
 								<Icon size={14} strokeWidth={1.5} />
 							</div>
-							<span>{label}</span>
+							<span>{t.settingsWindow.tabs[labelKey]}</span>
 						</button>
 					))}
 				</div>
@@ -191,8 +203,8 @@ function SettingsApp() {
 				<div className="settings-content">
 					{settings.saveError && (
 						<div className="settings-save-error" role="alert">
-							<span>Changes could not be saved. Your saved settings have been restored.</span>
-							<button onClick={settings.dismissSaveError} aria-label="Dismiss save error">
+							<span>{t.settingsWindow.saveError}</span>
+							<button onClick={settings.dismissSaveError} aria-label={t.settingsWindow.dismissSaveError}>
 								<X size={14} strokeWidth={2} />
 							</button>
 						</div>
@@ -211,10 +223,10 @@ function SettingsApp() {
 									className="announcement-banner-link"
 									onClick={() => openUrl(announcement.url!)}
 								>
-									Learn more
+									{t.common.learnMore}
 								</button>
 							)}
-							<button className="announcement-banner-close" onClick={dismiss} title="Dismiss">
+							<button className="announcement-banner-close" onClick={dismiss} title={t.common.dismiss}>
 								<X size={12} strokeWidth={2.2} />
 							</button>
 						</div>
@@ -506,6 +518,8 @@ function SettingsApp() {
 
 createRoot(document.getElementById("root") as HTMLElement).render(
 	<StrictMode>
-		<SettingsApp />
+		<LanguageProvider>
+			<SettingsApp />
+		</LanguageProvider>
 	</StrictMode>
 );

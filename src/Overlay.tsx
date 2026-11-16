@@ -11,6 +11,7 @@ import { MixerIcon, SpeakerIcon } from "./icons";
 import "./Overlay.css";
 import { EdgeSurface } from "./components/EdgeSurface";
 import { RadialMenu } from "./components/RadialMenu";
+import { LanguageProvider, useI18n } from "./i18n";
 import { DEFAULT_WHEEL_CONFIG, DEFAULT_WORKSPACES, type RadialWheelConfig } from "./radial/types";
 import { initTheme } from "./theme";
 import { createRegionSender, measureElements, type RegionRect } from "./windowRegion";
@@ -65,6 +66,7 @@ function MixerTile({
 	onMuteToggle: (pid: number) => void;
 	draggingRef: { current: number | null };
 }) {
+	const { t, dir } = useI18n();
 	const [icon, setIcon] = useState<string | null>(null);
 	const [showPercentage, setShowPercentage] = useState(false);
 	const barRef = useRef<HTMLDivElement>(null);
@@ -141,7 +143,8 @@ function MixerTile({
 					showPercentage ? "showing-percent" : ""
 				}`}
 				onClick={() => onMuteToggle(session.pid)}
-				title={session.is_muted ? "Unmute" : "Mute"}
+				title={session.is_muted ? t.overlayUi.unmute : t.overlayUi.mute}
+				dir={dir}
 			>
 				{icon ? (
 					<img src={icon} alt="" draggable={false} />
@@ -193,6 +196,7 @@ function VolumeNotch({
 	mixerExpanded: boolean;
 	onMixerExpandedChange: (expanded: boolean) => void;
 }) {
+	const { t, dir } = useI18n();
 	const percentage = Math.round(volume * 100);
 	const barRef = useRef<HTMLDivElement>(null);
 	const shellRef = useRef<HTMLDivElement>(null);
@@ -436,7 +440,7 @@ function VolumeNotch({
 							e.stopPropagation();
 							onMixerExpandedChange(!mixerExpanded);
 						}}
-						title="App volume mixer"
+						title={t.overlayUi.appVolumeMixer}
 					>
 						<span className="volume-notch-action-icon">
 							<SpeakerIcon size={16} muted={isMuted} />
@@ -469,12 +473,12 @@ function VolumeNotch({
 								style={{ gridTemplateColumns: `repeat(${mixerColumns}, 1fr)` }}
 							>
 								{sessions.length === 0 ? (
-									<div className="volume-mixer-empty">
+									<div className="volume-mixer-empty" dir={dir}>
 										{!sessionsLoaded
-											? "Loading..."
+											? t.overlayUi.mixerLoading
 											: sessionsError
-												? "Couldn't read audio sessions"
-												: "No apps with audio"}
+												? t.overlayUi.mixerError
+												: t.overlayUi.mixerEmpty}
 									</div>
 								) : (
 									sessions.map((session) => (
@@ -596,6 +600,7 @@ function BrightnessNotch({
 // ─── Main Overlay Component ─────────────────────────────────────────────────
 
 function OverlayApp() {
+	const { t, dir } = useI18n();
 	useEffect(() => {
 		return initTheme();
 	}, []);
@@ -1275,6 +1280,7 @@ function OverlayApp() {
 				{mode === "updating" && (
 					<motion.div
 						className="update-splash"
+						dir={dir}
 						initial={{ opacity: 0 }}
 						animate={{ opacity: 1 }}
 						exit={{ opacity: 0 }}
@@ -1283,9 +1289,9 @@ function OverlayApp() {
 						<div className="update-splash-card">
 							<img src="/zenith-white-no-bg-nosmile.svg" className="update-splash-logo" alt="Zenith" draggable={false} />
 							<p className="update-splash-text">
-								{updateStatus === "checking" && "Checking for updates..."}
-								{updateStatus === "downloading" && `Downloading update... ${updateProgress}%`}
-								{updateStatus === "installing" && "Installing update..."}
+								{updateStatus === "checking" && t.overlayUi.checkingUpdates}
+								{updateStatus === "downloading" && t.overlayUi.downloadingUpdate(updateProgress)}
+								{updateStatus === "installing" && t.overlayUi.installingUpdate}
 							</p>
 							{updateStatus === "downloading" && (
 								<div className="update-progress-bar">
@@ -1376,6 +1382,8 @@ function OverlayApp() {
 
 createRoot(document.getElementById("root")!).render(
 	<StrictMode>
-		<OverlayApp />
+		<LanguageProvider>
+			<OverlayApp />
+		</LanguageProvider>
 	</StrictMode>
 );

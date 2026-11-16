@@ -3714,3 +3714,39 @@ input:checked + .slider:before {
 :root[data-theme="light"] .tr-prompt-textarea {
 	background: rgba(0, 0, 0, 0.03);
 }
+
+/* RTL Layout Overrides */
+[dir="rtl"] .settings-sidebar {
+	border-right: none;
+	border-left: 1px solid var(--zenith-border, rgba(255, 255, 255, 0.08));
+}
+
+.light-mode[dir="rtl"] .settings-sidebar {
+	border-right: none;
+	border-left: 1px solid var(--zenith-border, rgba(0, 0, 0, 0.08));
+}
+
+[dir="rtl"] .sidebar-tab,
+[dir="rtl"] .rovyl-visual-card {
+	text-align: right;
+}
+
+[dir="rtl"] .setting-divider {
+	margin-left: 0;
+	margin-right: 52px;
+}
+
+[dir="rtl"] .setting-icon-bg {
+	margin-right: 0;
+	margin-left: 12px;
+}
+
+[dir="rtl"] .zn-custom-icon-actions {
+	margin-left: 0;
+	margin-right: auto;
+}
+
+[dir="rtl"] .toggle-switch,
+[dir="rtl"] .settings-slider {
+	direction: ltr;
+}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { useI18n } from "../i18n";
 import {
 	MousePointer,
 	Compass,
@@ -256,6 +257,8 @@ export function MouseTab({
 	mouseHoverSound,
 	handleMouseHoverSoundChange
 }: MouseTabProps) {
+	const { t } = useI18n();
+	const m = t.mouse;
 	const [subTab, setSubTab] = useState<MouseSubTab>("workspaces");
 	const [recording, setRecording] = useState(false);
 
@@ -530,8 +533,9 @@ export function MouseTab({
 			setNewItemIcon("AppWindow");
 		} else if (kind === "system") {
 			const first = SYSTEM_ACTION_PRESETS[0];
+			const sysLabel = m.systemActions[first.target as keyof typeof m.systemActions] ?? first.label;
 			setNewItemType("system");
-			setNewItemLabel(first.label);
+			setNewItemLabel(sysLabel);
 			setNewItemTarget(first.target);
 			setNewItemIcon(first.icon);
 		} else if (kind === "folder") {
@@ -625,10 +629,10 @@ export function MouseTab({
 		try {
 			const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
 			const selected = await openDialog({
-				title: "Select Application or Shortcut",
+				title: m.dialogSelectApp,
 				directory: false,
 				multiple: false,
-				filters: [{ name: "Applications", extensions: ["exe", "lnk", "bat", "cmd"] }]
+				filters: [{ name: m.dialogApplicationsFilter, extensions: ["exe", "lnk", "bat", "cmd"] }]
 			});
 			if (typeof selected === "string") {
 				const base = selected.split(/[\\/]/).pop() || selected;
@@ -645,7 +649,7 @@ export function MouseTab({
 		try {
 			const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
 			const selected = await openDialog({
-				title: directory ? "Select Folder" : "Select File",
+				title: directory ? m.dialogSelectFolder : m.dialogSelectFile,
 				directory,
 				multiple: false
 			});
@@ -662,13 +666,13 @@ export function MouseTab({
 	const handleAddWorkspace = () => {
 		const newWs: RadialWorkspace = {
 			id: `ws_${Date.now()}`,
-			name: `Workspace ${workspaces.length + 1}`,
+			name: m.newWorkspaceName(workspaces.length + 1),
 			icon: "Layers",
 			enabled: true,
 			items: [
-				{ id: `it_${Date.now()}_1`, label: "Explorer", target: "explorer.exe", type: "command", icon: "Folder" },
-				{ id: `it_${Date.now()}_2`, label: "Browser", target: "https://google.com", type: "url", icon: "Globe" },
-				{ id: `it_${Date.now()}_3`, label: "Settings", target: "open_settings", type: "system", icon: "Settings" }
+				{ id: `it_${Date.now()}_1`, label: m.demoItems.files, target: "explorer.exe", type: "command", icon: "Folder" },
+				{ id: `it_${Date.now()}_2`, label: m.demoItems.browser, target: "https://google.com", type: "url", icon: "Globe" },
+				{ id: `it_${Date.now()}_3`, label: m.demoItems.settings, target: "open_settings", type: "system", icon: "Settings" }
 			]
 		};
 		const updated = [...workspaces, newWs];
@@ -712,21 +716,7 @@ export function MouseTab({
 	};
 
 	const formatTriggerLabel = (btn: string) => {
-		const map: Record<string, string> = {
-			middle: "Middle Click (Wheel)",
-			x1: "Mouse 4 (Back)",
-			x2: "Mouse 5 (Forward)",
-			right: "Right Click",
-			"Ctrl+middle": "Ctrl + Middle Click",
-			"Alt+middle": "Alt + Middle Click",
-			"Shift+middle": "Shift + Middle Click",
-			"Ctrl+left": "Ctrl + Left Click",
-			"Alt+left": "Alt + Left Click",
-			"Ctrl+right": "Ctrl + Right Click",
-			"Ctrl+x1": "Ctrl + Mouse 4",
-			"Ctrl+x2": "Ctrl + Mouse 5"
-		};
-		return map[btn] || btn;
+		return m.triggers[btn as keyof typeof m.triggers] || btn;
 	};
 
 	return (
@@ -739,11 +729,11 @@ export function MouseTab({
 					</div>
 					<div>
 						<div className="zn-mouse-header-title">
-							<span>Radial Mouse Launcher</span>
+							<span>{m.headerTitle}</span>
 							<span className="zn-mouse-trigger-pill">{formatTriggerLabel(mouseTriggerButton)}</span>
 						</div>
 						<div className="zn-mouse-header-sub">
-							Hold trigger, flick toward any slice in 360°, and release to launch
+							{m.headerSub}
 						</div>
 					</div>
 				</div>
@@ -777,7 +767,7 @@ export function MouseTab({
 					onClick={() => setSubTab("workspaces")}
 				>
 					<Layers size={13} />
-					<span>Workspaces</span>
+					<span>{m.subtabs.workspaces}</span>
 				</button>
 				<button
 					type="button"
@@ -785,7 +775,7 @@ export function MouseTab({
 					onClick={() => setSubTab("trigger")}
 				>
 					<MousePointer size={13} />
-					<span>Trigger & Aim</span>
+					<span>{m.subtabs.trigger}</span>
 				</button>
 				<button
 					type="button"
@@ -793,7 +783,7 @@ export function MouseTab({
 					onClick={() => setSubTab("appearance")}
 				>
 					<Palette size={13} />
-					<span>Appearance</span>
+					<span>{m.subtabs.appearance}</span>
 				</button>
 				<button
 					type="button"
@@ -801,7 +791,7 @@ export function MouseTab({
 					onClick={() => setSubTab("sound")}
 				>
 					<Volume2 size={13} />
-					<span>Sound</span>
+					<span>{m.subtabs.sound}</span>
 				</button>
 			</div>
 
@@ -848,10 +838,10 @@ export function MouseTab({
 									type="button"
 									className="zn-ws-pill-add"
 									onClick={handleAddWorkspace}
-									title="Add new workspace"
+									title={m.addNewWorkspaceTitle}
 								>
 									<Plus size={12} />
-									<span>New</span>
+									<span>{m.newWorkspaceBtn}</span>
 								</button>
 							</div>
 
@@ -867,7 +857,7 @@ export function MouseTab({
 									type="button"
 									className={`zn-icon-action-btn ${showWsIconPicker ? "active" : ""}`}
 									onClick={() => setShowWsIconPicker((prev) => !prev)}
-									title="Change workspace icon or upload custom image"
+									title={m.changeWsIconTitle}
 								>
 									<Palette size={12} />
 								</button>
@@ -902,7 +892,7 @@ export function MouseTab({
 											setWsNameDraft(currentWs.name);
 											setRenamingWs(true);
 										}}
-										title="Rename workspace"
+										title={m.renameWorkspaceTitle}
 									>
 										<Edit3 size={12} />
 									</button>
@@ -912,7 +902,7 @@ export function MouseTab({
 										type="button"
 										className="zn-icon-action-btn danger"
 										onClick={handleDeleteWorkspace}
-										title="Delete workspace"
+										title={m.deleteWorkspaceTitle}
 									>
 										<Trash2 size={12} />
 									</button>
@@ -921,7 +911,7 @@ export function MouseTab({
 									type="button"
 									className="zn-icon-action-btn"
 									onClick={handleResetWorkspaces}
-									title="Reset all workspaces to defaults"
+									title={m.resetWorkspacesTitle}
 								>
 									<RotateCcw size={12} />
 								</button>
@@ -940,7 +930,7 @@ export function MouseTab({
 								>
 									<div className="zn-ws-icon-modal-header">
 										<div className="zn-ws-icon-modal-title">
-											<span>Workspace Icon & Image: {currentWs.name}</span>
+											<span>{m.wsIconModalTitle(currentWs.name)}</span>
 										</div>
 										<button
 											type="button"
@@ -955,7 +945,7 @@ export function MouseTab({
 											<div
 												className="zn-ws-preview-disc"
 												onClick={() => wsIconFileInputRef.current?.click()}
-												title="Click to choose an image from your PC"
+												title={m.chooseImageTitle}
 											>
 												{currentWs.customIconUrl ? (
 													<img src={currentWs.customIconUrl} alt="" />
@@ -971,10 +961,10 @@ export function MouseTab({
 											</div>
 											<div className="zn-ws-custom-img-info">
 												<span className="zn-ws-custom-img-title">
-													{currentWs.customIconUrl ? "Custom Image Active" : "Upload Custom Image"}
+													{currentWs.customIconUrl ? m.customImageActive : m.uploadCustomImage}
 												</span>
 												<span className="zn-ws-custom-img-desc">
-													Shows as the main slice icon on the root wheel
+													{m.wsCustomImgDesc}
 												</span>
 											</div>
 											<div className="zn-ws-custom-img-actions">
@@ -984,24 +974,24 @@ export function MouseTab({
 													onClick={() => wsIconFileInputRef.current?.click()}
 												>
 													<Upload size={12} />
-													<span>{currentWs.customIconUrl ? "Change" : "Browse..."}</span>
+													<span>{currentWs.customIconUrl ? t.common.change : t.common.browseDots}</span>
 												</button>
 												{currentWs.customIconUrl && (
 													<button
 														type="button"
 														className="zn-custom-icon-remove-btn"
 														onClick={handleClearWsCustomIcon}
-														title="Reset to vector icon"
+														title={m.resetVectorTitle}
 													>
 														<RotateCcw size={11} />
-														<span>Reset</span>
+														<span>{t.common.reset}</span>
 													</button>
 												)}
 											</div>
 										</div>
 
 										<div className="zn-picker-subtitle" style={{ marginTop: 4 }}>
-											Or Select a Vector Icon
+											{m.orSelectVector}
 										</div>
 										<div className="zn-ws-icons-grid">
 											{WS_PRESET_ICONS.map((iconName) => {
@@ -1046,10 +1036,10 @@ export function MouseTab({
 											onClick={() => setEditingSubmenuId(null)}
 										>
 											<CornerUpLeft size={12} />
-											<span>Back to {currentWs.name}</span>
+											<span>{m.backToWs(currentWs.name)}</span>
 										</button>
 										<span className="zn-submenu-title">
-											Folder: <strong>{activeSubmenuItem.label}</strong>
+											{m.folderPrefix} <strong>{activeSubmenuItem.label}</strong>
 										</span>
 									</div>
 								)}
@@ -1057,7 +1047,7 @@ export function MouseTab({
 								<div className="zn-slice-list">
 									{displayedItems.length === 0 ? (
 										<div className="zn-slice-empty">
-											No shortcuts yet. Click one of the buttons below to add an app, folder, or action.
+											{m.emptySlices}
 										</div>
 									) : (
 										displayedItems.map((item, index) => {
@@ -1073,7 +1063,7 @@ export function MouseTab({
 															<span className="zn-slice-name">{item.label}</span>
 															<span className="zn-slice-target">
 																{isSubmenu
-																	? `${(item.children || []).length} nested items`
+																	? m.nestedItems((item.children || []).length)
 																	: item.target}
 															</span>
 														</div>
@@ -1085,9 +1075,9 @@ export function MouseTab({
 																type="button"
 																className="zn-slice-open-folder-btn"
 																onClick={() => setEditingSubmenuId(item.id)}
-																title="Edit folder contents"
+																title={m.editFolderContents}
 															>
-																<span>Items ({(item.children || []).length})</span>
+																<span>{m.itemsCount((item.children || []).length)}</span>
 															</button>
 														)}
 														<button
@@ -1095,7 +1085,7 @@ export function MouseTab({
 															className="zn-icon-action-btn"
 															onClick={() => handleMoveItem(index, -1)}
 															disabled={index === 0}
-															title="Move up"
+															title={m.moveUp}
 														>
 															<ChevronUp size={12} />
 														</button>
@@ -1104,7 +1094,7 @@ export function MouseTab({
 															className="zn-icon-action-btn"
 															onClick={() => handleMoveItem(index, 1)}
 															disabled={index === displayedItems.length - 1}
-															title="Move down"
+															title={m.moveDown}
 														>
 															<ChevronDown size={12} />
 														</button>
@@ -1112,7 +1102,7 @@ export function MouseTab({
 															type="button"
 															className="zn-icon-action-btn"
 															onClick={() => openEditDrawer(item)}
-															title="Edit shortcut"
+															title={m.editShortcut}
 														>
 															<Edit3 size={12} />
 														</button>
@@ -1120,7 +1110,7 @@ export function MouseTab({
 															type="button"
 															className="zn-icon-action-btn danger"
 															onClick={() => handleDeleteItem(item.id)}
-															title="Remove shortcut"
+															title={m.removeShortcut}
 														>
 															<Trash2 size={12} />
 														</button>
@@ -1140,7 +1130,7 @@ export function MouseTab({
 											onClick={() => openAddDrawer("app")}
 										>
 											<AppWindow size={12} />
-											<span>+ App</span>
+											<span>{m.quickAddApp}</span>
 										</button>
 										<button
 											type="button"
@@ -1148,7 +1138,7 @@ export function MouseTab({
 											onClick={() => openAddDrawer("system")}
 										>
 											<Cpu size={12} />
-											<span>+ System</span>
+											<span>{m.quickAddSystem}</span>
 										</button>
 										<button
 											type="button"
@@ -1156,7 +1146,7 @@ export function MouseTab({
 											onClick={() => openAddDrawer("folder")}
 										>
 											<FolderOpen size={12} />
-											<span>+ Folder/File</span>
+											<span>{m.quickAddFolder}</span>
 										</button>
 										<button
 											type="button"
@@ -1164,7 +1154,7 @@ export function MouseTab({
 											onClick={() => openAddDrawer("url")}
 										>
 											<Globe size={12} />
-											<span>+ URL</span>
+											<span>{m.quickAddUrl}</span>
 										</button>
 										{!activeSubmenuItem && (
 											<button
@@ -1173,7 +1163,7 @@ export function MouseTab({
 												onClick={() => openAddDrawer("submenu")}
 											>
 												<FolderPlus size={12} />
-												<span>+ Submenu</span>
+												<span>{m.quickAddSubmenu}</span>
 											</button>
 										)}
 									</div>
@@ -1187,12 +1177,12 @@ export function MouseTab({
 								<div className="zn-add-drawer-tabs">
 									{(
 										[
-											{ id: "app", label: "App", icon: AppWindow },
-											{ id: "system", label: "System Action", icon: Cpu },
-											{ id: "folder", label: "Folder / File", icon: FolderOpen },
-											{ id: "url", label: "Web URL", icon: Globe },
+											{ id: "app", label: m.kindApp, icon: AppWindow },
+											{ id: "system", label: m.kindSystem, icon: Cpu },
+											{ id: "folder", label: m.kindFolder, icon: FolderOpen },
+											{ id: "url", label: m.kindUrl, icon: Globe },
 											...(!activeSubmenuItem
-												? [{ id: "submenu", label: "Submenu Folder", icon: FolderPlus }]
+												? [{ id: "submenu", label: m.kindSubmenu, icon: FolderPlus }]
 												: [])
 										] as { id: AddSourceKind; label: string; icon: typeof AppWindow }[]
 									).map(({ id, label, icon: Icon }) => (
@@ -1208,9 +1198,13 @@ export function MouseTab({
 												} else if (id === "system") {
 													setNewItemType("system");
 													if (!newItemTarget) {
-														setNewItemLabel(SYSTEM_ACTION_PRESETS[0].label);
-														setNewItemTarget(SYSTEM_ACTION_PRESETS[0].target);
-														setNewItemIcon(SYSTEM_ACTION_PRESETS[0].icon);
+														const firstSys = SYSTEM_ACTION_PRESETS[0];
+														setNewItemLabel(
+															m.systemActions[firstSys.target as keyof typeof m.systemActions] ??
+																firstSys.label
+														);
+														setNewItemTarget(firstSys.target);
+														setNewItemIcon(firstSys.icon);
 													}
 												} else if (id === "folder") {
 													setNewItemType("folder");
@@ -1239,7 +1233,7 @@ export function MouseTab({
 												<Search size={13} />
 												<input
 													type="text"
-													placeholder="Search installed Windows apps or executables..."
+													placeholder={m.searchAppsPlaceholder}
 													value={appSearch}
 													onChange={(e) => setAppSearch(e.target.value)}
 												/>
@@ -1248,23 +1242,23 @@ export function MouseTab({
 														type="button"
 														className="zn-search-clear-btn"
 														onClick={() => setAppSearch("")}
-														title="Clear search"
+														title={m.clearSearchTitle}
 													>
 														<X size={12} />
 													</button>
 												)}
 												<span className="zn-app-search-count">
-													{loadingApps ? "Scanning..." : `${filteredApps.length} apps`}
+													{loadingApps ? m.scanning : m.appsCount(filteredApps.length)}
 												</span>
 											</div>
 											<button
 												type="button"
 												className="settings-btn"
 												onClick={handleBrowseExecutable}
-												title="Browse filesystem for .exe or .lnk"
+												title={m.browseExeTitle}
 											>
 												<FolderOpen size={13} />
-												<span>Browse .exe</span>
+												<span>{m.browseExe}</span>
 											</button>
 										</div>
 
@@ -1272,11 +1266,11 @@ export function MouseTab({
 											{loadingApps ? (
 												<div className="zn-apps-loading">
 													<AppWindow size={16} />
-													<span>Scanning installed Windows applications...</span>
+													<span>{m.scanningApps}</span>
 												</div>
 											) : filteredApps.length === 0 ? (
 												<div className="zn-apps-loading">
-													<span>No matching apps found. Click "Browse .exe" or type path below.</span>
+													<span>{m.noMatchingApps}</span>
 												</div>
 											) : (
 												filteredApps.map((app) => {
@@ -1326,18 +1320,21 @@ export function MouseTab({
 
 								{addKind === "system" && (
 									<div className="zn-system-presets-section">
-										<div className="zn-picker-subtitle">Standard Windows & Zenith Actions</div>
+										<div className="zn-picker-subtitle">{m.standardActionsTitle}</div>
 										<div className="zn-system-presets-grid">
 											{SYSTEM_ACTION_PRESETS.map((preset) => {
 												const PIcon = getRadialIcon(preset.icon);
 												const selected = newItemTarget === preset.target;
+												const presetLabel =
+													m.systemActions[preset.target as keyof typeof m.systemActions] ??
+													preset.label;
 												return (
 													<button
 														key={preset.target}
 														type="button"
 														className={`zn-system-preset-chip ${selected ? "selected" : ""}`}
 														onClick={() => {
-															setNewItemLabel(preset.label);
+															setNewItemLabel(presetLabel);
 															setNewItemTarget(preset.target);
 															setNewItemType("system");
 															setNewItemIcon(preset.icon);
@@ -1346,9 +1343,9 @@ export function MouseTab({
 														<div className="zn-system-preset-icon">
 															<PIcon size={14} />
 														</div>
-														<span className="zn-system-preset-label">{preset.label}</span>
+														<span className="zn-system-preset-label">{presetLabel}</span>
 														{selected && (
-															<Check size={11} strokeWidth={2.5} style={{ marginLeft: "auto" }} />
+															<Check size={11} strokeWidth={2.5} style={{ marginInlineStart: "auto" }} />
 														)}
 													</button>
 												);
@@ -1369,8 +1366,8 @@ export function MouseTab({
 													<FolderOpen size={20} />
 												</div>
 												<div className="zn-folder-action-text">
-													<span className="zn-folder-action-title">Browse Folder...</span>
-													<span className="zn-folder-action-desc">Choose any directory on your computer</span>
+													<span className="zn-folder-action-title">{m.browseFolderTitle}</span>
+													<span className="zn-folder-action-desc">{m.browseFolderDesc}</span>
 												</div>
 											</button>
 											<button
@@ -1382,24 +1379,26 @@ export function MouseTab({
 													<FileText size={20} />
 												</div>
 												<div className="zn-folder-action-text">
-													<span className="zn-folder-action-title">Browse File...</span>
-													<span className="zn-folder-action-desc">Choose any document, media, or script</span>
+													<span className="zn-folder-action-title">{m.browseFileTitle}</span>
+													<span className="zn-folder-action-desc">{m.browseFileDesc}</span>
 												</div>
 											</button>
 										</div>
 
-										<div className="zn-picker-subtitle">Quick Windows Folders</div>
+										<div className="zn-picker-subtitle">{m.quickFoldersTitle}</div>
 										<div className="zn-quick-folders-grid">
 											{QUICK_FOLDER_PRESETS.map((qf) => {
 												const QIcon = getRadialIcon(qf.icon);
 												const isSelected = newItemTarget === qf.target;
+												const folderLabel =
+													m.quickFolders[qf.target as keyof typeof m.quickFolders] ?? qf.label;
 												return (
 													<button
 														key={qf.target}
 														type="button"
 														className={`zn-quick-folder-chip ${isSelected ? "selected" : ""}`}
 														onClick={() => {
-															setNewItemLabel(qf.label);
+															setNewItemLabel(folderLabel);
 															setNewItemTarget(qf.target);
 															setNewItemType("folder");
 															setNewItemIcon(qf.icon);
@@ -1408,7 +1407,7 @@ export function MouseTab({
 														<div className="zn-quick-folder-icon">
 															<QIcon size={14} />
 														</div>
-														<span className="zn-quick-folder-title">{qf.label}</span>
+														<span className="zn-quick-folder-title">{folderLabel}</span>
 													</button>
 												);
 											})}
@@ -1418,7 +1417,7 @@ export function MouseTab({
 
 								{addKind === "url" && (
 									<div className="zn-url-picker-section">
-										<div className="zn-picker-subtitle">Popular Website Presets</div>
+										<div className="zn-picker-subtitle">{m.popularSitesTitle}</div>
 										<div className="zn-quick-urls-grid">
 											{WEB_URL_PRESETS.map((site) => {
 												const SIcon = getRadialIcon(site.icon);
@@ -1455,9 +1454,9 @@ export function MouseTab({
 											<FolderPlus size={24} />
 										</div>
 										<div className="zn-submenu-intro-body">
-											<span className="zn-submenu-intro-title">Submenu Folder</span>
+											<span className="zn-submenu-intro-title">{m.submenuIntroTitle}</span>
 											<span className="zn-submenu-intro-desc">
-												Creates an expandable slice on the wheel that opens its own nested ring of shortcuts.
+												{m.submenuIntroDesc}
 											</span>
 										</div>
 									</div>
@@ -1478,12 +1477,12 @@ export function MouseTab({
 										<div
 											className="zn-drawer-preview-disc"
 											onClick={() => customIconFileRef.current?.click()}
-											title="Click to choose a custom image or icon from your PC"
+											title={m.chooseImageTitle}
 										>
 											<SmartIcon
 												item={{
 													id: "preview_slice",
-													label: newItemLabel || "Shortcut",
+													label: newItemLabel || m.previewShortcutFallback,
 													target: newItemTarget || "app",
 													type: newItemType,
 													icon: newItemIcon,
@@ -1506,17 +1505,17 @@ export function MouseTab({
 										<div className="zn-drawer-preview-details">
 											<div className="zn-drawer-preview-top">
 												<span className="zn-drawer-preview-label">
-													{newItemLabel || "New Shortcut"}
+													{newItemLabel || m.previewNewShortcut}
 												</span>
 												<span className="zn-drawer-badge">{newItemType.toUpperCase()}</span>
 												{newItemCustomIconUrl && (
 													<span className="zn-custom-icon-active-badge">
-														<ImageIcon size={10} /> Custom Image
+														<ImageIcon size={10} /> {m.customImageBadge}
 													</span>
 												)}
 											</div>
 											<span className="zn-drawer-preview-target" title={newItemTarget}>
-												{newItemTarget || "Select an app, location, or action above"}
+												{newItemTarget || m.previewSelectHint}
 											</span>
 										</div>
 
@@ -1525,20 +1524,20 @@ export function MouseTab({
 												type="button"
 												className="zn-custom-icon-pick-btn"
 												onClick={() => customIconFileRef.current?.click()}
-												title="Upload custom image (PNG, ICO, SVG, JPG, WebP) from your computer"
+												title={m.uploadCustomImgTitle}
 											>
 												<Upload size={12} />
-												<span>{newItemCustomIconUrl ? "Change Image" : "Custom Image"}</span>
+												<span>{newItemCustomIconUrl ? m.changeImage : m.customImage}</span>
 											</button>
 											{newItemCustomIconUrl && (
 												<button
 													type="button"
 													className="zn-custom-icon-remove-btn"
 													onClick={() => setNewItemCustomIconUrl("")}
-													title="Revert back to default / native icon"
+													title={m.revertIconTitle}
 												>
 													<RotateCcw size={11} />
-													<span>Reset</span>
+													<span>{t.common.reset}</span>
 												</button>
 											)}
 										</div>
@@ -1546,11 +1545,11 @@ export function MouseTab({
 
 									<div className="zn-add-fields-grid">
 										<div className="zn-field-group">
-											<label className="zn-field-label">Label on Wheel</label>
+											<label className="zn-field-label">{m.labelOnWheel}</label>
 											<input
 												type="text"
 												className="settings-text-input zn-input-styled"
-												placeholder="e.g. Chrome, Discord, Work..."
+												placeholder={m.labelPlaceholder}
 												value={newItemLabel}
 												onChange={(e) => setNewItemLabel(e.target.value)}
 											/>
@@ -1559,15 +1558,15 @@ export function MouseTab({
 										{addKind !== "submenu" && (
 											<div className="zn-field-group zn-field-flex2">
 												<label className="zn-field-label">
-													{addKind === "url" ? "Target Web Address" : "Target Path / Command"}
+													{addKind === "url" ? m.targetWebAddress : m.targetPathCommand}
 												</label>
 												<input
 													type="text"
 													className="settings-text-input zn-input-styled"
 													placeholder={
 														addKind === "url"
-															? "https://example.com"
-															: "Path, shell command, or executable"
+															? m.targetUrlPlaceholder
+															: m.targetPathPlaceholder
 													}
 													value={newItemTarget}
 													onChange={(e) => setNewItemTarget(e.target.value)}
@@ -1576,12 +1575,12 @@ export function MouseTab({
 										)}
 
 										<div className="zn-field-group zn-custom-select-container" ref={iconDropdownRef}>
-											<label className="zn-field-label">Fallback Icon</label>
+											<label className="zn-field-label">{m.fallbackIcon}</label>
 											<button
 												type="button"
 												className={`zn-custom-select-trigger ${showIconDropdown ? "active" : ""}`}
 												onClick={() => setShowIconDropdown((v) => !v)}
-												title="Fallback Icon when native icon is unavailable"
+												title={m.fallbackIconTitle}
 											>
 												<div className="zn-custom-select-value">
 													{(() => {
@@ -1630,7 +1629,7 @@ export function MouseTab({
 											setEditingItemId(null);
 										}}
 									>
-										Cancel
+										{t.common.cancel}
 									</button>
 									<button
 										type="button"
@@ -1639,7 +1638,7 @@ export function MouseTab({
 										disabled={!newItemLabel.trim() || (!newItemTarget.trim() && addKind !== "submenu")}
 									>
 										<Check size={13} strokeWidth={2.4} />
-										<span>{editingItemId ? "Save Changes" : "Add to Wheel"}</span>
+										<span>{editingItemId ? m.saveChanges : m.addToWheel}</span>
 									</button>
 								</div>
 							</div>
@@ -1666,7 +1665,7 @@ export function MouseTab({
 							{/* Hover Accent Swatches */}
 							<div className="zn-control-block">
 								<div className="zn-control-block-header">
-									<span>Hover Highlight Color</span>
+									<span>{m.hoverHighlightColor}</span>
 									<span className="zn-control-val">{mouseHoverColor.toUpperCase()}</span>
 								</div>
 								<div className="zn-color-swatch-row">
@@ -1674,7 +1673,7 @@ export function MouseTab({
 										<button
 											key={preset.value}
 											type="button"
-											title={preset.label}
+											title={m.hoverColors[preset.value as keyof typeof m.hoverColors] ?? preset.label}
 											className={`zn-color-swatch ${
 												mouseHoverColor.toLowerCase() === preset.value.toLowerCase()
 													? "active"
@@ -1684,13 +1683,13 @@ export function MouseTab({
 											onClick={() => handleMouseHoverColorChange(preset.value)}
 										/>
 									))}
-									<label className="zn-color-custom-picker" title="Custom Hex Color">
+									<label className="zn-color-custom-picker" title={m.customHexTitle}>
 										<input
 											type="color"
 											value={mouseHoverColor}
 											onChange={(e) => handleMouseHoverColorChange(e.target.value)}
 										/>
-										<span>Custom</span>
+										<span>{t.common.custom}</span>
 									</label>
 								</div>
 							</div>
@@ -1699,7 +1698,7 @@ export function MouseTab({
 							<div className="zn-controls-grid-2">
 								<div className="zn-control-block">
 									<div className="zn-control-block-header">
-										<span>Wheel Radius</span>
+										<span>{m.wheelRadius}</span>
 										<span className="zn-control-val">{mouseMenuRadius} px</span>
 									</div>
 									<input
@@ -1716,7 +1715,7 @@ export function MouseTab({
 
 								<div className="zn-control-block">
 									<div className="zn-control-block-header">
-										<span>Tile Size</span>
+										<span>{m.tileSize}</span>
 										<span className="zn-control-val">{mouseIconSize} px</span>
 									</div>
 									<input
@@ -1733,7 +1732,7 @@ export function MouseTab({
 
 								<div className="zn-control-block">
 									<div className="zn-control-block-header">
-										<span>Tile Spacing</span>
+										<span>{m.tileSpacing}</span>
 										<span className="zn-control-val">{mouseAppSpacing} px</span>
 									</div>
 									<input
@@ -1750,7 +1749,7 @@ export function MouseTab({
 
 								<div className="zn-control-block">
 									<div className="zn-control-block-header">
-										<span>Center Dead-Zone</span>
+										<span>{m.centerDeadZone}</span>
 										<span className="zn-control-val">{mouseActivationThreshold} px</span>
 									</div>
 									<input
@@ -1769,7 +1768,7 @@ export function MouseTab({
 
 								<div className="zn-control-block" style={{ gridColumn: "1 / -1" }}>
 									<div className="zn-control-block-header">
-										<span>Scrim Backdrop Darkness</span>
+										<span>{m.scrimBackdropDarkness}</span>
 										<span className="zn-control-val">{Math.round(mouseBackdropOpacity * 100)}%</span>
 									</div>
 									<input
@@ -1789,8 +1788,8 @@ export function MouseTab({
 
 					<SettingRow
 						icon={Layers}
-						label="Radial Sector Wedges"
-						desc="Render illuminated sector beams and seam dividers behind slices"
+						label={m.radialSectorWedges}
+						desc={m.radialSectorWedgesDesc}
 					>
 						<label className="toggle-switch">
 							<input
@@ -1804,8 +1803,8 @@ export function MouseTab({
 
 					<SettingRow
 						icon={Sparkles}
-						label="Show Shortcut Labels"
-						desc="Display ray-aligned outer pill labels around the wheel"
+						label={m.showShortcutLabels}
+						desc={m.showShortcutLabelsDesc}
 					>
 						<label className="toggle-switch">
 							<input
@@ -1820,8 +1819,8 @@ export function MouseTab({
 					{mouseShowLabels && (
 						<SettingRow
 							icon={Sparkles}
-							label="Always Show All Labels"
-							desc="Keep every shortcut label visible instead of only the hovered slice"
+							label={m.alwaysShowAllLabels}
+							desc={m.alwaysShowAllLabelsDesc}
 						>
 							<label className="toggle-switch">
 								<input
@@ -1836,8 +1835,8 @@ export function MouseTab({
 
 					<SettingRow
 						icon={Hash}
-						label="Number Badges (1–9)"
-						desc="Show circular 1–9 shortcut badges on the top-left of tiles"
+						label={m.numberBadges}
+						desc={m.numberBadgesDesc}
 					>
 						<label className="toggle-switch">
 							<input
@@ -1851,8 +1850,8 @@ export function MouseTab({
 
 					<SettingRow
 						icon={Layers}
-						label="Workspace Switcher Pill"
-						desc="Show the workspace tab bar below the wheel when multiple workspaces exist"
+						label={m.workspaceSwitcherPill}
+						desc={m.workspaceSwitcherPillDesc}
 						divider={false}
 					>
 						<label className="toggle-switch">
@@ -1873,8 +1872,8 @@ export function MouseTab({
 					<div className="setting-group">
 						<SettingRow
 							icon={Sparkles}
-							label="Trigger Mouse Button"
-							desc="Physical mouse button or modifier combo that opens the wheel"
+							label={m.triggerMouseButton}
+							desc={m.triggerMouseButtonDesc}
 						>
 							<div style={{ display: "flex", gap: 6, alignItems: "center" }}>
 								<select
@@ -1884,29 +1883,29 @@ export function MouseTab({
 									disabled={recording}
 									style={{ minWidth: 165 }}
 								>
-									<option value="middle">Middle Click (Wheel)</option>
-									<option value="x1">Mouse 4 (Back)</option>
-									<option value="x2">Mouse 5 (Forward)</option>
-									<option value="Ctrl+middle">Ctrl + Middle</option>
-									<option value="Alt+middle">Alt + Middle</option>
-									<option value="Shift+middle">Shift + Middle</option>
-									<option value="Ctrl+right">Ctrl + Right Click</option>
-									<option value="Ctrl+x1">Ctrl + Mouse 4</option>
-									<option value="Ctrl+x2">Ctrl + Mouse 5</option>
+									<option value="middle">{m.triggers.middle}</option>
+									<option value="x1">{m.triggers.x1}</option>
+									<option value="x2">{m.triggers.x2}</option>
+									<option value="Ctrl+middle">{m.triggers["Ctrl+middle"]}</option>
+									<option value="Alt+middle">{m.triggers["Alt+middle"]}</option>
+									<option value="Shift+middle">{m.triggers["Shift+middle"]}</option>
+									<option value="Ctrl+right">{m.triggers["Ctrl+right"]}</option>
+									<option value="Ctrl+x1">{m.triggers["Ctrl+x1"]}</option>
+									<option value="Ctrl+x2">{m.triggers["Ctrl+x2"]}</option>
 								</select>
 								<button
 									type="button"
 									className={`settings-btn ${recording ? "primary" : ""}`}
 									onClick={handleRecordClick}
 								>
-									{recording ? "Press Button..." : "Record"}
+									{recording ? m.pressButton : m.recordBtn}
 								</button>
 							</div>
 						</SettingRow>
 
 						<div style={{ padding: "10px 14px 4px 14px" }}>
 							<span style={{ fontSize: 11, fontWeight: 600, color: "var(--zenith-text, #fff)" }}>
-								Gesture Mode
+								{m.gestureMode}
 							</span>
 							<div className="rovyl-visual-grid">
 								<div
@@ -1914,11 +1913,11 @@ export function MouseTab({
 									onClick={() => handleMouseTriggerModeChange("hold")}
 								>
 									<div className="rovyl-visual-card-header">
-										<span className="rovyl-visual-card-title">Hold, Flick & Release</span>
+										<span className="rovyl-visual-card-title">{m.holdFlickRelease}</span>
 										<Hand size={15} className="rovyl-visual-card-icon" />
 									</div>
 									<span className="rovyl-visual-card-desc">
-										Hold the trigger button, aim in any direction, and release to launch immediately. Quick stationary tap passes the normal click through.
+										{m.holdFlickReleaseDesc}
 									</span>
 								</div>
 
@@ -1927,11 +1926,11 @@ export function MouseTab({
 									onClick={() => handleMouseTriggerModeChange("click")}
 								>
 									<div className="rovyl-visual-card-header">
-										<span className="rovyl-visual-card-title">Click to Toggle</span>
+										<span className="rovyl-visual-card-title">{m.clickToToggle}</span>
 										<MousePointer size={15} className="rovyl-visual-card-icon" />
 									</div>
 									<span className="rovyl-visual-card-desc">
-										Click once to open the wheel, then left-click any slice to launch or click the center hub to dismiss.
+										{m.clickToToggleDesc}
 									</span>
 								</div>
 							</div>
@@ -1939,7 +1938,7 @@ export function MouseTab({
 
 						<div style={{ padding: "4px 14px 4px 14px" }}>
 							<span style={{ fontSize: 11, fontWeight: 600, color: "var(--zenith-text, #fff)" }}>
-								Aiming Mechanics
+								{m.aimingMechanics}
 							</span>
 							<div className="rovyl-visual-grid">
 								<div
@@ -1947,11 +1946,11 @@ export function MouseTab({
 									onClick={() => handleMouseSelectionModeChange("area")}
 								>
 									<div className="rovyl-visual-card-header">
-										<span className="rovyl-visual-card-title">360° Directional Sector</span>
+										<span className="rovyl-visual-card-title">{m.directionalSector}</span>
 										<Compass size={15} className="rovyl-visual-card-icon" />
 									</div>
 									<span className="rovyl-visual-card-desc">
-										Moving outside the center dead-zone selects the slice in that angular sector, even at the edge of the screen.
+										{m.directionalSectorDesc}
 									</span>
 								</div>
 
@@ -1960,11 +1959,11 @@ export function MouseTab({
 									onClick={() => handleMouseSelectionModeChange("cursor")}
 								>
 									<div className="rovyl-visual-card-header">
-										<span className="rovyl-visual-card-title">Direct Tile Hover</span>
+										<span className="rovyl-visual-card-title">{m.directTileHover}</span>
 										<MousePointer size={15} className="rovyl-visual-card-icon" />
 									</div>
 									<span className="rovyl-visual-card-desc">
-										Only highlights a shortcut when the cursor is directly over its tile plate.
+										{m.directTileHoverDesc}
 									</span>
 								</div>
 							</div>
@@ -1972,8 +1971,8 @@ export function MouseTab({
 
 						<SettingRow
 							icon={Compass}
-							label="Spawn Position"
-							desc="Open centered under the mouse pointer or at the center of the monitor"
+							label={m.spawnPosition}
+							desc={m.spawnPositionDesc}
 						>
 							<select
 								className="settings-select"
@@ -1982,15 +1981,15 @@ export function MouseTab({
 									handleMousePlacementChange(e.target.value as "cursor" | "center")
 								}
 							>
-								<option value="cursor">Under Mouse Pointer</option>
-								<option value="center">Center of Screen</option>
+								<option value="cursor">{m.underMousePointer}</option>
+								<option value="center">{m.centerOfScreen}</option>
 							</select>
 						</SettingRow>
 
 						<SettingRow
 							icon={Monitor}
-							label="Target Display"
-							desc="Which monitor the radial wheel appears on"
+							label={m.targetDisplay}
+							desc={m.targetDisplayDesc}
 						>
 							<select
 								className="settings-select"
@@ -1999,15 +1998,15 @@ export function MouseTab({
 									handleMouseMonitorChange(e.target.value as "cursor" | "primary")
 								}
 							>
-								<option value="cursor">Follow Mouse Pointer</option>
-								<option value="primary">Primary Monitor Only</option>
+								<option value="cursor">{m.followMousePointer}</option>
+								<option value="primary">{m.primaryMonitorOnly}</option>
 							</select>
 						</SettingRow>
 
 						<SettingRow
 							icon={Hash}
-							label="1–9 Keyboard Quick Launch"
-							desc="Pressing number keys 1–9 while the wheel is open launches that slice"
+							label={m.quickLaunchKeys}
+							desc={m.quickLaunchKeysDesc}
 						>
 							<label className="toggle-switch">
 								<input
@@ -2021,8 +2020,8 @@ export function MouseTab({
 
 						<SettingRow
 							icon={Layers}
-							label="Workspace Peek on Hover"
-							desc="Hovering another workspace pill previews its items without losing your place"
+							label={m.workspacePeek}
+							desc={m.workspacePeekDesc}
 							divider={!mouseWorkspacePeek}
 						>
 							<label className="toggle-switch">
@@ -2039,8 +2038,8 @@ export function MouseTab({
 							<>
 								<SettingRow
 									icon={Compass}
-									label="Peek Layout"
-									desc="Preview style when hovering a workspace tab"
+									label={m.peekLayout}
+									desc={m.peekLayoutDesc}
 								>
 									<select
 										className="settings-select"
@@ -2051,14 +2050,14 @@ export function MouseTab({
 											)
 										}
 									>
-										<option value="fan">Compact Card</option>
-										<option value="ring">Expanded List</option>
+										<option value="fan">{m.compactCard}</option>
+										<option value="ring">{m.expandedList}</option>
 									</select>
 								</SettingRow>
 								<SettingRow
 									icon={Sliders}
-									label="Peek Hover Delay"
-									desc={`Show preview after ${mouseWorkspacePeekDelayMs} ms`}
+									label={m.peekHoverDelay}
+									desc={m.peekHoverDelayDesc(mouseWorkspacePeekDelayMs)}
 									divider={false}
 								>
 									<input
@@ -2081,8 +2080,8 @@ export function MouseTab({
 					<div className="setting-group">
 						<SettingRow
 							icon={Play}
-							label="Hands-Free Dwell Launch"
-							desc="Auto-trigger the aimed slice when holding still, without releasing or clicking"
+							label={m.dwellLaunch}
+							desc={m.dwellLaunchDesc}
 							divider={mouseInstantActivate === "dwell"}
 						>
 							<select
@@ -2092,8 +2091,8 @@ export function MouseTab({
 									handleMouseInstantActivateChange(e.target.value as "off" | "dwell")
 								}
 							>
-								<option value="off">Disabled</option>
-								<option value="dwell">Enabled (Dwell Ring)</option>
+								<option value="off">{m.dwellDisabled}</option>
+								<option value="dwell">{m.dwellEnabled}</option>
 							</select>
 						</SettingRow>
 
@@ -2101,8 +2100,8 @@ export function MouseTab({
 							<>
 								<SettingRow
 									icon={Hand}
-									label="Dwell Hold Time"
-									desc={`Trigger after holding aim for ${mouseInstantDwellMs} ms`}
+									label={m.dwellHoldTime}
+									desc={m.dwellHoldTimeDesc(mouseInstantDwellMs)}
 								>
 									<input
 										type="range"
@@ -2119,8 +2118,8 @@ export function MouseTab({
 
 								<SettingRow
 									icon={Compass}
-									label="Settle Sensitivity"
-									desc="How still the cursor must be before the dwell progress ring starts"
+									label={m.settleSensitivity}
+									desc={m.settleSensitivityDesc}
 									divider={false}
 								>
 									<select
@@ -2132,9 +2131,9 @@ export function MouseTab({
 											)
 										}
 									>
-										<option value="low">Strict (Low Jitter)</option>
-										<option value="medium">Balanced (Medium)</option>
-										<option value="high">Fast (High Tolerance)</option>
+										<option value="low">{m.sensitivityLow}</option>
+										<option value="medium">{m.sensitivityMedium}</option>
+										<option value="high">{m.sensitivityHigh}</option>
 									</select>
 								</SettingRow>
 							</>
@@ -2145,8 +2144,8 @@ export function MouseTab({
 					<div className="setting-group">
 						<SettingRow
 							icon={Shield}
-							label="Fullscreen Game Mode Protection"
-							desc="Automatically suppress the radial wheel while playing fullscreen games"
+							label={m.gameModeProtection}
+							desc={m.gameModeProtectionDesc}
 							divider={!mouseGameModeEnabled}
 						>
 							<label className="toggle-switch">
@@ -2163,8 +2162,8 @@ export function MouseTab({
 							<>
 								<SettingRow
 									icon={Monitor}
-									label="Protection Scope"
-									desc="Suppress in all fullscreen apps or only specific games"
+									label={m.protectionScope}
+									desc={m.protectionScopeDesc}
 								>
 									<select
 										className="settings-select"
@@ -2173,8 +2172,8 @@ export function MouseTab({
 											handleMouseGameModeScopeChange(e.target.value as "all" | "list")
 										}
 									>
-										<option value="all">All Fullscreen Applications</option>
-										<option value="list">Blocked Executables List Only</option>
+										<option value="all">{m.scopeAllFullscreen}</option>
+										<option value="list">{m.scopeBlockedList}</option>
 									</select>
 								</SettingRow>
 
@@ -2182,8 +2181,8 @@ export function MouseTab({
 									<>
 										<SettingRow
 											icon={Shield}
-											label="Auto-Detect Game Launchers"
-											desc="Automatically suppress in Steam, Epic Games, Riot, and Xbox games"
+											label={m.autoDetectGames}
+											desc={m.autoDetectGamesDesc}
 										>
 											<label className="toggle-switch">
 												<input
@@ -2197,8 +2196,8 @@ export function MouseTab({
 
 										<SettingRow
 											icon={Shield}
-											label="Blocked Executables"
-											desc="Comma-separated process names (e.g. csgo.exe, valorant.exe)"
+											label={m.blockedExecutables}
+											desc={m.blockedExecutablesDesc}
 											divider={false}
 										>
 											<input
@@ -2225,8 +2224,8 @@ export function MouseTab({
 				<div className="setting-group">
 					<SettingRow
 						icon={Volume2}
-						label="Synthesized Haptic Audio"
-						desc="Zero-latency WebAudio procedural sound cues on wheel open and slice hover"
+						label={m.hapticAudio}
+						desc={m.hapticAudioDesc}
 					>
 						<label className="toggle-switch">
 							<input
@@ -2242,8 +2241,8 @@ export function MouseTab({
 						<>
 							<SettingRow
 								icon={Volume2}
-								label="Master Volume"
-								desc={`Output level: ${mouseSoundVolume}%`}
+								label={m.masterVolume}
+								desc={m.masterVolumeDesc(mouseSoundVolume)}
 							>
 								<input
 									type="range"
@@ -2262,8 +2261,8 @@ export function MouseTab({
 
 							<SettingRow
 								icon={Sparkles}
-								label="Wheel Open Voice"
-								desc="Synthesizer voice played when the radial menu opens"
+								label={m.wheelOpenVoice}
+								desc={m.wheelOpenVoiceDesc}
 							>
 								<select
 									className="settings-select"
@@ -2274,10 +2273,10 @@ export function MouseTab({
 										if (isRadialSoundId(val)) playRadialSound(val);
 									}}
 								>
-									<option value="off">Silent (Off)</option>
+									<option value="off">{m.silentOff}</option>
 									{RADIAL_SOUNDS.map((s) => (
 										<option key={s.id} value={s.id}>
-											{s.name}
+											{m.radialSounds[s.id as keyof typeof m.radialSounds] ?? s.name}
 										</option>
 									))}
 								</select>
@@ -2285,8 +2284,8 @@ export function MouseTab({
 
 							<SettingRow
 								icon={Compass}
-								label="Slice Hover Voice"
-								desc="Synthesizer voice played as you sweep across slices"
+								label={m.sliceHoverVoice}
+								desc={m.sliceHoverVoiceDesc}
 							>
 								<select
 									className="settings-select"
@@ -2297,10 +2296,10 @@ export function MouseTab({
 										if (isRadialSoundId(val)) playRadialSound(val);
 									}}
 								>
-									<option value="off">Silent (Off)</option>
+									<option value="off">{m.silentOff}</option>
 									{RADIAL_SOUNDS.map((s) => (
 										<option key={s.id} value={s.id}>
-											{s.name}
+											{m.radialSounds[s.id as keyof typeof m.radialSounds] ?? s.name}
 										</option>
 									))}
 								</select>

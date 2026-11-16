@@ -31,14 +31,17 @@ import {
 	ChevronDown
 } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
+import { useI18n } from "../i18n";
 
 export interface WidgetConfig {
 	left: string[];
 	right: string[];
 }
 
+type WidgetId = "weather" | "battery" | "cpu" | "ram" | "disk" | "net";
+
 interface WidgetDef {
-	id: string;
+	id: WidgetId;
 	label: string;
 	icon: ComponentType<SVGProps<SVGSVGElement> & { size?: number; strokeWidth?: number }>;
 	color: string;
@@ -62,6 +65,7 @@ const MAX_PER_ZONE = 2;
 
 /* ── Draggable pool chip ── */
 function PoolChip({ id }: { id: string }) {
+	const { t } = useI18n();
 	const def = WIDGET_DEFS.find((w) => w.id === id)!;
 	const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id });
 	const Icon = def.icon;
@@ -73,7 +77,7 @@ function PoolChip({ id }: { id: string }) {
 			{...attributes}
 		>
 			<Icon size={12} strokeWidth={2} style={{ color: def.color }} />
-			<span>{def.label}</span>
+			<span>{t.notch.widgetLabels[def.id] ?? def.label}</span>
 		</div>
 	);
 }
@@ -94,6 +98,7 @@ function SortablePlacedChip({
 	onRemove: (id: string) => void;
 	onMove: (id: string, dir: -1 | 1) => void;
 }) {
+	const { t } = useI18n();
 	const def = WIDGET_DEFS.find((w) => w.id === id)!;
 	const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
 		id
@@ -116,7 +121,7 @@ function SortablePlacedChip({
 		>
 			<div {...attributes} {...listeners} className="widget-pill-drag-handle">
 				<Icon size={12} strokeWidth={2} style={{ color: def.color }} />
-				<span>{def.label}</span>
+				<span>{t.notch.widgetLabels[def.id] ?? def.label}</span>
 			</div>
 			<div className="widget-pill-btns">
 				{idx > 0 && (
@@ -129,12 +134,12 @@ function SortablePlacedChip({
 						<ChevronDown size={9} />
 					</button>
 				)}
-				<button className="widget-pill-btn" title="Swap side" onClick={() => onSwap(id)}>
+				<button className="widget-pill-btn" title={t.notch.widgetSwapSide} onClick={() => onSwap(id)}>
 					<ArrowLeftRight size={9} />
 				</button>
 				<button
 					className="widget-pill-btn widget-pill-btn--x"
-					title="Remove"
+					title={t.notch.widgetRemove}
 					onClick={() => onRemove(id)}
 				>
 					<X size={10} />
@@ -160,13 +165,16 @@ function DropZone({
 	onRemove: (id: string) => void;
 	onMove: (id: string, dir: -1 | 1) => void;
 }) {
+	const { t } = useI18n();
 	const { setNodeRef, isOver } = useDroppable({ id });
 	return (
 		<div
 			ref={setNodeRef}
 			className={`widget-config-zone ${isOver ? "widget-config-zone--over" : ""}`}
 		>
-			<span className="widget-config-side">{side === "left" ? "Left" : "Right"}</span>
+			<span className="widget-config-side">
+				{side === "left" ? t.notch.widgetLeftZone : t.notch.widgetRightZone}
+			</span>
 			<div className="widget-config-chips">
 				<SortableContext items={items} strategy={horizontalListSortingStrategy}>
 					{items.length > 0 ? (
@@ -182,7 +190,7 @@ function DropZone({
 							/>
 						))
 					) : (
-						<span className="widget-config-empty">Drop here</span>
+						<span className="widget-config-empty">{t.notch.widgetDropHere}</span>
 					)}
 				</SortableContext>
 			</div>
@@ -208,7 +216,7 @@ export function StatusWidgetConfig({ value, onChange }: StatusWidgetConfigProps)
 	const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
 	const allPlaced = new Set([...config.left, ...config.right]);
-	const pool = WIDGET_DEFS.filter((w) => !allPlaced.has(w.id)).map((w) => w.id);
+	const pool: string[] = WIDGET_DEFS.filter((w) => !allPlaced.has(w.id)).map((w) => w.id);
 
 	const emit = (next: WidgetConfig) => {
 		setConfig(next);
@@ -335,6 +343,7 @@ export function StatusWidgetConfig({ value, onChange }: StatusWidgetConfigProps)
 		[config, pool]
 	);
 
+	const { t } = useI18n();
 	const activeDef = activeId ? WIDGET_DEFS.find((w) => w.id === activeId) : null;
 
 	return (
@@ -377,7 +386,7 @@ export function StatusWidgetConfig({ value, onChange }: StatusWidgetConfigProps)
 				{activeDef ? (
 					<div className="widget-pill widget-pill--dragging">
 						<activeDef.icon size={12} strokeWidth={2} style={{ color: activeDef.color }} />
-						<span>{activeDef.label}</span>
+						<span>{t.notch.widgetLabels[activeDef.id] ?? activeDef.label}</span>
 					</div>
 				) : null}
 			</DragOverlay>

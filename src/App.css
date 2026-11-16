@@ -2384,3 +2384,13 @@ img {
 	font-size: 11px;
 	opacity: 0.6;
 }
+
+[dir="rtl"] .slider-track-premium,
+[dir="rtl"] .cc-classic-slider-track,
+[dir="rtl"] .toggle-switch {
+	direction: ltr;
+}
+
+[dir="rtl"] .cc-pill-more svg {
+	transform: scaleX(-1);
+}

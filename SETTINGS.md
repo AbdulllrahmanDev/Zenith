@@ -178,6 +178,7 @@ Example:
 
 | Key                            | Type                 | Default   | Description                                                                                          |
 | ------------------------------ | -------------------- | --------- | ---------------------------------------------------------------------------------------------------- |
+| `zenith-language`               | `"en"` / `"ar"`      | `"en"`    | Application UI language (`"en"` for English, `"ar"` for Arabic).                                     |
 | `zenith-scale`                  | float string         | `"1.0"`   | UI scale factor (0.8 to 1.3). Changing this re-registers AppBars to resize the reserved screen area. |
 | `zenith-low-battery-threshold`  | integer string       | `"20"`    | Battery percentage that triggers the low-battery alert pulse (5 to 50, step 5).                      |
 | `zenith-auto-update`            | `"true"` / `"false"` | `"false"` | Check for and download updates automatically on startup.                                             |

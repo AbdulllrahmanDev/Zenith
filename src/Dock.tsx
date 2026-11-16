@@ -10,6 +10,7 @@ import { EdgeSurface } from "./components/EdgeSurface";
 import { initTheme } from "./theme";
 import { useSettingsSync } from "./hooks/useSettingsSync";
 import { reloadIfMirrorWasStale } from "./hooks/settingsMirror";
+import { useI18n } from "./i18n";
 
 import {
 	matchesPackagedExecutable,
@@ -150,11 +151,12 @@ const ITEM_EXIT = { opacity: 0, scale: 0 };
 
 // One dot per open window, capped at three.
 function WindowDots({ count, background }: { count: number; background?: boolean }) {
+	const { t } = useI18n();
 	return (
 		<div
 			className="window-dots"
 			role="img"
-			aria-label={background ? "Running in background" : `${count} open windows`}
+			aria-label={background ? t.dockUi.runningInBg : t.dockUi.openWindowsCount(count)}
 		>
 			{Array.from({ length: background ? 1 : Math.min(Math.max(count, 1), 3) }, (_, i) => (
 				<div key={i} className={`active-indicator${background ? " background-indicator" : ""}`} />
@@ -164,6 +166,7 @@ function WindowDots({ count, background }: { count: number; background?: boolean
 }
 
 const Dock = memo(function Dock() {
+	const { t, dir } = useI18n();
 	useEffect(() => {
 		return initTheme();
 	}, []);
@@ -655,7 +658,7 @@ const Dock = memo(function Dock() {
 				});
 				setCustomIcons((prev) => ({ ...prev, [target]: newIcon }));
 			} catch (err) {
-				const msg = typeof err === "string" ? err : "Failed to set icon";
+				const msg = typeof err === "string" ? err : t.dockUi.failedSetIcon;
 				if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
 				setToast(msg);
 				toastTimerRef.current = setTimeout(() => setToast(null), 4000);
@@ -769,7 +772,7 @@ const Dock = memo(function Dock() {
 
 	const showActionError = (error: unknown) => {
 		if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-		setToast(typeof error === "string" ? error : "Could not complete this action.");
+		setToast(typeof error === "string" ? error : t.dockUi.actionError);
 		toastTimerRef.current = setTimeout(() => setToast(null), 5000);
 	};
 
@@ -1061,7 +1064,7 @@ const Dock = memo(function Dock() {
 
 		const pinned: AppInfo[] = [
 			{
-				name: "Start",
+				name: t.dockUi.start,
 				path: "start",
 				icon: null,
 				is_running: false,
@@ -1094,7 +1097,7 @@ const Dock = memo(function Dock() {
 			);
 
 		return [...pinned, ...unpinned];
-	}, [pinnedApps, activeApps, activeOrder, dockIsolation, currentMonitorId]);
+	}, [pinnedApps, activeApps, activeOrder, dockIsolation, currentMonitorId, t]);
 
 	const startItem = useMemo(
 		() => dockItems.find((i) => i.path === "start") as AppInfo,
@@ -1376,7 +1379,7 @@ const Dock = memo(function Dock() {
 										>
 											<img
 												src={resolveStartIcon(startIcon)}
-												alt="Start"
+												alt={t.dockUi.start}
 												className="zenith-icon-img"
 												style={
 													startIcon.startsWith("custom:") ? { borderRadius: "8px" } : undefined
@@ -1406,7 +1409,7 @@ const Dock = memo(function Dock() {
 										}}
 									>
 										{(!dockPreviewEnabled || hoveredApp === "task-view") && (
-											<div className="tooltip">Task View</div>
+											<div className="tooltip">{t.dockUi.taskView}</div>
 										)}
 										<motion.div
 											className="dock-icon"
@@ -1517,7 +1520,7 @@ const Dock = memo(function Dock() {
 																			<button
 																				className="preview-close-btn"
 																				onClick={(e) => handleClosePreview(e, prev.hwnd)}
-																				title="Close Window"
+																				title={t.dockUi.closeWindow}
 																			>
 																				<svg
 																					width="10"
@@ -1682,7 +1685,7 @@ const Dock = memo(function Dock() {
 																	<button
 																		className="preview-close-btn"
 																		onClick={(e) => handleClosePreview(e, prev.hwnd)}
-																		title="Close Window"
+																		title={t.dockUi.closeWindow}
 																	>
 																		<svg
 																			width="10"
@@ -1786,6 +1789,7 @@ const Dock = memo(function Dock() {
 				<div
 					ref={menuRef}
 					className="context-menu"
+					dir={dir}
 					style={{
 						left: (menuPos?.left ?? contextMenu.x) / scale,
 						top: (menuPos?.top ?? contextMenu.y) / scale,
@@ -1805,18 +1809,18 @@ const Dock = memo(function Dock() {
 						>
 							{(contextMenu.app
 								? [
-										["installed-apps", "Installed Apps"],
-										["power-options", "Power Options"],
-										["device-manager", "Device Manager"],
-										["network-connections", "Network Connections"],
-										["disk-management", "Disk Management"],
-										["computer-management", "Computer Management"],
-										["task-manager", "Task Manager"],
-										["settings", "Settings"]
+										["installed-apps", t.dockUi.startMenu.installedApps],
+										["power-options", t.dockUi.startMenu.powerOptions],
+										["device-manager", t.dockUi.startMenu.deviceManager],
+										["network-connections", t.dockUi.startMenu.networkConnections],
+										["disk-management", t.dockUi.startMenu.diskManagement],
+										["computer-management", t.dockUi.startMenu.computerManagement],
+										["task-manager", t.dockUi.startMenu.taskManager],
+										["settings", t.dockUi.startMenu.settings]
 									]
 								: [
-										["task-manager", "Task Manager"],
-										["taskbar-settings", "Taskbar Settings"]
+										["task-manager", t.dockUi.startMenu.taskManager],
+										["taskbar-settings", t.dockUi.startMenu.taskbarSettings]
 									]
 							).map(([action, label]) => (
 								<div
@@ -1843,11 +1847,11 @@ const Dock = memo(function Dock() {
 									handleExtraClick(extra);
 								}}
 							>
-								Open
+								{t.dockUi.menu.open}
 							</div>
 							{contextMenu.extra.kind === "drive" && contextMenu.extra.removable && (
 								<div className="menu-item" onClick={() => ejectExtra(contextMenu.extra!)}>
-									Eject
+									{t.dockUi.menu.eject}
 								</div>
 							)}
 							{contextMenu.extra.kind === "drive" && (
@@ -1857,7 +1861,7 @@ const Dock = memo(function Dock() {
 										className="menu-item quit"
 										onClick={() => hideDriveFromDock(contextMenu.extra!)}
 									>
-										Remove from Dock
+										{t.dockUi.menu.removeFromDock}
 									</div>
 								</>
 							)}
@@ -1868,7 +1872,7 @@ const Dock = memo(function Dock() {
 										className="menu-item quit"
 										onClick={() => removeExtraFromDock(contextMenu.extra!)}
 									>
-										Remove from Dock
+										{t.dockUi.menu.removeFromDock}
 									</div>
 								</>
 							)}
@@ -1882,17 +1886,17 @@ const Dock = memo(function Dock() {
 									openTaskView();
 								}}
 							>
-								Open Task View
+								{t.dockUi.menu.openTaskView}
 							</div>
 							<div className="menu-divider" />
 							<div className="menu-item" onClick={hideTaskView}>
-								Hide Task View
+								{t.dockUi.menu.hideTaskView}
 							</div>
 						</>
 					) : contextMenu.app ? (
 						<>
 							<div className="menu-item" onClick={() => togglePin(contextMenu.app!)}>
-								{contextMenu.app.is_pinned ? "Unpin from Dock" : "Pin to Dock"}
+								{contextMenu.app.is_pinned ? t.dockUi.menu.unpinFromDock : t.dockUi.menu.pinToDock}
 							</div>
 							{contextMenu.app.is_pinned && contextMenu.app.path !== "start" && (
 								<>
@@ -1911,7 +1915,7 @@ const Dock = memo(function Dock() {
 											}, 50);
 										}}
 									>
-										Change Icon...
+										{t.dockUi.menu.changeIcon}
 									</div>
 									{(() => {
 										const isHost = isBrowserHost(contextMenu.app!.path);
@@ -1926,7 +1930,7 @@ const Dock = memo(function Dock() {
 													closeMenu();
 												}}
 											>
-												Reset Icon
+												{t.dockUi.menu.resetIcon}
 											</div>
 										) : null;
 									})()}
@@ -1940,14 +1944,14 @@ const Dock = memo(function Dock() {
 									closeMenu();
 								}}
 							>
-								Add App to Dock...
+								{t.dockUi.menu.addAppToDock}
 							</div>
 							<div
 								className="menu-item has-submenu"
 								onMouseEnter={() => setActiveSubmenu("zenith")}
 								onMouseLeave={() => setActiveSubmenu(null)}
 							>
-								Zenith Options
+								{t.dockUi.menu.zenithOptions}
 								<span className="submenu-arrow">▶</span>
 								<div className="submenu">
 									<div
@@ -1957,10 +1961,10 @@ const Dock = memo(function Dock() {
 											closeMenu();
 										}}
 									>
-										Open Settings
+										{t.dockUi.menu.openSettings}
 									</div>
 									<div className="menu-item" onClick={() => invoke("restart_zenith")}>
-										Restart Zenith
+										{t.dockUi.menu.restartZenith}
 									</div>
 									<div
 										className="menu-item"
@@ -1969,11 +1973,11 @@ const Dock = memo(function Dock() {
 											closeMenu();
 										}}
 									>
-										Clear Icon Cache
+										{t.dockUi.menu.clearIconCache}
 									</div>
 									<div className="menu-divider" />
 									<div className="menu-item quit" onClick={() => invoke("quit_zenith")}>
-										Quit Zenith
+										{t.dockUi.menu.quitZenith}
 									</div>
 								</div>
 							</div>
@@ -1988,7 +1992,7 @@ const Dock = memo(function Dock() {
 										<div className="menu-divider" />
 										{app.tray_ids?.map((id, index, ids) => (
 											<div key={id} className="menu-item" onClick={() => void openTrayMenu(id)}>
-												{ids.length > 1 ? `Tray menu ${index + 1}` : "App tray menu"}
+												{t.dockUi.menu.trayMenuCount(index, ids.length)}
 											</div>
 										))}
 										{canOpenNew && (
@@ -1999,7 +2003,7 @@ const Dock = memo(function Dock() {
 													closeMenu();
 												}}
 											>
-												Open New Instance
+												{t.dockUi.menu.openNewInstance}
 											</div>
 										)}
 									</>
@@ -2022,10 +2026,9 @@ const Dock = memo(function Dock() {
 											closeMenu();
 										}}
 									>
-										Close{" "}
 										{contextMenu.app.all_hwnds && contextMenu.app.all_hwnds.length > 1
-											? "all windows"
-											: "window"}
+											? t.dockUi.menu.closeAllWindows(contextMenu.app.all_hwnds.length)
+											: t.dockUi.menu.closeWindow}
 									</div>
 								</>
 							)}
@@ -2039,14 +2042,14 @@ const Dock = memo(function Dock() {
 									closeMenu();
 								}}
 							>
-								Add App to Dock...
+								{t.dockUi.menu.addAppToDock}
 							</div>
 							<div
 								className="menu-item has-submenu"
 								onMouseEnter={() => setActiveSubmenu("zenith")}
 								onMouseLeave={() => setActiveSubmenu(null)}
 							>
-								Zenith Options
+								{t.dockUi.menu.zenithOptions}
 								<span className="submenu-arrow">▶</span>
 								<div className="submenu">
 									<div
@@ -2056,10 +2059,10 @@ const Dock = memo(function Dock() {
 											closeMenu();
 										}}
 									>
-										Open Settings
+										{t.dockUi.menu.openSettings}
 									</div>
 									<div className="menu-item" onClick={() => invoke("restart_zenith")}>
-										Restart Zenith
+										{t.dockUi.menu.restartZenith}
 									</div>
 									<div
 										className="menu-item"
@@ -2068,11 +2071,11 @@ const Dock = memo(function Dock() {
 											closeMenu();
 										}}
 									>
-										Clear Icon Cache
+										{t.dockUi.menu.clearIconCache}
 									</div>
 									<div className="menu-divider" />
 									<div className="menu-item quit" onClick={() => invoke("quit_zenith")}>
-										Quit Zenith
+										{t.dockUi.menu.quitZenith}
 									</div>
 								</div>
 							</div>
@@ -2110,6 +2113,7 @@ const Dock = memo(function Dock() {
 				{toast && (
 					<motion.div
 						className="dock-toast"
+						dir={dir}
 						initial={{ opacity: 0, y: 10 }}
 						animate={{ opacity: 1, y: 0 }}
 						exit={{ opacity: 0, y: 10 }}
@@ -2141,6 +2145,7 @@ function AddAppPopup({
 	pinned: AppInfo[];
 	bottom: number;
 }) {
+	const { t, dir } = useI18n();
 	const [apps, setApps] = useState<AppInfo[]>([]);
 	const [search, setSearch] = useState("");
 	const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -2190,8 +2195,8 @@ function AddAppPopup({
 				)
 				.slice(0, 60);
 			const out: { title: string | null; items: AppInfo[] }[] = [];
-			if (runningSuggestions.length > 0) out.push({ title: "Running", items: runningSuggestions });
-			if (rest.length > 0) out.push({ title: "All apps", items: rest });
+			if (runningSuggestions.length > 0) out.push({ title: t.dockUi.popup.running, items: runningSuggestions });
+			if (rest.length > 0) out.push({ title: t.dockUi.popup.allApps, items: rest });
 			return out;
 		}
 		const starts: AppInfo[] = [];
@@ -2208,7 +2213,7 @@ function AddAppPopup({
 		starts.sort(byName);
 		contains.sort(byName);
 		return [{ title: null, items: [...starts, ...contains].slice(0, 50) }];
-	}, [apps, debouncedSearch, pinned, runningSuggestions]);
+	}, [apps, debouncedSearch, pinned, runningSuggestions, t]);
 
 	// Flat selectable list; section headers are not selectable.
 	const flat = useMemo(() => sections.flatMap((s) => s.items), [sections]);
@@ -2317,6 +2322,7 @@ function AddAppPopup({
 			<motion.div
 				ref={containerRef}
 				className="add-app-popup"
+				dir={dir}
 				style={{ transformOrigin: "bottom center" }}
 				initial={{ opacity: 0, scaleY: 0 }}
 				animate={{ opacity: 1, scaleY: 1 }}
@@ -2346,7 +2352,7 @@ function AddAppPopup({
 						ref={inputRef}
 						type="text"
 						className="popup-search-input"
-						placeholder="Search apps..."
+						placeholder={t.dockUi.popup.searchPlaceholder}
 						value={search}
 						onChange={(e) => setSearch(e.target.value)}
 					/>
@@ -2403,8 +2409,8 @@ function AddAppPopup({
 					) : (
 						<div className="popup-empty">
 							{debouncedSearch.trim()
-								? "No results"
-								: "Running apps show up here — search to pin anything else"}
+								? t.dockUi.popup.noResults
+								: t.dockUi.popup.emptyHint}
 						</div>
 					)}
 				</div>

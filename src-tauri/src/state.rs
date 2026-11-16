@@ -104,3 +104,11 @@ pub static SETTINGS_CACHE: OnceLock<Mutex<HashMap<String, serde_json::Value>>> =
 /// Serialize read/modify/write settings commands from all four webviews.
 pub static SETTINGS_FILE_LOCK: Mutex<()> = Mutex::new(());
 pub static PINNED_FILE_LOCK: Mutex<()> = Mutex::new(());
+
+pub struct TrayMenuHandles {
+    pub settings: tauri::menu::MenuItem<tauri::Wry>,
+    pub restart: tauri::menu::MenuItem<tauri::Wry>,
+    pub quit: tauri::menu::MenuItem<tauri::Wry>,
+}
+
+pub static TRAY_MENU_HANDLES: OnceLock<TrayMenuHandles> = OnceLock::new();
