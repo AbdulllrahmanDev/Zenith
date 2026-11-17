@@ -9,6 +9,7 @@ mod services;
 mod shelf;
 mod shelf_preview;
 mod state;
+mod tasks;
 mod translator;
 mod tray;
 mod types;
@@ -253,7 +254,22 @@ fn main() {
             translator_save_card_position,
             translator_copy_text,
             translator_trigger_action,
-            translator_get_initial_state
+            translator_get_initial_state,
+            set_notch_keyboard_focus,
+            tasks_get_snapshot,
+            tasks_add_task,
+            tasks_toggle_task,
+            tasks_update_task,
+            tasks_delete_task,
+            tasks_add_note,
+            tasks_update_note,
+            tasks_delete_note,
+            tasks_sync_now,
+            tasks_google_get_status,
+            tasks_google_start_auth,
+            tasks_google_disconnect,
+            tasks_test_notion,
+            tasks_open_settings
         ])
         .setup(|app| {
             init_taskbar_marker(app.handle());

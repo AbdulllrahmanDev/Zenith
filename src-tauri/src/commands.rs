@@ -5133,6 +5133,164 @@ pub fn translator_trigger_action(app: AppHandle, action: String) {
     }
 }
 
+/// Temporarily toggles `WS_EX_NOACTIVATE` and foreground focus on a notch window
+/// so text inputs inside the notch can receive keyboard and IME input (e.g. Arabic)
+/// without breaking non-activating hover behavior when not editing.
+#[tauri::command]
+pub fn set_notch_keyboard_focus(window: tauri::WebviewWindow, focused: bool) {
+    let Ok(hwnd) = window.hwnd() else {
+        return;
+    };
+    unsafe {
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowLongPtrW, SetForegroundWindow, SetWindowLongPtrW, SetWindowPos,
+            GWL_EXSTYLE, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+            WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        };
+        let ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as usize;
+        if focused {
+            let new_ex = (ex & !(WS_EX_NOACTIVATE.0 as usize)) | WS_EX_TOOLWINDOW.0 as usize;
+            if new_ex != ex {
+                SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_ex as isize);
+                let _ = SetWindowPos(
+                    hwnd,
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                );
+            }
+            let _ = SetForegroundWindow(hwnd);
+            let _ = window.set_focus();
+        } else {
+            let new_ex = ex | WS_EX_NOACTIVATE.0 as usize | WS_EX_TOOLWINDOW.0 as usize;
+            if new_ex != ex {
+                SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_ex as isize);
+                let _ = SetWindowPos(
+                    hwnd,
+                    None,
+                    0,
+                    0,
+                    0,
+                    0,
+                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                );
+            }
+        }
+    }
+}
+
+#[tauri::command]
+pub fn tasks_get_snapshot(app: AppHandle) -> crate::tasks::TasksSnapshot {
+    crate::tasks::get_snapshot(&app)
+}
+
+#[tauri::command]
+pub fn tasks_add_task(
+    app: AppHandle,
+    title: String,
+    notes: String,
+    source: Option<String>,
+) -> Result<crate::tasks::TasksSnapshot, String> {
+    crate::tasks::add_task(&app, title, notes, source)
+}
+
+#[tauri::command]
+pub fn tasks_toggle_task(
+    app: AppHandle,
+    id: String,
+) -> Result<crate::tasks::TasksSnapshot, String> {
+    crate::tasks::toggle_task(&app, id)
+}
+
+#[tauri::command]
+pub fn tasks_update_task(
+    app: AppHandle,
+    id: String,
+    title: String,
+    notes: String,
+) -> Result<crate::tasks::TasksSnapshot, String> {
+    crate::tasks::update_task(&app, id, title, notes)
+}
+
+#[tauri::command]
+pub fn tasks_delete_task(
+    app: AppHandle,
+    id: String,
+) -> Result<crate::tasks::TasksSnapshot, String> {
+    crate::tasks::delete_task(&app, id)
+}
+
+#[tauri::command]
+pub fn tasks_add_note(
+    app: AppHandle,
+    title: String,
+    content: String,
+    sync_to_notion: bool,
+) -> Result<crate::tasks::TasksSnapshot, String> {
+    crate::tasks::add_note(&app, title, content, sync_to_notion)
+}
+
+#[tauri::command]
+pub fn tasks_update_note(
+    app: AppHandle,
+    id: String,
+    title: String,
+    content: String,
+    trigger_sync: bool,
+) -> Result<crate::tasks::TasksSnapshot, String> {
+    crate::tasks::update_note(&app, id, title, content, trigger_sync)
+}
+
+#[tauri::command]
+pub fn tasks_delete_note(
+    app: AppHandle,
+    id: String,
+) -> Result<crate::tasks::TasksSnapshot, String> {
+    crate::tasks::delete_note(&app, id)
+}
+
+#[tauri::command]
+pub async fn tasks_sync_now(app: AppHandle) -> Result<crate::tasks::TasksSnapshot, String> {
+    crate::tasks::sync_now(app).await
+}
+
+#[tauri::command]
+pub fn tasks_google_get_status(app: AppHandle) -> crate::tasks::GoogleAuthStatus {
+    crate::tasks::get_google_auth_status(&app)
+}
+
+#[tauri::command]
+pub async fn tasks_google_start_auth(
+    app: AppHandle,
+    client_id: String,
+    client_secret: String,
+) -> Result<crate::tasks::GoogleAuthStatus, String> {
+    crate::tasks::google_start_auth(app, client_id, client_secret).await
+}
+
+#[tauri::command]
+pub fn tasks_google_disconnect(app: AppHandle) -> Result<crate::tasks::GoogleAuthStatus, String> {
+    crate::tasks::google_disconnect(&app)
+}
+
+#[tauri::command]
+pub async fn tasks_test_notion(
+    token: String,
+    tasks_db: String,
+    notes_id: String,
+) -> Result<crate::tasks::NotionTestResult, String> {
+    crate::tasks::test_notion(token, tasks_db, notes_id).await
+}
+
+#[tauri::command]
+pub fn tasks_open_settings(app: AppHandle) {
+    open_settings_window(app.clone());
+    let _ = app.emit_to("settings", "open-settings-tab", "tasks");
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LocalizedUiStrings {
     pub settings_window_title: &'static str,

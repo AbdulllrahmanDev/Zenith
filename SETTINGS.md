@@ -258,10 +258,14 @@ with open(path, 'w') as f: json.dump(settings, f)
 | --- | --- | --- | --- |
 | `zenith-translator-enabled` | boolean string | `"true"` | Enable or disable global translator hotkeys |
 | `zenith-translator-engine` | `"cloud"` \| `"local"` | `"cloud"` | AI backend (`cloud` API or offline `local` GGUF model) |
-| `zenith-translator-provider` | `"gemini"` \| `"groq"` \| `"openai"` | `"gemini"` | Cloud API provider |
+| `zenith-translator-provider` | `"gemini"` \| `"groq"` \| `"openai"` \| `"custom"` | `"gemini"` | Cloud API provider |
 | `zenith-translator-api-key` | string | `""` | Google Gemini API key |
 | `zenith-translator-groq-api-key` | string | `""` | Groq API key |
 | `zenith-translator-openai-api-key` | string | `""` | OpenAI API key |
+| `zenith-translator-custom-api-url` | string | `""` | Custom API base URL or full endpoint URL |
+| `zenith-translator-custom-api-key` | string | `""` | Custom API key (optional for local servers) |
+| `zenith-translator-custom-model` | string | `""` | Model identifier for the custom API |
+| `zenith-translator-custom-api-format` | `"openai"` \| `"anthropic"` \| `"gemini"` | `"openai"` | Wire protocol used by the custom API |
 | `zenith-translator-local-model-id` | string | `"qwen2.5-1.5b-instruct-q4_k_m"` | Offline local GGUF model identifier |
 | `zenith-translator-target-language` | string | `"Arabic"` | Target language for quick card and screen overlays |
 | `zenith-translator-output-mode` | `"full"` \| `"explain"` \| `"summarize"` | `"full"` | Quick processing mode |
@@ -279,6 +283,30 @@ with open(path, 'w') as f: json.dump(settings, f)
 | `zenith-translator-custom-prompt-inplace` | string | `""` | Optional custom system prompt for in-place English translation |
 | `zenith-translator-custom-prompt-quick` | string | `""` | Optional custom system prompt for quick card / overlay translation |
 | `zenith-translator-card-pos` | JSON string | `""` | Saved floating card screen coordinates (`{"x":0,"y":0}`) |
+
+### Tasks & Notes (`المهام والملاحظات`)
+
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| `zenith-tasks-enabled` | boolean string | `"true"` | Enable or disable the Tasks & Notes panel in the Notch |
+| `zenith-tasks-default-tab` | `"tasks"` \| `"notes"` \| `"remember"` | `"tasks"` | Initial sub-tab inside the Tasks & Notes notch panel |
+| `zenith-tasks-last-tab` | `"tasks"` \| `"notes"` | `"tasks"` | Last sub-tab remembered when `zenith-tasks-default-tab` is `"remember"` |
+| `zenith-tasks-show-tasks` | boolean string | `"true"` | Show the Tasks switcher icon on the left rail |
+| `zenith-tasks-show-notes` | boolean string | `"true"` | Show the Notes switcher icon on the left rail |
+| `zenith-tasks-show-quick-add` | boolean string | `"true"` | Show the quick-add input bar at the top of Tasks |
+| `zenith-tasks-show-completed` | boolean string | `"true"` | Show completed tasks below active tasks |
+| `zenith-tasks-show-task-notes` | boolean string | `"true"` | Display optional task details/notes subtext |
+| `zenith-tasks-show-source-badge` | boolean string | `"true"` | Display Local/Google/Notion source badges |
+| `zenith-tasks-density` | `"comfortable"` \| `"compact"` | `"comfortable"` | Spacing density for task rows |
+| `zenith-tasks-default-source` | `"auto"` \| `"local"` \| `"google"` \| `"notion"` | `"auto"` | Default destination for newly created tasks |
+| `zenith-tasks-auto-sync` | boolean string | `"true"` | Automatically sync when opening the panel and periodically |
+| `zenith-tasks-sync-interval` | integer string | `"120"` | Background sync interval in seconds |
+| `zenith-tasks-notion-token` | string | `""` | Notion internal integration token |
+| `zenith-tasks-notion-tasks-db` | string | `""` | Notion Tasks database ID or URL |
+| `zenith-tasks-notion-notes-db` | string | `""` | Notion Notes database or page ID / URL |
+| `zenith-tasks-google-client-id` | string | `""` | Google OAuth 2.0 Desktop Client ID |
+| `zenith-tasks-google-client-secret` | string | `""` | Google OAuth 2.0 Desktop Client Secret |
+| `zenith-tasks-google-list-id` | string | `"@default"` | Selected Google Tasks list ID |
 - The `useSettingsSync` hook auto-converts `"true"` / `"false"` strings to booleans.
 - `auto-hide` mode values in `zenith-dock-mode` and `zenith-notch-mode` are legacy aliases for `smart` — they are mapped automatically.
 - Changing `zenith-scale` triggers AppBar re-registration to adjust reserved screen space.

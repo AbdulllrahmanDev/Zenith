@@ -114,8 +114,30 @@ function TranslatorCardApp() {
 			onMouseEnter={() => setHovered(true)}
 			onMouseLeave={() => setHovered(false)}
 		>
-			<div className="tr-card-glow" aria-hidden="true" />
-			<div className={`tr-card ${data.error ? "is-error" : ""}`} dir="rtl">
+			<div className={`tr-card ${data.error ? "is-error" : ""}`}>
+				<div className="tr-card-topbar" dir="ltr" onMouseDown={startDrag}>
+					<div className="tr-card-actions">
+						<button
+							type="button"
+							className={`tr-card-icon-btn ${copied ? "copied" : ""}`}
+							onClick={handleCopy}
+							title={copied ? "تم النسخ" : "نسخ"}
+							aria-label={copied ? "تم النسخ" : "نسخ"}
+						>
+							{copied ? <Check size={14} strokeWidth={2.4} /> : <Copy size={14} />}
+						</button>
+						<button
+							type="button"
+							className="tr-card-icon-btn tr-card-close-btn"
+							onClick={() => invoke("translator_close_card").catch(() => {})}
+							title="إغلاق"
+							aria-label="إغلاق"
+						>
+							<X size={15} />
+						</button>
+					</div>
+				</div>
+
 				<div className="tr-card-body-wrap" onMouseDown={startDrag}>
 					<div
 						className={`tr-card-body tr-card-body-selectable ${data.error ? "error" : ""}`}
@@ -123,33 +145,6 @@ function TranslatorCardApp() {
 						dir="auto"
 					>
 						{data.text}
-					</div>
-				</div>
-
-				<div className="tr-card-footer" onMouseDown={startDrag}>
-					<div className="tr-card-title-wrap">
-						<span className="tr-card-accent-dot" />
-						<span className="tr-card-title-text">{data.title}</span>
-					</div>
-					<div className="tr-card-actions">
-						<button
-							type="button"
-							className="tr-card-ghost-btn"
-							onClick={() => invoke("translator_close_card").catch(() => {})}
-							title="إغلاق"
-							aria-label="إغلاق"
-						>
-							<X size={13} />
-						</button>
-						<button
-							type="button"
-							className={`tr-card-primary-btn ${copied ? "copied" : ""}`}
-							onClick={handleCopy}
-							title={copied ? "تم النسخ" : "نسخ"}
-						>
-							{copied ? <Check size={13} strokeWidth={2.5} /> : <Copy size={12} />}
-							<span>{copied ? "تم النسخ" : "نسخ"}</span>
-						</button>
 					</div>
 				</div>
 

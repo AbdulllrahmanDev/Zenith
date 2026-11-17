@@ -48,8 +48,9 @@ interface NotchTabProps {
 	toggleCalendar: () => void;
 	notchRememberPanel: boolean;
 	toggleNotchRememberPanel: () => void;
-	notchDefaultPanel: "calendar" | "command-center" | "prayer";
-	changeNotchDefaultPanel: (panel: "calendar" | "command-center" | "prayer") => void;
+	notchDefaultPanel: "calendar" | "command-center" | "prayer" | "tasks";
+	changeNotchDefaultPanel: (panel: "calendar" | "command-center" | "prayer" | "tasks") => void;
+	tasksEnabled: boolean;
 	prayerEnabled: boolean;
 	togglePrayer: () => void;
 	prayerLocationMode: "auto" | "manual";
@@ -121,6 +122,7 @@ export function NotchTab({
 	toggleNotchRememberPanel,
 	notchDefaultPanel,
 	changeNotchDefaultPanel,
+	tasksEnabled,
 	prayerEnabled,
 	togglePrayer,
 	prayerLocationMode,
@@ -342,12 +344,15 @@ export function NotchTab({
 							className="settings-select"
 							value={notchDefaultPanel}
 							onChange={(e) =>
-								changeNotchDefaultPanel(e.target.value as "calendar" | "command-center" | "prayer")
+								changeNotchDefaultPanel(
+									e.target.value as "calendar" | "command-center" | "prayer" | "tasks"
+								)
 							}
 						>
 							<option value="calendar" disabled={!calendarEnabled}>{n.panelCalendar}</option>
 							<option value="command-center">{n.panelCommandCenter}</option>
 							<option value="prayer" disabled={!prayerEnabled}>{n.panelPrayer}</option>
+							<option value="tasks" disabled={!tasksEnabled}>{n.panelTasks}</option>
 						</select>
 					</SettingRow>
 				)}

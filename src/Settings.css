@@ -3536,6 +3536,48 @@ input:checked + .slider:before {
 	min-width: 0;
 }
 
+.tr-custom-grid {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.tr-custom-row {
+	display: flex;
+	align-items: flex-end;
+	gap: 8px;
+	flex-wrap: wrap;
+}
+
+.tr-custom-field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.tr-custom-field-grow {
+	flex: 1;
+	min-width: 220px;
+}
+
+.tr-custom-label {
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.65));
+}
+
+.tr-custom-format-select {
+	min-width: 148px;
+	height: 27px;
+	text-align: left;
+}
+
+.tr-api-hint {
+	font-size: 11px;
+	line-height: 1.45;
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.55));
+}
+
 .tr-icon-btn {
 	padding: 7px 10px;
 	display: inline-flex;

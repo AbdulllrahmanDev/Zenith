@@ -81,10 +81,10 @@ export function useSettings() {
 		() => (localStorage.getItem("zenith-notch-remember-panel") ??
 			localStorage.getItem("zenith-notch-click-to-open")) !== "false"
 	);
-	const [notchDefaultPanel, setNotchDefaultPanel] = useState<"calendar" | "command-center" | "prayer">(
+	const [notchDefaultPanel, setNotchDefaultPanel] = useState<"calendar" | "command-center" | "prayer" | "tasks">(
 		() => {
 			const s = localStorage.getItem("zenith-notch-default-panel");
-			if (s === "command-center" || s === "prayer") return s;
+			if (s === "command-center" || s === "prayer" || s === "tasks") return s;
 			return "calendar";
 		}
 	);
@@ -300,9 +300,9 @@ export function useSettings() {
 	const [translatorEngine, setTranslatorEngine] = useState<"cloud" | "local">(() =>
 		localStorage.getItem("zenith-translator-engine") === "local" ? "local" : "cloud"
 	);
-	const [translatorProvider, setTranslatorProvider] = useState<"gemini" | "groq" | "openai">(() => {
+	const [translatorProvider, setTranslatorProvider] = useState<"gemini" | "groq" | "openai" | "custom">(() => {
 		const p = localStorage.getItem("zenith-translator-provider");
-		return p === "groq" || p === "openai" ? p : "gemini";
+		return p === "groq" || p === "openai" || p === "custom" ? p : "gemini";
 	});
 	const [translatorApiKey, setTranslatorApiKey] = useState(
 		() => localStorage.getItem("zenith-translator-api-key") || ""
@@ -313,6 +313,19 @@ export function useSettings() {
 	const [translatorOpenaiApiKey, setTranslatorOpenaiApiKey] = useState(
 		() => localStorage.getItem("zenith-translator-openai-api-key") || ""
 	);
+	const [translatorCustomApiUrl, setTranslatorCustomApiUrl] = useState(
+		() => localStorage.getItem("zenith-translator-custom-api-url") || ""
+	);
+	const [translatorCustomApiKey, setTranslatorCustomApiKey] = useState(
+		() => localStorage.getItem("zenith-translator-custom-api-key") || ""
+	);
+	const [translatorCustomModel, setTranslatorCustomModel] = useState(
+		() => localStorage.getItem("zenith-translator-custom-model") || ""
+	);
+	const [translatorCustomApiFormat, setTranslatorCustomApiFormat] = useState<"openai" | "anthropic" | "gemini">(() => {
+		const f = localStorage.getItem("zenith-translator-custom-api-format");
+		return f === "anthropic" || f === "gemini" ? f : "openai";
+	});
 	const [translatorTargetLanguage, setTranslatorTargetLanguage] = useState(
 		() => localStorage.getItem("zenith-translator-target-language") || "Arabic"
 	);
@@ -358,6 +371,64 @@ export function useSettings() {
 	);
 	const [translatorCustomPromptQuick, setTranslatorCustomPromptQuick] = useState(
 		() => localStorage.getItem("zenith-translator-custom-prompt-quick") || ""
+	);
+
+	// ── Tasks & Notes state ──
+	const [tasksEnabled, setTasksEnabled] = useState(
+		() => localStorage.getItem("zenith-tasks-enabled") !== "false"
+	);
+	const [tasksDefaultTab, setTasksDefaultTab] = useState<"tasks" | "notes" | "remember">(() => {
+		const v = localStorage.getItem("zenith-tasks-default-tab");
+		return v === "notes" || v === "remember" ? v : "tasks";
+	});
+	const [tasksShowTasksTab, setTasksShowTasksTab] = useState(
+		() => localStorage.getItem("zenith-tasks-show-tasks") !== "false"
+	);
+	const [tasksShowNotesTab, setTasksShowNotesTab] = useState(
+		() => localStorage.getItem("zenith-tasks-show-notes") !== "false"
+	);
+	const [tasksShowQuickAdd, setTasksShowQuickAdd] = useState(
+		() => localStorage.getItem("zenith-tasks-show-quick-add") !== "false"
+	);
+	const [tasksShowCompleted, setTasksShowCompleted] = useState(
+		() => localStorage.getItem("zenith-tasks-show-completed") !== "false"
+	);
+	const [tasksShowTaskNotes, setTasksShowTaskNotes] = useState(
+		() => localStorage.getItem("zenith-tasks-show-task-notes") !== "false"
+	);
+	const [tasksShowSourceBadge, setTasksShowSourceBadge] = useState(
+		() => localStorage.getItem("zenith-tasks-show-source-badge") !== "false"
+	);
+	const [tasksDensity, setTasksDensity] = useState<"comfortable" | "compact">(() =>
+		localStorage.getItem("zenith-tasks-density") === "compact" ? "compact" : "comfortable"
+	);
+	const [tasksDefaultSource, setTasksDefaultSource] = useState<"auto" | "local" | "google" | "notion">(() => {
+		const v = localStorage.getItem("zenith-tasks-default-source");
+		return v === "local" || v === "google" || v === "notion" ? v : "auto";
+	});
+	const [tasksAutoSync, setTasksAutoSync] = useState(
+		() => localStorage.getItem("zenith-tasks-auto-sync") !== "false"
+	);
+	const [tasksSyncIntervalSec, setTasksSyncIntervalSec] = useState(
+		() => parseInt(localStorage.getItem("zenith-tasks-sync-interval") || "120", 10) || 120
+	);
+	const [tasksNotionToken, setTasksNotionToken] = useState(
+		() => localStorage.getItem("zenith-tasks-notion-token") || ""
+	);
+	const [tasksNotionTasksDb, setTasksNotionTasksDb] = useState(
+		() => localStorage.getItem("zenith-tasks-notion-tasks-db") || ""
+	);
+	const [tasksNotionNotesDb, setTasksNotionNotesDb] = useState(
+		() => localStorage.getItem("zenith-tasks-notion-notes-db") || ""
+	);
+	const [tasksGoogleClientId, setTasksGoogleClientId] = useState(
+		() => localStorage.getItem("zenith-tasks-google-client-id") || ""
+	);
+	const [tasksGoogleClientSecret, setTasksGoogleClientSecret] = useState(
+		() => localStorage.getItem("zenith-tasks-google-client-secret") || ""
+	);
+	const [tasksGoogleListId, setTasksGoogleListId] = useState(
+		() => localStorage.getItem("zenith-tasks-google-list-id") || "@default"
 	);
 	const [updateStatus, setUpdateStatus] = useState<
 		"idle" | "checking" | "available" | "uptodate" | "error" | "downloading" | "installing"
@@ -522,11 +593,17 @@ export function useSettings() {
 			apply(getVal("zenith-translator-enabled"), setTranslatorEnabled, (v) => v !== "false");
 			apply(getVal("zenith-translator-engine"), setTranslatorEngine, (v) => (v === "local" ? "local" : "cloud"));
 			apply(getVal("zenith-translator-provider"), setTranslatorProvider, (v) =>
-				v === "groq" || v === "openai" ? v : "gemini"
+				v === "groq" || v === "openai" || v === "custom" ? v : "gemini"
 			);
 			apply(getVal("zenith-translator-api-key"), setTranslatorApiKey, (v) => v);
 			apply(getVal("zenith-translator-groq-api-key"), setTranslatorGroqApiKey, (v) => v);
 			apply(getVal("zenith-translator-openai-api-key"), setTranslatorOpenaiApiKey, (v) => v);
+			apply(getVal("zenith-translator-custom-api-url"), setTranslatorCustomApiUrl, (v) => v);
+			apply(getVal("zenith-translator-custom-api-key"), setTranslatorCustomApiKey, (v) => v);
+			apply(getVal("zenith-translator-custom-model"), setTranslatorCustomModel, (v) => v);
+			apply(getVal("zenith-translator-custom-api-format"), setTranslatorCustomApiFormat, (v) =>
+				v === "anthropic" || v === "gemini" ? v : "openai"
+			);
 			apply(getVal("zenith-translator-target-language"), setTranslatorTargetLanguage, (v) => v);
 			apply(getVal("zenith-translator-output-mode"), setTranslatorOutputMode, (v) =>
 				v === "explain" || v === "summarize" ? v : "full"
@@ -546,6 +623,31 @@ export function useSettings() {
 			apply(getVal("zenith-translator-overlay-opacity"), setTranslatorOverlayOpacity, (v) => parseInt(v, 10) || 88);
 			apply(getVal("zenith-translator-custom-prompt-inplace"), setTranslatorCustomPromptInplace, (v) => v);
 			apply(getVal("zenith-translator-custom-prompt-quick"), setTranslatorCustomPromptQuick, (v) => v);
+
+			apply(getVal("zenith-tasks-enabled"), setTasksEnabled, (v) => v !== "false");
+			apply(getVal("zenith-tasks-default-tab"), setTasksDefaultTab, (v) =>
+				v === "notes" || v === "remember" ? v : "tasks"
+			);
+			apply(getVal("zenith-tasks-show-tasks"), setTasksShowTasksTab, (v) => v !== "false");
+			apply(getVal("zenith-tasks-show-notes"), setTasksShowNotesTab, (v) => v !== "false");
+			apply(getVal("zenith-tasks-show-quick-add"), setTasksShowQuickAdd, (v) => v !== "false");
+			apply(getVal("zenith-tasks-show-completed"), setTasksShowCompleted, (v) => v !== "false");
+			apply(getVal("zenith-tasks-show-task-notes"), setTasksShowTaskNotes, (v) => v !== "false");
+			apply(getVal("zenith-tasks-show-source-badge"), setTasksShowSourceBadge, (v) => v !== "false");
+			apply(getVal("zenith-tasks-density"), setTasksDensity, (v) =>
+				v === "compact" ? "compact" : "comfortable"
+			);
+			apply(getVal("zenith-tasks-default-source"), setTasksDefaultSource, (v) =>
+				v === "local" || v === "google" || v === "notion" ? v : "auto"
+			);
+			apply(getVal("zenith-tasks-auto-sync"), setTasksAutoSync, (v) => v !== "false");
+			apply(getVal("zenith-tasks-sync-interval"), setTasksSyncIntervalSec, (v) => parseInt(v, 10) || 120);
+			apply(getVal("zenith-tasks-notion-token"), setTasksNotionToken, (v) => v);
+			apply(getVal("zenith-tasks-notion-tasks-db"), setTasksNotionTasksDb, (v) => v);
+			apply(getVal("zenith-tasks-notion-notes-db"), setTasksNotionNotesDb, (v) => v);
+			apply(getVal("zenith-tasks-google-client-id"), setTasksGoogleClientId, (v) => v);
+			apply(getVal("zenith-tasks-google-client-secret"), setTasksGoogleClientSecret, (v) => v);
+			apply(getVal("zenith-tasks-google-list-id"), setTasksGoogleListId, (v) => v || "@default");
 
 			const widgetsVal = getVal("zenith-status-widgets");
 			if (widgetsVal) {
@@ -692,7 +794,11 @@ export function useSettings() {
 		"zenith-music-mode-enabled": setMusicModeEnabled,
 		"zenith-notch-remember-panel": setNotchRememberPanel,
 		"zenith-notch-default-panel": (v: unknown) =>
-			setNotchDefaultPanel(v === "command-center" || v === "prayer" ? (v as "command-center" | "prayer") : "calendar"),
+			setNotchDefaultPanel(
+				v === "command-center" || v === "prayer" || v === "tasks"
+					? (v as "command-center" | "prayer" | "tasks")
+					: "calendar"
+			),
 		"zenith-music-compact-notch": setMusicCompactNotch,
 		"zenith-media-ambience-enabled": setMediaAmbienceEnabled,
 		"zenith-media-compact-glow-enabled": setMediaCompactGlowEnabled,
@@ -741,10 +847,15 @@ export function useSettings() {
 		"zenith-translator-enabled": setTranslatorEnabled,
 		"zenith-translator-engine": (v: unknown) => setTranslatorEngine(v === "local" ? "local" : "cloud"),
 		"zenith-translator-provider": (v: unknown) =>
-			setTranslatorProvider(v === "groq" || v === "openai" ? v : "gemini"),
+			setTranslatorProvider(v === "groq" || v === "openai" || v === "custom" ? v : "gemini"),
 		"zenith-translator-api-key": setTranslatorApiKey,
 		"zenith-translator-groq-api-key": setTranslatorGroqApiKey,
 		"zenith-translator-openai-api-key": setTranslatorOpenaiApiKey,
+		"zenith-translator-custom-api-url": setTranslatorCustomApiUrl,
+		"zenith-translator-custom-api-key": setTranslatorCustomApiKey,
+		"zenith-translator-custom-model": setTranslatorCustomModel,
+		"zenith-translator-custom-api-format": (v: unknown) =>
+			setTranslatorCustomApiFormat(v === "anthropic" || v === "gemini" ? v : "openai"),
 		"zenith-translator-target-language": setTranslatorTargetLanguage,
 		"zenith-translator-output-mode": (v: unknown) =>
 			setTranslatorOutputMode(v === "explain" || v === "summarize" ? v : "full"),
@@ -773,7 +884,29 @@ export function useSettings() {
 		"zenith-mouse-always-show-labels": setMouseAlwaysShowLabels,
 		"zenith-mouse-show-workspace-pill": setMouseShowWorkspacePill,
 		"zenith-mouse-open-sound": setMouseOpenSound,
-		"zenith-mouse-hover-sound": setMouseHoverSound
+		"zenith-mouse-hover-sound": setMouseHoverSound,
+
+		// Tasks & Notes Sync
+		"zenith-tasks-enabled": (v: unknown) => setTasksEnabled(v !== false && v !== "false"),
+		"zenith-tasks-default-tab": (v: unknown) =>
+			setTasksDefaultTab(v === "notes" || v === "remember" ? v : "tasks"),
+		"zenith-tasks-show-tasks": (v: unknown) => setTasksShowTasksTab(v !== false && v !== "false"),
+		"zenith-tasks-show-notes": (v: unknown) => setTasksShowNotesTab(v !== false && v !== "false"),
+		"zenith-tasks-show-quick-add": (v: unknown) => setTasksShowQuickAdd(v !== false && v !== "false"),
+		"zenith-tasks-show-completed": (v: unknown) => setTasksShowCompleted(v !== false && v !== "false"),
+		"zenith-tasks-show-task-notes": (v: unknown) => setTasksShowTaskNotes(v !== false && v !== "false"),
+		"zenith-tasks-show-source-badge": (v: unknown) => setTasksShowSourceBadge(v !== false && v !== "false"),
+		"zenith-tasks-density": (v: unknown) => setTasksDensity(v === "compact" ? "compact" : "comfortable"),
+		"zenith-tasks-default-source": (v: unknown) =>
+			setTasksDefaultSource(v === "local" || v === "google" || v === "notion" ? v : "auto"),
+		"zenith-tasks-auto-sync": (v: unknown) => setTasksAutoSync(v !== false && v !== "false"),
+		"zenith-tasks-sync-interval": (v: unknown) => setTasksSyncIntervalSec(Number(v) || 120),
+		"zenith-tasks-notion-token": (v: unknown) => setTasksNotionToken(String(v ?? "")),
+		"zenith-tasks-notion-tasks-db": (v: unknown) => setTasksNotionTasksDb(String(v ?? "")),
+		"zenith-tasks-notion-notes-db": (v: unknown) => setTasksNotionNotesDb(String(v ?? "")),
+		"zenith-tasks-google-client-id": (v: unknown) => setTasksGoogleClientId(String(v ?? "")),
+		"zenith-tasks-google-client-secret": (v: unknown) => setTasksGoogleClientSecret(String(v ?? "")),
+		"zenith-tasks-google-list-id": (v: unknown) => setTasksGoogleListId(String(v || "@default"))
 	});
 
 	// ── Listen for system accent changes (adaptive theme) ──
@@ -1008,7 +1141,7 @@ export function useSettings() {
 		saveSetting("zenith-notch-remember-panel", String(next));
 	};
 
-	const changeNotchDefaultPanel = (panel: "calendar" | "command-center" | "prayer") => {
+	const changeNotchDefaultPanel = (panel: "calendar" | "command-center" | "prayer" | "tasks") => {
 		setNotchDefaultPanel(panel);
 		saveSetting("zenith-notch-default-panel", panel);
 	};
@@ -1433,7 +1566,7 @@ export function useSettings() {
 		setTranslatorEngine(v);
 		saveSetting("zenith-translator-engine", v);
 	};
-	const handleTranslatorProviderChange = (v: "gemini" | "groq" | "openai") => {
+	const handleTranslatorProviderChange = (v: "gemini" | "groq" | "openai" | "custom") => {
 		setTranslatorProvider(v);
 		saveSetting("zenith-translator-provider", v);
 	};
@@ -1448,6 +1581,22 @@ export function useSettings() {
 	const handleTranslatorOpenaiApiKeyChange = (v: string) => {
 		setTranslatorOpenaiApiKey(v);
 		saveSetting("zenith-translator-openai-api-key", v);
+	};
+	const handleTranslatorCustomApiUrlChange = (v: string) => {
+		setTranslatorCustomApiUrl(v);
+		saveSetting("zenith-translator-custom-api-url", v);
+	};
+	const handleTranslatorCustomApiKeyChange = (v: string) => {
+		setTranslatorCustomApiKey(v);
+		saveSetting("zenith-translator-custom-api-key", v);
+	};
+	const handleTranslatorCustomModelChange = (v: string) => {
+		setTranslatorCustomModel(v);
+		saveSetting("zenith-translator-custom-model", v);
+	};
+	const handleTranslatorCustomApiFormatChange = (v: "openai" | "anthropic" | "gemini") => {
+		setTranslatorCustomApiFormat(v);
+		saveSetting("zenith-translator-custom-api-format", v);
 	};
 	const handleTranslatorTargetLanguageChange = (v: string) => {
 		setTranslatorTargetLanguage(v);
@@ -1498,6 +1647,88 @@ export function useSettings() {
 	const handleTranslatorCustomPromptQuickChange = (v: string) => {
 		setTranslatorCustomPromptQuick(v);
 		saveSetting("zenith-translator-custom-prompt-quick", v);
+	};
+
+	// ── Tasks & Notes handlers ──
+	const toggleTasksEnabled = () => {
+		const next = !tasksEnabled;
+		setTasksEnabled(next);
+		saveSetting("zenith-tasks-enabled", String(next));
+	};
+	const handleTasksDefaultTabChange = (v: "tasks" | "notes" | "remember") => {
+		setTasksDefaultTab(v);
+		saveSetting("zenith-tasks-default-tab", v);
+	};
+	const toggleTasksShowTasksTab = () => {
+		const next = !tasksShowTasksTab;
+		setTasksShowTasksTab(next);
+		saveSetting("zenith-tasks-show-tasks", String(next));
+	};
+	const toggleTasksShowNotesTab = () => {
+		const next = !tasksShowNotesTab;
+		setTasksShowNotesTab(next);
+		saveSetting("zenith-tasks-show-notes", String(next));
+	};
+	const toggleTasksShowQuickAdd = () => {
+		const next = !tasksShowQuickAdd;
+		setTasksShowQuickAdd(next);
+		saveSetting("zenith-tasks-show-quick-add", String(next));
+	};
+	const toggleTasksShowCompleted = () => {
+		const next = !tasksShowCompleted;
+		setTasksShowCompleted(next);
+		saveSetting("zenith-tasks-show-completed", String(next));
+	};
+	const toggleTasksShowTaskNotes = () => {
+		const next = !tasksShowTaskNotes;
+		setTasksShowTaskNotes(next);
+		saveSetting("zenith-tasks-show-task-notes", String(next));
+	};
+	const toggleTasksShowSourceBadge = () => {
+		const next = !tasksShowSourceBadge;
+		setTasksShowSourceBadge(next);
+		saveSetting("zenith-tasks-show-source-badge", String(next));
+	};
+	const handleTasksDensityChange = (v: "comfortable" | "compact") => {
+		setTasksDensity(v);
+		saveSetting("zenith-tasks-density", v);
+	};
+	const handleTasksDefaultSourceChange = (v: "auto" | "local" | "google" | "notion") => {
+		setTasksDefaultSource(v);
+		saveSetting("zenith-tasks-default-source", v);
+	};
+	const toggleTasksAutoSync = () => {
+		const next = !tasksAutoSync;
+		setTasksAutoSync(next);
+		saveSetting("zenith-tasks-auto-sync", String(next));
+	};
+	const handleTasksSyncIntervalSecChange = (v: number) => {
+		setTasksSyncIntervalSec(v);
+		saveSetting("zenith-tasks-sync-interval", String(v));
+	};
+	const handleTasksNotionTokenChange = (v: string) => {
+		setTasksNotionToken(v);
+		saveSetting("zenith-tasks-notion-token", v);
+	};
+	const handleTasksNotionTasksDbChange = (v: string) => {
+		setTasksNotionTasksDb(v);
+		saveSetting("zenith-tasks-notion-tasks-db", v);
+	};
+	const handleTasksNotionNotesDbChange = (v: string) => {
+		setTasksNotionNotesDb(v);
+		saveSetting("zenith-tasks-notion-notes-db", v);
+	};
+	const handleTasksGoogleClientIdChange = (v: string) => {
+		setTasksGoogleClientId(v);
+		saveSetting("zenith-tasks-google-client-id", v);
+	};
+	const handleTasksGoogleClientSecretChange = (v: string) => {
+		setTasksGoogleClientSecret(v);
+		saveSetting("zenith-tasks-google-client-secret", v);
+	};
+	const handleTasksGoogleListIdChange = (v: string) => {
+		setTasksGoogleListId(v);
+		saveSetting("zenith-tasks-google-list-id", v);
 	};
 
 	// ── Theme handlers ──
@@ -1875,6 +2106,14 @@ export function useSettings() {
 		handleTranslatorGroqApiKeyChange,
 		translatorOpenaiApiKey,
 		handleTranslatorOpenaiApiKeyChange,
+		translatorCustomApiUrl,
+		handleTranslatorCustomApiUrlChange,
+		translatorCustomApiKey,
+		handleTranslatorCustomApiKeyChange,
+		translatorCustomModel,
+		handleTranslatorCustomModelChange,
+		translatorCustomApiFormat,
+		handleTranslatorCustomApiFormatChange,
 		translatorTargetLanguage,
 		handleTranslatorTargetLanguageChange,
 		translatorOutputMode,
@@ -1901,6 +2140,44 @@ export function useSettings() {
 		handleTranslatorCustomPromptInplaceChange,
 		translatorCustomPromptQuick,
 		handleTranslatorCustomPromptQuickChange,
+
+		// Tasks & Notes
+		tasksEnabled,
+		toggleTasksEnabled,
+		tasksDefaultTab,
+		handleTasksDefaultTabChange,
+		tasksShowTasksTab,
+		toggleTasksShowTasksTab,
+		tasksShowNotesTab,
+		toggleTasksShowNotesTab,
+		tasksShowQuickAdd,
+		toggleTasksShowQuickAdd,
+		tasksShowCompleted,
+		toggleTasksShowCompleted,
+		tasksShowTaskNotes,
+		toggleTasksShowTaskNotes,
+		tasksShowSourceBadge,
+		toggleTasksShowSourceBadge,
+		tasksDensity,
+		handleTasksDensityChange,
+		tasksDefaultSource,
+		handleTasksDefaultSourceChange,
+		tasksAutoSync,
+		toggleTasksAutoSync,
+		tasksSyncIntervalSec,
+		handleTasksSyncIntervalSecChange,
+		tasksNotionToken,
+		handleTasksNotionTokenChange,
+		tasksNotionTasksDb,
+		handleTasksNotionTasksDbChange,
+		tasksNotionNotesDb,
+		handleTasksNotionNotesDbChange,
+		tasksGoogleClientId,
+		handleTasksGoogleClientIdChange,
+		tasksGoogleClientSecret,
+		handleTasksGoogleClientSecretChange,
+		tasksGoogleListId,
+		handleTasksGoogleListIdChange,
 
 		// Updates
 		updateStatus,

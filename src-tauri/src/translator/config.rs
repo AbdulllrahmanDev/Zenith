@@ -9,6 +9,10 @@ pub const KEY_PROVIDER: &str = "zenith-translator-provider";
 pub const KEY_API_KEY: &str = "zenith-translator-api-key";
 pub const KEY_GROQ_API_KEY: &str = "zenith-translator-groq-api-key";
 pub const KEY_OPENAI_API_KEY: &str = "zenith-translator-openai-api-key";
+pub const KEY_CUSTOM_API_URL: &str = "zenith-translator-custom-api-url";
+pub const KEY_CUSTOM_API_KEY: &str = "zenith-translator-custom-api-key";
+pub const KEY_CUSTOM_MODEL: &str = "zenith-translator-custom-model";
+pub const KEY_CUSTOM_API_FORMAT: &str = "zenith-translator-custom-api-format";
 pub const KEY_LOCAL_MODEL_ID: &str = "zenith-translator-local-model-id";
 pub const KEY_HOTKEY_AR_TO_EN: &str = "zenith-translator-hotkey-ar-to-en";
 pub const KEY_HOTKEY_ANY_TO_AR: &str = "zenith-translator-hotkey-any-to-ar";
@@ -63,6 +67,10 @@ pub struct TranslatorConfig {
     pub api_key: String,
     pub groq_api_key: String,
     pub openai_api_key: String,
+    pub custom_api_url: String,
+    pub custom_api_key: String,
+    pub custom_model: String,
+    pub custom_api_format: String,
     pub local_model_id: String,
     pub hotkey_ar_to_en: String,
     pub hotkey_any_to_ar: String,
@@ -91,6 +99,10 @@ impl Default for TranslatorConfig {
             api_key: String::new(),
             groq_api_key: String::new(),
             openai_api_key: String::new(),
+            custom_api_url: String::new(),
+            custom_api_key: String::new(),
+            custom_model: String::new(),
+            custom_api_format: "openai".to_string(),
             local_model_id: DEFAULT_LOCAL_MODEL_ID.to_string(),
             hotkey_ar_to_en: "Ctrl+Alt+A".to_string(),
             hotkey_any_to_ar: "Ctrl+Alt+X".to_string(),
@@ -135,7 +147,7 @@ impl TranslatorConfig {
         }
         if let Some(v) = lookup(KEY_PROVIDER) {
             let norm = v.trim().to_ascii_lowercase();
-            if norm == "gemini" || norm == "groq" || norm == "openai" {
+            if norm == "gemini" || norm == "groq" || norm == "openai" || norm == "custom" {
                 cfg.provider = norm;
             }
         }
@@ -147,6 +159,21 @@ impl TranslatorConfig {
         }
         if let Some(v) = lookup(KEY_OPENAI_API_KEY) {
             cfg.openai_api_key = v.trim().to_string();
+        }
+        if let Some(v) = lookup(KEY_CUSTOM_API_URL) {
+            cfg.custom_api_url = v.trim().to_string();
+        }
+        if let Some(v) = lookup(KEY_CUSTOM_API_KEY) {
+            cfg.custom_api_key = v.trim().to_string();
+        }
+        if let Some(v) = lookup(KEY_CUSTOM_MODEL) {
+            cfg.custom_model = v.trim().to_string();
+        }
+        if let Some(v) = lookup(KEY_CUSTOM_API_FORMAT) {
+            let norm = v.trim().to_ascii_lowercase();
+            if norm == "openai" || norm == "anthropic" || norm == "gemini" {
+                cfg.custom_api_format = norm;
+            }
         }
         if let Some(v) = lookup(KEY_LOCAL_MODEL_ID) {
             if !v.trim().is_empty() {
@@ -230,28 +257,61 @@ impl TranslatorConfig {
         cfg
     }
 
-    pub fn active_cloud_key(&self) -> Option<(&str, &str)> {
+    pub fn resolve_cloud_target(&self) -> Result<CloudTarget<'_>, String> {
+        if self.provider == "custom" {
+            if self.custom_api_url.is_empty() {
+                return Err("يرجى إدخال رابط الـ API المخصص في إعدادات المترجم".to_string());
+            }
+            return Ok(CloudTarget::Custom {
+                format: self.custom_api_format.as_str(),
+                url: self.custom_api_url.as_str(),
+                api_key: self.custom_api_key.as_str(),
+                model: self.custom_model.as_str(),
+            });
+        }
+
         match self.provider.as_str() {
-            "groq" if !self.groq_api_key.is_empty() => {
-                Some(("groq", self.groq_api_key.as_str()))
-            }
-            "openai" if !self.openai_api_key.is_empty() => {
-                Some(("openai", self.openai_api_key.as_str()))
-            }
-            "gemini" if !self.api_key.is_empty() => Some(("gemini", self.api_key.as_str())),
+            "groq" if !self.groq_api_key.is_empty() => Ok(CloudTarget::Groq {
+                api_key: self.groq_api_key.as_str(),
+            }),
+            "openai" if !self.openai_api_key.is_empty() => Ok(CloudTarget::OpenAi {
+                api_key: self.openai_api_key.as_str(),
+            }),
+            "gemini" if !self.api_key.is_empty() => Ok(CloudTarget::Gemini {
+                api_key: self.api_key.as_str(),
+            }),
             _ => {
                 if !self.api_key.is_empty() {
-                    Some(("gemini", self.api_key.as_str()))
+                    Ok(CloudTarget::Gemini {
+                        api_key: self.api_key.as_str(),
+                    })
                 } else if !self.groq_api_key.is_empty() {
-                    Some(("groq", self.groq_api_key.as_str()))
+                    Ok(CloudTarget::Groq {
+                        api_key: self.groq_api_key.as_str(),
+                    })
                 } else if !self.openai_api_key.is_empty() {
-                    Some(("openai", self.openai_api_key.as_str()))
+                    Ok(CloudTarget::OpenAi {
+                        api_key: self.openai_api_key.as_str(),
+                    })
                 } else {
-                    None
+                    Err("يرجى إدخال مفتاح API في إعدادات المترجم أو التحويل للمحرك المحلي".to_string())
                 }
             }
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CloudTarget<'a> {
+    Gemini { api_key: &'a str },
+    Groq { api_key: &'a str },
+    OpenAi { api_key: &'a str },
+    Custom {
+        format: &'a str,
+        url: &'a str,
+        api_key: &'a str,
+        model: &'a str,
+    },
 }
 
 pub fn parse_card_pos(raw: &str) -> Option<(i32, i32)> {
@@ -390,5 +450,37 @@ mod tests {
         assert_eq!(cfg.card_timeout_sec, 3);
         assert_eq!(cfg.overlay_opacity, 100);
         assert_eq!(cfg.card_pos, Some((120, 340)));
+    }
+
+    #[test]
+    fn custom_provider_resolves_with_and_without_key() {
+        let mut map = HashMap::new();
+        map.insert(KEY_PROVIDER.to_string(), "CUSTOM".to_string());
+        map.insert(
+            KEY_CUSTOM_API_URL.to_string(),
+            "  http://localhost:11434/v1  ".to_string(),
+        );
+        map.insert(KEY_CUSTOM_MODEL.to_string(), "  qwen2.5:7b ".to_string());
+        map.insert(KEY_CUSTOM_API_FORMAT.to_string(), "ANTHROPIC".to_string());
+
+        let cfg = TranslatorConfig::from_lookup(|k| map.get(k).cloned());
+        assert_eq!(cfg.provider, "custom");
+        assert_eq!(cfg.custom_api_url, "http://localhost:11434/v1");
+        assert_eq!(cfg.custom_model, "qwen2.5:7b");
+        assert_eq!(cfg.custom_api_format, "anthropic");
+        assert_eq!(
+            cfg.resolve_cloud_target(),
+            Ok(CloudTarget::Custom {
+                format: "anthropic",
+                url: "http://localhost:11434/v1",
+                api_key: "",
+                model: "qwen2.5:7b",
+            })
+        );
+
+        map.remove(KEY_CUSTOM_API_URL);
+        map.insert(KEY_API_KEY.to_string(), "AIza-test".to_string());
+        let missing_url_cfg = TranslatorConfig::from_lookup(|k| map.get(k).cloned());
+        assert!(missing_url_cfg.resolve_cloud_target().is_err());
     }
 }

@@ -40,7 +40,9 @@ import { ShelfTypeIcon } from "./components/ShelfTypeIcon";
 import { WifiPanel } from "./components/WifiPanel";
 import { BluetoothPanel } from "./components/BluetoothPanel";
 import { PrayerTimesPanel } from "./components/PrayerTimesPanel";
+import { TasksNotchPanel } from "./components/TasksNotchPanel";
 import { AthanNotchBanner } from "./components/AthanNotchBanner";
+import type { TasksNotchConfig, TasksSubTab } from "./types/tasks";
 import { NotificationPanel } from "./components/NotificationPanel";
 import { usePrayerTimes, formatPrayerTime } from "./hooks/usePrayerTimes";
 import {
@@ -73,8 +75,8 @@ import {
  *   Dragging files onto the notch also opens the shelf. Wheel/swipe switches
  *   between tool panels, including when a live activity occupies the pill.
  */
-type NotchPanel = "calendar" | "command-center" | "prayer";
-const NOTCH_PANELS: readonly NotchPanel[] = ["calendar", "command-center", "prayer"];
+type NotchPanel = "calendar" | "command-center" | "prayer" | "tasks";
+const NOTCH_PANELS: readonly NotchPanel[] = ["calendar", "command-center", "prayer", "tasks"];
 const asNotchPanel = (value: unknown): NotchPanel | null =>
 	NOTCH_PANELS.includes(value as NotchPanel) ? (value as NotchPanel) : null;
 
@@ -441,6 +443,7 @@ type NotchPanelMode =
 	| "calendar"
 	| "command-center"
 	| "prayer"
+	| "tasks"
 	| "announcement"
 	| "translator"
 	| "status"
@@ -997,6 +1000,31 @@ function App() {
 	const [settingsPrayerEnabled, setSettingsPrayerEnabled] = useState(
 		() => localStorage.getItem("zenith-prayer-enabled") !== "false"
 	);
+	const [tasksConfig, setTasksConfig] = useState<TasksNotchConfig>(() => ({
+		enabled: localStorage.getItem("zenith-tasks-enabled") !== "false",
+		defaultTab:
+			localStorage.getItem("zenith-tasks-default-tab") === "notes"
+				? "notes"
+				: localStorage.getItem("zenith-tasks-default-tab") === "remember"
+					? "remember"
+					: "tasks",
+		lastTab: localStorage.getItem("zenith-tasks-last-tab") === "notes" ? "notes" : "tasks",
+		showTasksTab: localStorage.getItem("zenith-tasks-show-tasks") !== "false",
+		showNotesTab: localStorage.getItem("zenith-tasks-show-notes") !== "false",
+		showCompleted: localStorage.getItem("zenith-tasks-show-completed") !== "false",
+		showTaskNotes: localStorage.getItem("zenith-tasks-show-task-notes") !== "false",
+		showSourceBadge: localStorage.getItem("zenith-tasks-show-source-badge") !== "false",
+		showQuickAdd: localStorage.getItem("zenith-tasks-show-quick-add") !== "false",
+		density: localStorage.getItem("zenith-tasks-density") === "compact" ? "compact" : "comfortable",
+		defaultSource:
+			localStorage.getItem("zenith-tasks-default-source") === "local" ||
+			localStorage.getItem("zenith-tasks-default-source") === "google" ||
+			localStorage.getItem("zenith-tasks-default-source") === "notion"
+				? (localStorage.getItem("zenith-tasks-default-source") as "local" | "google" | "notion")
+				: "auto",
+		autoSync: localStorage.getItem("zenith-tasks-auto-sync") !== "false",
+		syncIntervalSec: parseInt(localStorage.getItem("zenith-tasks-sync-interval") || "120", 10) || 120
+	}));
 
 	const [notificationsEnabled, setNotificationsEnabled] = useState(
 		() => localStorage.getItem("zenith-notifications-enabled") !== "false"
@@ -1108,6 +1136,31 @@ function App() {
 				setSettingsWeatherEnabled(getVal("zenith-weather-enabled", "true") !== "false");
 				setSettingsCalendarEnabled(getVal("zenith-calendar-enabled", "true") !== "false");
 				setSettingsPrayerEnabled(getVal("zenith-prayer-enabled", "true") !== "false");
+				setTasksConfig({
+					enabled: getVal("zenith-tasks-enabled", "true") !== "false",
+					defaultTab:
+						getVal("zenith-tasks-default-tab", "tasks") === "notes"
+							? "notes"
+							: getVal("zenith-tasks-default-tab", "tasks") === "remember"
+								? "remember"
+								: "tasks",
+					lastTab: getVal("zenith-tasks-last-tab", "tasks") === "notes" ? "notes" : "tasks",
+					showTasksTab: getVal("zenith-tasks-show-tasks", "true") !== "false",
+					showNotesTab: getVal("zenith-tasks-show-notes", "true") !== "false",
+					showCompleted: getVal("zenith-tasks-show-completed", "true") !== "false",
+					showTaskNotes: getVal("zenith-tasks-show-task-notes", "true") !== "false",
+					showSourceBadge: getVal("zenith-tasks-show-source-badge", "true") !== "false",
+					showQuickAdd: getVal("zenith-tasks-show-quick-add", "true") !== "false",
+					density: getVal("zenith-tasks-density", "comfortable") === "compact" ? "compact" : "comfortable",
+					defaultSource:
+						getVal("zenith-tasks-default-source") === "local" ||
+						getVal("zenith-tasks-default-source") === "google" ||
+						getVal("zenith-tasks-default-source") === "notion"
+							? (getVal("zenith-tasks-default-source") as "local" | "google" | "notion")
+							: "auto",
+					autoSync: getVal("zenith-tasks-auto-sync", "true") !== "false",
+					syncIntervalSec: parseInt(getVal("zenith-tasks-sync-interval", "120") || "120", 10) || 120
+				});
 				setSettingsTimerSoundEnabled(getVal("zenith-timer-sound-enabled", "true") !== "false");
 				setSettingsMusicModeEnabled(getVal("zenith-music-mode-enabled", "true") !== "false");
 				setRememberPanelEnabled(
@@ -1285,7 +1338,37 @@ function App() {
 				} catch {}
 			},
 			"zenith-show-update-indicator": (value) => setShowUpdateIndicator(String(value) === "true"),
-			"zenith-time-format-24h": setTimeFormat24h
+			"zenith-time-format-24h": setTimeFormat24h,
+			"zenith-tasks-enabled": (v) => setTasksConfig((prev) => ({ ...prev, enabled: v !== false && v !== "false" })),
+			"zenith-tasks-default-tab": (v) =>
+				setTasksConfig((prev) => ({
+					...prev,
+					defaultTab: v === "notes" || v === "remember" ? v : "tasks"
+				})),
+			"zenith-tasks-last-tab": (v) =>
+				setTasksConfig((prev) => ({
+					...prev,
+					lastTab: v === "notes" ? "notes" : "tasks"
+				})),
+			"zenith-tasks-show-tasks": (v) => setTasksConfig((prev) => ({ ...prev, showTasksTab: v !== false && v !== "false" })),
+			"zenith-tasks-show-notes": (v) => setTasksConfig((prev) => ({ ...prev, showNotesTab: v !== false && v !== "false" })),
+			"zenith-tasks-show-completed": (v) => setTasksConfig((prev) => ({ ...prev, showCompleted: v !== false && v !== "false" })),
+			"zenith-tasks-show-task-notes": (v) => setTasksConfig((prev) => ({ ...prev, showTaskNotes: v !== false && v !== "false" })),
+			"zenith-tasks-show-source-badge": (v) => setTasksConfig((prev) => ({ ...prev, showSourceBadge: v !== false && v !== "false" })),
+			"zenith-tasks-show-quick-add": (v) => setTasksConfig((prev) => ({ ...prev, showQuickAdd: v !== false && v !== "false" })),
+			"zenith-tasks-density": (v) =>
+				setTasksConfig((prev) => ({
+					...prev,
+					density: v === "compact" ? "compact" : "comfortable"
+				})),
+			"zenith-tasks-default-source": (v) =>
+				setTasksConfig((prev) => ({
+					...prev,
+					defaultSource: v === "local" || v === "google" || v === "notion" ? v : "auto"
+				})),
+			"zenith-tasks-auto-sync": (v) => setTasksConfig((prev) => ({ ...prev, autoSync: v !== false && v !== "false" })),
+			"zenith-tasks-sync-interval": (v) =>
+				setTasksConfig((prev) => ({ ...prev, syncIntervalSec: Number(v) || 120 }))
 		},
 		[windowLabel]
 	);
@@ -1656,6 +1739,7 @@ function App() {
 			prev === "command-center" ||
 			prev === "calendar" ||
 			prev === "prayer" ||
+			prev === "tasks" ||
 			prev === "status" ||
 			prev === "shelf" ||
 			prev === "wifi" ||
@@ -1982,6 +2066,7 @@ function App() {
 			target.closest(".shelf-content") ||
 			target.closest(".qp-list") ||
 			target.closest(".prayer-split-view") ||
+			target.closest(".tasks-content-pane") ||
 			target.closest(".translator-notch-content")
 		) {
 			return;
@@ -2000,6 +2085,7 @@ function App() {
 	function panelAvailable(panel: NotchPanel) {
 		if (panel === "calendar") return settingsCalendarEnabled;
 		if (panel === "prayer") return settingsPrayerEnabled;
+		if (panel === "tasks") return tasksConfig.enabled;
 		return true;
 	}
 
@@ -2288,6 +2374,19 @@ function App() {
 			setNotchPanelMode(isOpen ? openingPanel() : collapsedMode);
 		}
 	}, [settingsCalendarEnabled, notchPanelMode, isOpen]);
+
+	// Reset notch panel mode when tasks setting is disabled
+	useEffect(() => {
+		if (!tasksConfig.enabled && notchPanelMode === "tasks") {
+			setNotchPanelMode(isOpen ? openingPanel() : collapsedMode);
+		}
+	}, [tasksConfig.enabled, notchPanelMode, isOpen]);
+
+	const rememberTasksSubTab = useCallback((tab: TasksSubTab) => {
+		setTasksConfig((prev) => ({ ...prev, lastTab: tab }));
+		localStorage.setItem("zenith-tasks-last-tab", tab);
+		invoke("save_setting", { key: "zenith-tasks-last-tab", value: tab }).catch(() => {});
+	}, []);
 
 	// Reset notch panel mode when prayer setting is disabled
 	useEffect(() => {
@@ -3015,6 +3114,7 @@ function App() {
 		if (notchPanelMode === "announcement" && announcement && !announcementDismissed) return 380;
 		if (isCalendarMode) return 480;
 		if (notchPanelMode === "prayer" && isOpen) return 480;
+		if (notchPanelMode === "tasks" && isOpen) return 480;
 		if (notchPanelMode === "shelf") return 380;
 		if (notchPanelMode === "command-center" && isOpen) return 350;
 		if (notchPanelMode === "wifi" || notchPanelMode === "bluetooth" || notchPanelMode === "notifications") return 350;
@@ -3058,6 +3158,7 @@ function App() {
 		// Sized to the calendar's week-row count plus the timer's fixed content.
 		if (notchPanelMode === "calendar") return calendarMonthRows >= 6 ? 305 : 273;
 		if (notchPanelMode === "prayer") return isOpen ? 273 : 36;
+		if (notchPanelMode === "tasks") return isOpen ? 284 : 36;
 		// Shelf expands on mode alone (no hover needed: there is no cursor
 		// hover during an OS drag) and is sized to exactly one row of tiles,
 		// plus room for the scrollbar once the tiles overflow it.
@@ -3209,8 +3310,8 @@ function App() {
 						scaleY: 1,
 						borderTopLeftRadius: isImpacted ? 0 : 18,
 						borderTopRightRadius: isImpacted ? 0 : 18,
-						borderBottomLeftRadius: (isCalendarMode || notchPanelMode === "prayer" || notchPanelMode === "translator" || (showAthanBanner && isOpen)) ? 26 : 18,
-						borderBottomRightRadius: (isCalendarMode || notchPanelMode === "prayer" || notchPanelMode === "translator" || (showAthanBanner && isOpen)) ? 26 : 18,
+						borderBottomLeftRadius: (isCalendarMode || notchPanelMode === "prayer" || notchPanelMode === "tasks" || notchPanelMode === "translator" || (showAthanBanner && isOpen)) ? 26 : 18,
+						borderBottomRightRadius: (isCalendarMode || notchPanelMode === "prayer" || notchPanelMode === "tasks" || notchPanelMode === "translator" || (showAthanBanner && isOpen)) ? 26 : 18,
 						filter: isVisible ? "blur(0px)" : "blur(8px)",
 						pointerEvents: isVisible ? "auto" : "none"
 					}}
@@ -4422,6 +4523,27 @@ function App() {
 											transition={{ type: "spring", stiffness: 400, damping: 30 }}
 										>
 											<PrayerTimesPanel timeFormat24h={timeFormat24h} prayerData={prayerTimes} />
+										</motion.div>
+									)}
+								</AnimatePresence>
+
+								{/* Tasks & Notes Panel */}
+								<AnimatePresence>
+									{tasksConfig.enabled && notchPanelMode === "tasks" && !showAthanBanner && (
+										<motion.div
+											key="tasks-view"
+											className="tasks-notch-wrapper"
+											onClick={(e) => e.stopPropagation()}
+											initial={{ opacity: 0 }}
+											animate={{ opacity: 1 }}
+											exit={{ opacity: 0, filter: "blur(4px)", transition: { duration: 0.1 } }}
+											transition={{ type: "spring", stiffness: 400, damping: 30 }}
+										>
+											<TasksNotchPanel
+												config={tasksConfig}
+												onPinChange={setNotchPinned}
+												onRememberSubTab={rememberTasksSubTab}
+											/>
 										</motion.div>
 									)}
 								</AnimatePresence>

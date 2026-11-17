@@ -73,11 +73,12 @@ function TranslatorRegionApp() {
 			setCurrPt(null);
 			return;
 		}
-		const dpr = window.devicePixelRatio || 1;
-		const x = region.monitor_x + Math.round(box.left * dpr);
-		const y = region.monitor_y + Math.round(box.top * dpr);
-		const w = Math.round(box.width * dpr);
-		const h = Math.round(box.height * dpr);
+		const scaleX = region.monitor_w / Math.max(1, window.innerWidth);
+		const scaleY = region.monitor_h / Math.max(1, window.innerHeight);
+		const x = region.monitor_x + Math.round(box.left * scaleX);
+		const y = region.monitor_y + Math.round(box.top * scaleY);
+		const w = Math.max(1, Math.round(box.width * scaleX));
+		const h = Math.max(1, Math.round(box.height * scaleY));
 		setStartPt(null);
 		setCurrPt(null);
 		invoke("translator_submit_region", { x, y, w, h }).catch(() => {});

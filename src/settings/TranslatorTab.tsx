@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
 import { HotkeyRecorder } from "./HotkeyRecorder";
+import { useI18n } from "../i18n";
 
 export interface LocalDownloadStatus {
 	model_downloaded: boolean;
@@ -40,14 +41,22 @@ export interface TranslatorTabProps {
 	toggleTranslatorEnabled: () => void;
 	translatorEngine: "cloud" | "local";
 	handleTranslatorEngineChange: (v: "cloud" | "local") => void;
-	translatorProvider: "gemini" | "groq" | "openai";
-	handleTranslatorProviderChange: (v: "gemini" | "groq" | "openai") => void;
+	translatorProvider: "gemini" | "groq" | "openai" | "custom";
+	handleTranslatorProviderChange: (v: "gemini" | "groq" | "openai" | "custom") => void;
 	translatorApiKey: string;
 	handleTranslatorApiKeyChange: (v: string) => void;
 	translatorGroqApiKey: string;
 	handleTranslatorGroqApiKeyChange: (v: string) => void;
 	translatorOpenaiApiKey: string;
 	handleTranslatorOpenaiApiKeyChange: (v: string) => void;
+	translatorCustomApiUrl: string;
+	handleTranslatorCustomApiUrlChange: (v: string) => void;
+	translatorCustomApiKey: string;
+	handleTranslatorCustomApiKeyChange: (v: string) => void;
+	translatorCustomModel: string;
+	handleTranslatorCustomModelChange: (v: string) => void;
+	translatorCustomApiFormat: "openai" | "anthropic" | "gemini";
+	handleTranslatorCustomApiFormatChange: (v: "openai" | "anthropic" | "gemini") => void;
 	translatorTargetLanguage: string;
 	handleTranslatorTargetLanguageChange: (v: string) => void;
 	translatorOutputMode: "full" | "explain" | "summarize";
@@ -75,42 +84,53 @@ export interface TranslatorTabProps {
 	handleTranslatorCustomPromptQuickChange: (v: string) => void;
 }
 
-const TARGET_LANGUAGES = [
-	{ value: "Arabic", label: "العربية (Arabic)" },
-	{ value: "English", label: "الإنجليزية (English)" },
-	{ value: "French", label: "الفرنسية (French)" },
-	{ value: "Spanish", label: "الإسبانية (Spanish)" },
-	{ value: "German", label: "الألمانية (German)" },
-	{ value: "Turkish", label: "التركية (Turkish)" },
-	{ value: "Italian", label: "الإيطالية (Italian)" },
-	{ value: "Portuguese", label: "البرتغالية (Portuguese)" },
-	{ value: "Russian", label: "الروسية (Russian)" },
-	{ value: "Chinese", label: "الصينية (Chinese)" },
-	{ value: "Japanese", label: "اليابانية (Japanese)" },
-	{ value: "Korean", label: "الكورية (Korean)" },
-	{ value: "Hindi", label: "الهندية (Hindi)" },
-	{ value: "Indonesian", label: "الإندونيسية (Indonesian)" },
-	{ value: "Urdu", label: "الأردية (Urdu)" },
-	{ value: "Dutch", label: "الهولندية (Dutch)" }
-];
+const TARGET_LANGUAGE_KEYS = [
+	"Arabic",
+	"English",
+	"French",
+	"Spanish",
+	"German",
+	"Turkish",
+	"Italian",
+	"Portuguese",
+	"Russian",
+	"Chinese",
+	"Japanese",
+	"Korean",
+	"Hindi",
+	"Indonesian",
+	"Urdu",
+	"Dutch"
+] as const;
 
 type SpeedTier = "fast" | "good" | "moderate" | "slow";
 
-function formatResponseSpeed(ms: number): { timeLabel: string; ratingLabel: string; tier: SpeedTier } {
-	const timeLabel = ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(2)} ث`;
+function formatResponseSpeed(
+	ms: number,
+	labels: {
+		speedSeconds: (sec: string) => string;
+		speedFast: string;
+		speedGood: string;
+		speedModerate: string;
+		speedSlow: string;
+	}
+): { timeLabel: string; ratingLabel: string; tier: SpeedTier } {
+	const timeLabel = ms < 1000 ? `${ms} ms` : labels.speedSeconds((ms / 1000).toFixed(2));
 	if (ms < 800) {
-		return { timeLabel, ratingLabel: "سريع جداً", tier: "fast" };
+		return { timeLabel, ratingLabel: labels.speedFast, tier: "fast" };
 	}
 	if (ms < 2500) {
-		return { timeLabel, ratingLabel: "جيد", tier: "good" };
+		return { timeLabel, ratingLabel: labels.speedGood, tier: "good" };
 	}
 	if (ms < 5000) {
-		return { timeLabel, ratingLabel: "متوسط", tier: "moderate" };
+		return { timeLabel, ratingLabel: labels.speedModerate, tier: "moderate" };
 	}
-	return { timeLabel, ratingLabel: "بطيء", tier: "slow" };
+	return { timeLabel, ratingLabel: labels.speedSlow, tier: "slow" };
 }
 
 export function TranslatorTab(props: TranslatorTabProps) {
+	const { t, dir } = useI18n();
+	const tr = t.translatorSettings;
 	const [showKey, setShowKey] = useState(false);
 	const [recordingField, setRecordingField] = useState<string | null>(null);
 	const [testState, setTestState] = useState<{
@@ -157,13 +177,17 @@ export function TranslatorTab(props: TranslatorTabProps) {
 			? props.translatorGroqApiKey
 			: props.translatorProvider === "openai"
 				? props.translatorOpenaiApiKey
-				: props.translatorApiKey;
+				: props.translatorProvider === "custom"
+					? props.translatorCustomApiKey
+					: props.translatorApiKey;
 
 	const handleApiKeyInput = (val: string) => {
 		if (props.translatorProvider === "groq") {
 			props.handleTranslatorGroqApiKeyChange(val);
 		} else if (props.translatorProvider === "openai") {
 			props.handleTranslatorOpenaiApiKeyChange(val);
+		} else if (props.translatorProvider === "custom") {
+			props.handleTranslatorCustomApiKeyChange(val);
 		} else {
 			props.handleTranslatorApiKeyChange(val);
 		}
@@ -178,7 +202,7 @@ export function TranslatorTab(props: TranslatorTabProps) {
 	}, [testState]);
 
 	const runTest = async () => {
-		setTestState({ status: "testing", text: "جاري الاختبار" });
+		setTestState({ status: "testing", text: tr.testing });
 		const startedAt = performance.now();
 		try {
 			const reply = await invoke<string>("translator_test_connection");
@@ -193,7 +217,7 @@ export function TranslatorTab(props: TranslatorTabProps) {
 		if (testState.status === "idle") return null;
 		const speed =
 			testState.status === "ok" && testState.elapsedMs !== undefined
-				? formatResponseSpeed(testState.elapsedMs)
+				? formatResponseSpeed(testState.elapsedMs, tr)
 				: null;
 		return (
 			<div className={`tr-test-banner ${testState.status}`}>
@@ -223,38 +247,32 @@ export function TranslatorTab(props: TranslatorTabProps) {
 	const downloadButtonLabel = (() => {
 		if (!localStatus.downloading) {
 			if (!localStatus.model_downloaded && !localStatus.runtime_ready) {
-				return "تحميل الموديل وأدوات التشغيل (~1 GB)";
+				return tr.dlBoth;
 			}
 			if (!localStatus.runtime_ready) {
-				return "تحميل أدوات التشغيل (~24 MB)";
+				return tr.dlRuntime;
 			}
-			return "تحميل الموديل المحلي (~986 MB)";
+			return tr.dlModel;
 		}
 		if (localStatus.phase === "extract") {
-			return `جاري تجهيز الأدوات ${localStatus.percent}%`;
+			return tr.dlExtracting(localStatus.percent);
 		}
 		if (localStatus.phase === "runtime") {
-			return `جاري تحميل الأدوات ${localStatus.percent}%`;
+			return tr.dlDownloadingRuntime(localStatus.percent);
 		}
-		return `جاري تحميل الموديل ${localStatus.percent}%`;
+		return tr.dlDownloadingModel(localStatus.percent);
 	})();
 
 	const progressPct = Math.max(0, Math.min(100, localStatus.percent));
 
 	return (
-		<div className="tab-content translator-tab" dir="rtl">
-			<div className="translator-intro">
-				تحكم كامل بالترجمة الفورية، تلخيص النصوص، وترجمة الشاشة والصفحات مباشرة عبر اختصارات لوحة المفاتيح.
-			</div>
+		<div className="tab-content translator-tab" dir={dir}>
+			<div className="translator-intro">{tr.intro}</div>
 
 			{/* 1. Activation & AI Engine */}
-			<div className="setting-group-label">التفعيل والمحرك</div>
+			<div className="setting-group-label">{tr.activationGroup}</div>
 			<div className="setting-group">
-				<SettingRow
-					icon={Power}
-					label="تفعيل المترجم الفوري"
-					desc="تشغيل الاستماع للاختصارات العالمية في الخلفية طوال عمل Zenith"
-				>
+				<SettingRow icon={Power} label={tr.enabled} desc={tr.enabledDesc}>
 					<label className="toggle-switch">
 						<input
 							type="checkbox"
@@ -265,52 +283,105 @@ export function TranslatorTab(props: TranslatorTabProps) {
 					</label>
 				</SettingRow>
 
-				<SettingRow
-					icon={Cpu}
-					label="محرك الذكاء الاصطناعي"
-					desc="اختر بين السرعة السحابية عبر API أو التشغيل المحلي دون إنترنت"
-				>
+				<SettingRow icon={Cpu} label={tr.aiEngine} desc={tr.aiEngineDesc}>
 					<div className="tr-segmented">
 						<button
 							type="button"
 							className={`tr-seg-btn ${props.translatorEngine === "cloud" ? "active" : ""}`}
 							onClick={() => props.handleTranslatorEngineChange("cloud")}
 						>
-							سحابي (API)
+							{tr.engineCloud}
 						</button>
 						<button
 							type="button"
 							className={`tr-seg-btn ${props.translatorEngine === "local" ? "active" : ""}`}
 							onClick={() => props.handleTranslatorEngineChange("local")}
 						>
-							محلي (Offline)
+							{tr.engineLocal}
 						</button>
 					</div>
 				</SettingRow>
 
 				{props.translatorEngine === "cloud" ? (
 					<>
-						<SettingRow
-							icon={Globe}
-							label="مزود الخدمة السحابي"
-							desc="Google Gemini أو Groq فائق السرعة أو OpenAI"
-						>
+						<SettingRow icon={Globe} label={tr.cloudProvider} desc={tr.cloudProviderDesc}>
 							<select
 								className="settings-select"
 								value={props.translatorProvider}
-								onChange={(e) =>
+								onChange={(e) => {
+									setTestState({ status: "idle", text: "" });
 									props.handleTranslatorProviderChange(
-										e.target.value as "gemini" | "groq" | "openai"
-									)
-								}
+										e.target.value as "gemini" | "groq" | "openai" | "custom"
+									);
+								}}
 							>
 								<option value="gemini">Google Gemini</option>
 								<option value="groq">Groq</option>
 								<option value="openai">OpenAI</option>
+								<option value="custom">{tr.providerCustom}</option>
 							</select>
 						</SettingRow>
 
 						<div className="tr-api-block">
+							{props.translatorProvider === "custom" && (
+								<div className="tr-custom-grid">
+									<div className="tr-custom-row">
+										<div className="tr-custom-field tr-custom-field-grow">
+											<label className="tr-custom-label">{tr.customUrlLabel}</label>
+											<input
+												type="url"
+												dir="ltr"
+												className="settings-text-input tr-api-input"
+												placeholder={
+													props.translatorCustomApiFormat === "anthropic"
+														? "https://api.anthropic.com"
+														: props.translatorCustomApiFormat === "gemini"
+															? "https://generativelanguage.googleapis.com"
+															: "https://openrouter.ai/api/v1"
+												}
+												value={props.translatorCustomApiUrl}
+												onChange={(e) => props.handleTranslatorCustomApiUrlChange(e.target.value)}
+											/>
+										</div>
+										<div className="tr-custom-field">
+											<label className="tr-custom-label">{tr.customFormatLabel}</label>
+											<select
+												dir="ltr"
+												className="settings-select tr-custom-format-select"
+												value={props.translatorCustomApiFormat}
+												onChange={(e) =>
+													props.handleTranslatorCustomApiFormatChange(
+														e.target.value as "openai" | "anthropic" | "gemini"
+													)
+												}
+											>
+												<option value="openai">OpenAI-Compatible</option>
+												<option value="anthropic">Anthropic (Claude)</option>
+												<option value="gemini">Google Gemini</option>
+											</select>
+										</div>
+									</div>
+
+									<div className="tr-custom-field">
+										<label className="tr-custom-label">{tr.customModelLabel}</label>
+										<input
+											type="text"
+											dir="ltr"
+											className="settings-text-input tr-api-input"
+											placeholder={
+												props.translatorCustomApiFormat === "anthropic"
+													? "claude-3-5-haiku-latest"
+													: props.translatorCustomApiFormat === "gemini"
+														? "gemini-2.5-flash-lite"
+														: "gpt-4o-mini / deepseek-chat / qwen2.5:7b"
+											}
+											value={props.translatorCustomModel}
+											onChange={(e) => props.handleTranslatorCustomModelChange(e.target.value)}
+										/>
+									</div>
+								</div>
+							)}
+
 							<div className="tr-api-row">
 								<input
 									type={showKey ? "text" : "password"}
@@ -321,7 +392,9 @@ export function TranslatorTab(props: TranslatorTabProps) {
 											? "gsk_..."
 											: props.translatorProvider === "openai"
 												? "sk-..."
-												: "AIza... أو AQ..."
+												: props.translatorProvider === "custom"
+													? tr.customKeyPlaceholder
+													: "AIza... / AQ..."
 									}
 									value={currentApiKey}
 									onChange={(e) => handleApiKeyInput(e.target.value)}
@@ -330,7 +403,7 @@ export function TranslatorTab(props: TranslatorTabProps) {
 									type="button"
 									className="settings-btn tr-icon-btn"
 									onClick={() => setShowKey((s) => !s)}
-									title={showKey ? "إخفاء المفتاح" : "إظهار المفتاح"}
+									title={showKey ? tr.hideKey : tr.showKey}
 								>
 									{showKey ? <EyeOff size={15} /> : <Eye size={15} />}
 								</button>
@@ -341,9 +414,12 @@ export function TranslatorTab(props: TranslatorTabProps) {
 									disabled={testState.status === "testing"}
 								>
 									<Play size={14} />
-									<span>اختبار الاتصال</span>
+									<span>{tr.testConnection}</span>
 								</button>
 							</div>
+							{props.translatorProvider === "custom" && (
+								<div className="tr-api-hint">{tr.customHint}</div>
+							)}
 							{renderTestBanner()}
 						</div>
 					</>
@@ -351,13 +427,13 @@ export function TranslatorTab(props: TranslatorTabProps) {
 					<div className="tr-local-box">
 						<div className="tr-local-header">
 							<div>
-								<div className="tr-local-title">Qwen2.5-1.5B-Instruct (GGUF) + محرك llama.cpp</div>
+								<div className="tr-local-title">{tr.localTitle}</div>
 								<div className="tr-local-sub">
 									{localStatus.ready
-										? "الموديل وأدوات التشغيل جاهزة للعمل دون إنترنت"
+										? tr.localReadyDesc
 										: localStatus.downloading
 											? `${localStatus.downloaded_mb.toFixed(0)} MB / ${localStatus.total_mb.toFixed(0)} MB`
-											: "يتم تحميل الموديل وأدوات التشغيل معاً تلقائياً ليعمل مباشرة دون إعدادات إضافية"}
+											: tr.localIdleDesc}
 								</div>
 							</div>
 							<div className="tr-local-actions">
@@ -369,7 +445,7 @@ export function TranslatorTab(props: TranslatorTabProps) {
 										disabled={testState.status === "testing"}
 									>
 										<Play size={14} />
-										<span>اختبار الرد</span>
+										<span>{tr.testReply}</span>
 									</button>
 								) : (
 									<>
@@ -379,7 +455,7 @@ export function TranslatorTab(props: TranslatorTabProps) {
 											style={
 												localStatus.downloading
 													? {
-															backgroundImage: `linear-gradient(to left, var(--zenith-accent, #007aff) ${progressPct}%, rgba(255, 255, 255, 0.08) ${progressPct}%)`
+															backgroundImage: `linear-gradient(${dir === "rtl" ? "to left" : "to right"}, var(--zenith-accent, #007aff) ${progressPct}%, rgba(255, 255, 255, 0.08) ${progressPct}%)`
 														}
 													: undefined
 											}
@@ -395,7 +471,7 @@ export function TranslatorTab(props: TranslatorTabProps) {
 												className="settings-btn"
 												onClick={cancelDownload}
 											>
-												إلغاء
+												{tr.cancel}
 											</button>
 										)}
 									</>
@@ -415,84 +491,68 @@ export function TranslatorTab(props: TranslatorTabProps) {
 			</div>
 
 			{/* 2. Modes & Behavior */}
-			<div className="setting-group-label">الأوضاع والسلوك</div>
+			<div className="setting-group-label">{tr.modesGroup}</div>
 			<div className="setting-group">
-				<SettingRow
-					icon={Languages}
-					label="اللغة المستهدفة للبطاقة والشاشة"
-					desc="اللغة التي تُعرض بها الترجمة والشرح والملخصات"
-				>
+				<SettingRow icon={Languages} label={tr.targetLanguage} desc={tr.targetLanguageDesc}>
 					<select
 						className="settings-select"
 						value={props.translatorTargetLanguage}
 						onChange={(e) => props.handleTranslatorTargetLanguageChange(e.target.value)}
 					>
-						{TARGET_LANGUAGES.map((lang) => (
-							<option key={lang.value} value={lang.value}>
-								{lang.label}
+						{TARGET_LANGUAGE_KEYS.map((langKey) => (
+							<option key={langKey} value={langKey}>
+								{tr.targetLanguages[langKey]}
 							</option>
 						))}
 					</select>
 				</SettingRow>
 
-				<SettingRow
-					icon={Sliders}
-					label="وضع المعالجة الافتراضي"
-					desc="يحدد كيف يعالج المترجم النص المحدد في البطاقة العائمة"
-				>
+				<SettingRow icon={Sliders} label={tr.outputMode} desc={tr.outputModeDesc}>
 					<div className="tr-segmented">
 						<button
 							type="button"
 							className={`tr-seg-btn ${props.translatorOutputMode === "full" ? "active" : ""}`}
 							onClick={() => props.handleTranslatorOutputModeChange("full")}
 						>
-							ترجمة كاملة
+							{tr.modeFull}
 						</button>
 						<button
 							type="button"
 							className={`tr-seg-btn ${props.translatorOutputMode === "explain" ? "active" : ""}`}
 							onClick={() => props.handleTranslatorOutputModeChange("explain")}
 						>
-							شرح سريع
+							{tr.modeExplain}
 						</button>
 						<button
 							type="button"
 							className={`tr-seg-btn ${props.translatorOutputMode === "summarize" ? "active" : ""}`}
 							onClick={() => props.handleTranslatorOutputModeChange("summarize")}
 						>
-							اختصار
+							{tr.modeSummarize}
 						</button>
 					</div>
 				</SettingRow>
 
-				<SettingRow
-					icon={PanelTop}
-					label="مكان عرض نتيجة الترجمة"
-					desc="اختيار ظهور النتيجة في نافذة عائمة بجانب المؤشر أو داخل النوتش"
-				>
+				<SettingRow icon={PanelTop} label={tr.displayTarget} desc={tr.displayTargetDesc}>
 					<div className="tr-segmented">
 						<button
 							type="button"
 							className={`tr-seg-btn ${props.translatorDisplayTarget === "floating" ? "active" : ""}`}
 							onClick={() => props.handleTranslatorDisplayTargetChange("floating")}
 						>
-							نافذة عائمة
+							{tr.displayFloating}
 						</button>
 						<button
 							type="button"
 							className={`tr-seg-btn ${props.translatorDisplayTarget === "notch" ? "active" : ""}`}
 							onClick={() => props.handleTranslatorDisplayTargetChange("notch")}
 						>
-							النوتش
+							{tr.displayNotch}
 						</button>
 					</div>
 				</SettingRow>
 
-				<SettingRow
-					icon={ClipboardPaste}
-					label="استبدال النص مباشرة عند الترجمة للإنجليزية"
-					desc="لصق الترجمة الإنجليزية مكان النص المحدد تلقائياً عبر Ctrl+V"
-				>
+				<SettingRow icon={ClipboardPaste} label={tr.autoPasteArToEn} desc={tr.autoPasteArToEnDesc}>
 					<label className="toggle-switch">
 						<input
 							type="checkbox"
@@ -503,11 +563,7 @@ export function TranslatorTab(props: TranslatorTabProps) {
 					</label>
 				</SettingRow>
 
-				<SettingRow
-					icon={Sparkles}
-					label="تحديد كل النص تلقائياً عند عدم وجود تحديد"
-					desc="يرسل Ctrl+A تلقائياً إذا ضغطت الاختصار دون تحديد نص"
-				>
+				<SettingRow icon={Sparkles} label={tr.selectAllFallback} desc={tr.selectAllFallbackDesc}>
 					<label className="toggle-switch">
 						<input
 							type="checkbox"
@@ -520,13 +576,9 @@ export function TranslatorTab(props: TranslatorTabProps) {
 			</div>
 
 			{/* 3. Global Hotkeys */}
-			<div className="setting-group-label">اختصارات لوحة المفاتيح</div>
+			<div className="setting-group-label">{tr.hotkeysGroup}</div>
 			<div className="setting-group">
-				<SettingRow
-					icon={Keyboard}
-					label="ترجمة سريعة ← الإنجليزية (مباشرة)"
-					desc="يترجم النص المحدد إلى الإنجليزية ويستبدله فوراً"
-				>
+				<SettingRow icon={Keyboard} label={tr.hkArToEn} desc={tr.hkArToEnDesc}>
 					<HotkeyRecorder
 						value={props.translatorHotkeyArToEn}
 						recording={recordingField === "ar_to_en"}
@@ -539,11 +591,7 @@ export function TranslatorTab(props: TranslatorTabProps) {
 					/>
 				</SettingRow>
 
-				<SettingRow
-					icon={Keyboard}
-					label="ترجمة / شرح / اختصار في بطاقة عائمة"
-					desc="يعرض النتيجة في بطاقة سريعة بجانب المؤشر"
-				>
+				<SettingRow icon={Keyboard} label={tr.hkAnyToAr} desc={tr.hkAnyToArDesc}>
 					<HotkeyRecorder
 						value={props.translatorHotkeyAnyToAr}
 						recording={recordingField === "any_to_ar"}
@@ -556,11 +604,7 @@ export function TranslatorTab(props: TranslatorTabProps) {
 					/>
 				</SettingRow>
 
-				<SettingRow
-					icon={Keyboard}
-					label="ترجمة الشاشة فوق النص (Overlay)"
-					desc="يلتقط النافذة ويضع الترجمة فوق كل نص مع خلفية ضبابية"
-				>
+				<SettingRow icon={Keyboard} label={tr.hkScreen} desc={tr.hkScreenDesc}>
 					<HotkeyRecorder
 						value={props.translatorHotkeyScreen}
 						recording={recordingField === "screen"}
@@ -573,11 +617,7 @@ export function TranslatorTab(props: TranslatorTabProps) {
 					/>
 				</SettingRow>
 
-				<SettingRow
-					icon={Keyboard}
-					label="ترجمة الصفحة الكاملة بالتمرير"
-					desc="يمرر الصفحة ويدمج اللقطات لترجمة المستند أو المقال بالكامل"
-				>
+				<SettingRow icon={Keyboard} label={tr.hkFullpage} desc={tr.hkFullpageDesc}>
 					<HotkeyRecorder
 						value={props.translatorHotkeyFullpage}
 						recording={recordingField === "fullpage"}
@@ -592,12 +632,12 @@ export function TranslatorTab(props: TranslatorTabProps) {
 			</div>
 
 			{/* 4. Appearance & Prompts */}
-			<div className="setting-group-label">المظهر والتوجيهات</div>
+			<div className="setting-group-label">{tr.appearanceGroup}</div>
 			<div className="setting-group">
 				<SettingRow
 					icon={Type}
-					label={`حجم خط البطاقة والتراكب (${props.translatorFontSize}px)`}
-					desc="حجم النص داخل البطاقة العائمة وطبقة ترجمة الشاشة"
+					label={tr.fontSize(props.translatorFontSize)}
+					desc={tr.fontSizeDesc}
 				>
 					<div className="range-wrapper">
 						<input
@@ -614,8 +654,8 @@ export function TranslatorTab(props: TranslatorTabProps) {
 
 				<SettingRow
 					icon={Clock}
-					label={`مدة بقاء البطاقة العائمة (${props.translatorCardTimeoutSec} ث)`}
-					desc="تُغلق البطاقة تلقائياً بعد انتهاء المهلة (تتوقف عند مرور الماوس)"
+					label={tr.cardTimeout(props.translatorCardTimeoutSec)}
+					desc={tr.cardTimeoutDesc}
 				>
 					<div className="range-wrapper">
 						<input
@@ -632,8 +672,8 @@ export function TranslatorTab(props: TranslatorTabProps) {
 
 				<SettingRow
 					icon={Eye}
-					label={`شفافية خلفية ترجمة الشاشة (${props.translatorOverlayOpacity}%)`}
-					desc="درجة تعتيم اللقطة الخلفية عند عرض الترجمة فوق الشاشة"
+					label={tr.overlayOpacity(props.translatorOverlayOpacity)}
+					desc={tr.overlayOpacityDesc}
 				>
 					<div className="range-wrapper">
 						<input
@@ -650,21 +690,21 @@ export function TranslatorTab(props: TranslatorTabProps) {
 
 				<div className="tr-prompts-block">
 					<div className="tr-prompt-field">
-						<label className="tr-prompt-label">توجيه مخصص للترجمة الإنجليزية المباشرة (اختياري)</label>
+						<label className="tr-prompt-label">{tr.customPromptInplace}</label>
 						<textarea
 							className="tr-prompt-textarea"
 							rows={2}
-							placeholder="اتركه فارغاً لاستخدام التوجيه الافتراضي"
+							placeholder={tr.customPromptPlaceholder}
 							value={props.translatorCustomPromptInplace}
 							onChange={(e) => props.handleTranslatorCustomPromptInplaceChange(e.target.value)}
 						/>
 					</div>
 					<div className="tr-prompt-field">
-						<label className="tr-prompt-label">توجيه مخصص للبطاقة السريعة (اختياري)</label>
+						<label className="tr-prompt-label">{tr.customPromptQuick}</label>
 						<textarea
 							className="tr-prompt-textarea"
 							rows={2}
-							placeholder="اتركه فارغاً لاستخدام التوجيه الافتراضي"
+							placeholder={tr.customPromptPlaceholder}
 							value={props.translatorCustomPromptQuick}
 							onChange={(e) => props.handleTranslatorCustomPromptQuickChange(e.target.value)}
 						/>

@@ -4,12 +4,13 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { X, Minus, Maximize2, Minimize2, Settings, Palette, PanelTop, Monitor, Layers, MousePointer, Languages, Info, Megaphone } from "lucide-react";
+import { X, Minus, Maximize2, Minimize2, Settings, Palette, PanelTop, Monitor, Layers, MousePointer, Languages, Info, Megaphone, CheckSquare } from "lucide-react";
 import {
 	useSettings,
 	GeneralTab,
 	AppearanceTab,
 	NotchTab,
+	TasksTab,
 	DockTab,
 	OverlaysTab,
 	MouseTab,
@@ -26,12 +27,13 @@ const appWindow = getCurrentWebviewWindow();
 
 const TABS: {
 	id: SettingsTab;
-	labelKey: "general" | "appearance" | "notch" | "dock" | "overlays" | "mouse" | "translator" | "about";
+	labelKey: "general" | "appearance" | "notch" | "tasks" | "dock" | "overlays" | "mouse" | "translator" | "about";
 	icon: typeof Settings;
 }[] = [
 	{ id: "general", labelKey: "general", icon: Settings },
 	{ id: "appearance", labelKey: "appearance", icon: Palette },
 	{ id: "notch", labelKey: "notch", icon: PanelTop },
+	{ id: "tasks", labelKey: "tasks", icon: CheckSquare },
 	{ id: "dock", labelKey: "dock", icon: Monitor },
 	{ id: "overlays", labelKey: "overlays", icon: Layers },
 	{ id: "mouse", labelKey: "mouse", icon: MousePointer },
@@ -58,8 +60,8 @@ function SettingsApp() {
 	useEffect(() => {
 		let unlisten: (() => void) | undefined;
 		listen<string>("open-settings-tab", (ev) => {
-			if (ev.payload === "translator") {
-				setActiveTab("translator");
+			if (ev.payload === "translator" || ev.payload === "tasks") {
+				setActiveTab(ev.payload);
 			}
 		})
 			.then((fn) => {
@@ -300,6 +302,7 @@ function SettingsApp() {
 							toggleNotchRememberPanel={settings.toggleNotchRememberPanel}
 							notchDefaultPanel={settings.notchDefaultPanel}
 							changeNotchDefaultPanel={settings.changeNotchDefaultPanel}
+							tasksEnabled={settings.tasksEnabled}
 							timerSoundEnabled={settings.timerSoundEnabled}
 							toggleTimerSound={settings.toggleTimerSound}
 							musicModeEnabled={settings.musicModeEnabled}
@@ -333,6 +336,46 @@ function SettingsApp() {
 							toggleNotificationsSilent={settings.toggleNotificationsSilent}
 							notificationsNotchEnabled={settings.notificationsNotchEnabled}
 							toggleNotificationsNotch={settings.toggleNotificationsNotch}
+						/>
+					)}
+					{activeTab === "tasks" && (
+						<TasksTab
+							tasksEnabled={settings.tasksEnabled}
+							toggleTasksEnabled={settings.toggleTasksEnabled}
+							tasksDefaultTab={settings.tasksDefaultTab}
+							handleTasksDefaultTabChange={settings.handleTasksDefaultTabChange}
+							tasksShowTasksTab={settings.tasksShowTasksTab}
+							toggleTasksShowTasksTab={settings.toggleTasksShowTasksTab}
+							tasksShowNotesTab={settings.tasksShowNotesTab}
+							toggleTasksShowNotesTab={settings.toggleTasksShowNotesTab}
+							tasksShowQuickAdd={settings.tasksShowQuickAdd}
+							toggleTasksShowQuickAdd={settings.toggleTasksShowQuickAdd}
+							tasksShowCompleted={settings.tasksShowCompleted}
+							toggleTasksShowCompleted={settings.toggleTasksShowCompleted}
+							tasksShowTaskNotes={settings.tasksShowTaskNotes}
+							toggleTasksShowTaskNotes={settings.toggleTasksShowTaskNotes}
+							tasksShowSourceBadge={settings.tasksShowSourceBadge}
+							toggleTasksShowSourceBadge={settings.toggleTasksShowSourceBadge}
+							tasksDensity={settings.tasksDensity}
+							handleTasksDensityChange={settings.handleTasksDensityChange}
+							tasksDefaultSource={settings.tasksDefaultSource}
+							handleTasksDefaultSourceChange={settings.handleTasksDefaultSourceChange}
+							tasksAutoSync={settings.tasksAutoSync}
+							toggleTasksAutoSync={settings.toggleTasksAutoSync}
+							tasksSyncIntervalSec={settings.tasksSyncIntervalSec}
+							handleTasksSyncIntervalSecChange={settings.handleTasksSyncIntervalSecChange}
+							tasksNotionToken={settings.tasksNotionToken}
+							handleTasksNotionTokenChange={settings.handleTasksNotionTokenChange}
+							tasksNotionTasksDb={settings.tasksNotionTasksDb}
+							handleTasksNotionTasksDbChange={settings.handleTasksNotionTasksDbChange}
+							tasksNotionNotesDb={settings.tasksNotionNotesDb}
+							handleTasksNotionNotesDbChange={settings.handleTasksNotionNotesDbChange}
+							tasksGoogleClientId={settings.tasksGoogleClientId}
+							handleTasksGoogleClientIdChange={settings.handleTasksGoogleClientIdChange}
+							tasksGoogleClientSecret={settings.tasksGoogleClientSecret}
+							handleTasksGoogleClientSecretChange={settings.handleTasksGoogleClientSecretChange}
+							tasksGoogleListId={settings.tasksGoogleListId}
+							handleTasksGoogleListIdChange={settings.handleTasksGoogleListIdChange}
 						/>
 					)}
 					{activeTab === "dock" && (
@@ -471,6 +514,14 @@ function SettingsApp() {
 							handleTranslatorGroqApiKeyChange={settings.handleTranslatorGroqApiKeyChange}
 							translatorOpenaiApiKey={settings.translatorOpenaiApiKey}
 							handleTranslatorOpenaiApiKeyChange={settings.handleTranslatorOpenaiApiKeyChange}
+							translatorCustomApiUrl={settings.translatorCustomApiUrl}
+							handleTranslatorCustomApiUrlChange={settings.handleTranslatorCustomApiUrlChange}
+							translatorCustomApiKey={settings.translatorCustomApiKey}
+							handleTranslatorCustomApiKeyChange={settings.handleTranslatorCustomApiKeyChange}
+							translatorCustomModel={settings.translatorCustomModel}
+							handleTranslatorCustomModelChange={settings.handleTranslatorCustomModelChange}
+							translatorCustomApiFormat={settings.translatorCustomApiFormat}
+							handleTranslatorCustomApiFormatChange={settings.handleTranslatorCustomApiFormatChange}
 							translatorTargetLanguage={settings.translatorTargetLanguage}
 							handleTranslatorTargetLanguageChange={settings.handleTranslatorTargetLanguageChange}
 							translatorOutputMode={settings.translatorOutputMode}

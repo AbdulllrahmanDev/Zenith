@@ -1,5 +1,7 @@
-use image::RgbaImage;
+use image::{imageops::FilterType, DynamicImage, ImageFormat, Rgba, RgbaImage};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::io::Cursor;
 use windows::core::HSTRING;
 use windows::Globalization::Language;
 use windows::Graphics::Imaging::{BitmapDecoder, BitmapPixelFormat, SoftwareBitmap};
@@ -266,16 +268,191 @@ impl Drop for ComGuard {
     }
 }
 
-pub fn extract_raw_ocr_lines_from_png(png_bytes: &[u8]) -> Result<Vec<RawOcrLine>, String> {
-    let _com = ComGuard::enter();
+const OCR_BORDER_PAD: u32 = 24;
 
-    let engine = OcrEngine::TryCreateFromUserProfileLanguages()
-        .or_else(|_| {
-            let lang = Language::CreateLanguage(&HSTRING::from("en-US"))?;
-            OcrEngine::TryCreateFromLanguage(&lang)
+fn average_edge_color(rgba: &RgbaImage) -> (u8, u8, u8, f64) {
+    let w = rgba.width();
+    let h = rgba.height();
+    if w == 0 || h == 0 {
+        return (255, 255, 255, 255.0);
+    }
+    let mut r_sum: u64 = 0;
+    let mut g_sum: u64 = 0;
+    let mut b_sum: u64 = 0;
+    let mut count: u64 = 0;
+    let step_x = (w / 16).max(1);
+    let step_y = (h / 16).max(1);
+
+    for x in (0..w).step_by(step_x as usize) {
+        for y in [0, h - 1] {
+            let p = rgba.get_pixel(x, y);
+            r_sum += p[0] as u64;
+            g_sum += p[1] as u64;
+            b_sum += p[2] as u64;
+            count += 1;
+        }
+    }
+    for y in (0..h).step_by(step_y as usize) {
+        for x in [0, w - 1] {
+            let p = rgba.get_pixel(x, y);
+            r_sum += p[0] as u64;
+            g_sum += p[1] as u64;
+            b_sum += p[2] as u64;
+            count += 1;
+        }
+    }
+    let r = (r_sum / count.max(1)) as u8;
+    let g = (g_sum / count.max(1)) as u8;
+    let b = (b_sum / count.max(1)) as u8;
+    let luma = 0.299 * r as f64 + 0.587 * g as f64 + 0.114 * b as f64;
+    (r, g, b, luma)
+}
+
+pub fn prepare_ocr_image(rgba: &RgbaImage, invert: bool) -> (RgbaImage, f64, u32) {
+    let w = rgba.width().max(1);
+    let h = rgba.height().max(1);
+    let raw_scale: f64 = if w < 260 || h < 90 {
+        3.0
+    } else if w < 750 || h < 240 {
+        2.0
+    } else {
+        1.0
+    };
+    let max_dim = w.max(h) as f64;
+    let scale = if max_dim * raw_scale > 3200.0 {
+        (3200.0 / max_dim).max(1.0)
+    } else {
+        raw_scale
+    };
+
+    let scaled = if scale > 1.01 {
+        let nw = ((w as f64) * scale).round().max(1.0) as u32;
+        let nh = ((h as f64) * scale).round().max(1.0) as u32;
+        image::imageops::resize(rgba, nw, nh, FilterType::CatmullRom)
+    } else {
+        rgba.clone()
+    };
+
+    let (er, eg, eb, _) = average_edge_color(&scaled);
+    let bg = if invert {
+        Rgba([255 - er, 255 - eg, 255 - eb, 255])
+    } else {
+        Rgba([er, eg, eb, 255])
+    };
+
+    let pad = OCR_BORDER_PAD;
+    let mut padded = RgbaImage::from_pixel(scaled.width() + pad * 2, scaled.height() + pad * 2, bg);
+    for (x, y, px) in scaled.enumerate_pixels() {
+        let out_px = if invert {
+            Rgba([255 - px[0], 255 - px[1], 255 - px[2], 255])
+        } else {
+            Rgba([px[0], px[1], px[2], 255])
+        };
+        padded.put_pixel(x + pad, y + pad, out_px);
+    }
+
+    (padded, scale, pad)
+}
+
+fn unscale_ocr_lines(
+    lines: Vec<RawOcrLine>,
+    scale: f64,
+    pad: u32,
+    orig_w: u32,
+    orig_h: u32,
+) -> Vec<RawOcrLine> {
+    let max_w = orig_w as f64;
+    let max_h = orig_h as f64;
+    let pad_f = pad as f64;
+    lines
+        .into_iter()
+        .filter_map(|l| {
+            let left = ((l.left - pad_f) / scale).clamp(0.0, max_w);
+            let top = ((l.top - pad_f) / scale).clamp(0.0, max_h);
+            let width = (l.width / scale).min(max_w - left);
+            let height = (l.height / scale).min(max_h - top);
+            if width <= 0.5 || height <= 0.5 {
+                None
+            } else {
+                Some(RawOcrLine {
+                    left,
+                    top,
+                    width,
+                    height,
+                    text: l.text,
+                })
+            }
         })
-        .map_err(|e| format!("Windows OCR engine unavailable: {e}"))?;
+        .collect()
+}
 
+fn build_ocr_engines(prefer_arabic: bool) -> Result<Vec<OcrEngine>, String> {
+    let mut engines = Vec::new();
+    let mut seen_tags: HashSet<String> = HashSet::new();
+
+    let mut push_engine = |eng: OcrEngine| {
+        let tag = eng
+            .RecognizerLanguage()
+            .and_then(|l| l.LanguageTag())
+            .map(|s| s.to_string_lossy().to_ascii_lowercase())
+            .unwrap_or_default();
+        if tag.is_empty() || seen_tags.insert(tag) {
+            engines.push(eng);
+        }
+    };
+
+    let available: Vec<(String, Language)> = OcrEngine::AvailableRecognizerLanguages()
+        .ok()
+        .map(|list| {
+            let count = list.Size().unwrap_or(0);
+            (0..count)
+                .filter_map(|i| list.GetAt(i).ok())
+                .filter_map(|lang| {
+                    let tag = lang.LanguageTag().ok()?.to_string_lossy().to_ascii_lowercase();
+                    Some((tag, lang))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if prefer_arabic {
+        for (tag, lang) in &available {
+            if tag.starts_with("ar") {
+                if let Ok(eng) = OcrEngine::TryCreateFromLanguage(lang) {
+                    push_engine(eng);
+                }
+            }
+        }
+    }
+
+    if let Ok(eng) = OcrEngine::TryCreateFromUserProfileLanguages() {
+        push_engine(eng);
+    }
+
+    for (_, lang) in &available {
+        if let Ok(eng) = OcrEngine::TryCreateFromLanguage(lang) {
+            push_engine(eng);
+        }
+    }
+
+    drop(push_engine);
+
+    if engines.is_empty() {
+        if let Ok(lang) = Language::CreateLanguage(&HSTRING::from("en-US")) {
+            if let Ok(eng) = OcrEngine::TryCreateFromLanguage(&lang) {
+                engines.push(eng);
+            }
+        }
+    }
+
+    if engines.is_empty() {
+        Err("Windows OCR engine unavailable for any installed language".to_string())
+    } else {
+        Ok(engines)
+    }
+}
+
+fn decode_bgra_software_bitmap(png_bytes: &[u8]) -> Result<SoftwareBitmap, String> {
     let stream = InMemoryRandomAccessStream::new().map_err(|e| e.to_string())?;
     let writer = DataWriter::CreateDataWriter(&stream).map_err(|e| e.to_string())?;
     writer.WriteBytes(png_bytes).map_err(|e| e.to_string())?;
@@ -303,19 +480,24 @@ pub fn extract_raw_ocr_lines_from_png(png_bytes: &[u8]) -> Result<Vec<RawOcrLine
         .get()
         .map_err(|e| format!("GetSoftwareBitmap failed: {e}"))?;
 
-    let converted = if bitmap
+    if bitmap
         .BitmapPixelFormat()
         .map(|f| f == BitmapPixelFormat::Bgra8)
         .unwrap_or(false)
     {
-        bitmap
+        Ok(bitmap)
     } else {
         SoftwareBitmap::Convert(&bitmap, BitmapPixelFormat::Bgra8)
-            .map_err(|e| format!("SoftwareBitmap::Convert failed: {e}"))?
-    };
+            .map_err(|e| format!("SoftwareBitmap::Convert failed: {e}"))
+    }
+}
 
+fn recognize_with_engine(
+    engine: &OcrEngine,
+    bitmap: &SoftwareBitmap,
+) -> Result<Vec<RawOcrLine>, String> {
     let result = engine
-        .RecognizeAsync(&converted)
+        .RecognizeAsync(bitmap)
         .map_err(|e| e.to_string())?
         .get()
         .map_err(|e| format!("OCR RecognizeAsync failed: {e}"))?;
@@ -371,6 +553,66 @@ pub fn extract_raw_ocr_lines_from_png(png_bytes: &[u8]) -> Result<Vec<RawOcrLine
     Ok(out)
 }
 
+fn recognize_prepared_rgba(
+    engines: &[OcrEngine],
+    prepared: &RgbaImage,
+    scale: f64,
+    pad: u32,
+    orig_w: u32,
+    orig_h: u32,
+) -> Result<Vec<RawOcrLine>, String> {
+    let mut png_buf = Cursor::new(Vec::new());
+    DynamicImage::ImageRgba8(prepared.clone())
+        .write_to(&mut png_buf, ImageFormat::Png)
+        .map_err(|e| format!("OCR PNG encode failed: {e}"))?;
+    let bitmap = decode_bgra_software_bitmap(&png_buf.into_inner())?;
+
+    let mut last_err = None;
+    for engine in engines {
+        match recognize_with_engine(engine, &bitmap) {
+            Ok(lines) if !lines.is_empty() => {
+                return Ok(unscale_ocr_lines(lines, scale, pad, orig_w, orig_h));
+            }
+            Ok(_) => {}
+            Err(e) => last_err = Some(e),
+        }
+    }
+
+    if let Some(err) = last_err {
+        Err(err)
+    } else {
+        Ok(Vec::new())
+    }
+}
+
+pub fn extract_raw_ocr_lines_from_rgba(
+    rgba: &RgbaImage,
+    prefer_arabic: bool,
+) -> Result<Vec<RawOcrLine>, String> {
+    let _com = ComGuard::enter();
+    let engines = build_ocr_engines(prefer_arabic)?;
+    let orig_w = rgba.width();
+    let orig_h = rgba.height();
+
+    let (prepared, scale, pad) = prepare_ocr_image(rgba, false);
+    let first = recognize_prepared_rgba(&engines, &prepared, scale, pad, orig_w, orig_h)?;
+    if !first.is_empty() {
+        return Ok(first);
+    }
+
+    // Retry inverted on dark-mode crops where light text on dark backgrounds can be missed.
+    let (_, _, _, luma) = average_edge_color(rgba);
+    if luma < 115.0 {
+        let (inverted, inv_scale, inv_pad) = prepare_ocr_image(rgba, true);
+        let second = recognize_prepared_rgba(&engines, &inverted, inv_scale, inv_pad, orig_w, orig_h)?;
+        if !second.is_empty() {
+            return Ok(second);
+        }
+    }
+
+    Ok(Vec::new())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -405,5 +647,36 @@ mod tests {
         assert_eq!(blocks.len(), 2);
         assert_eq!(blocks[0].text, "First sentence line continues right below.");
         assert_eq!(blocks[1].text, "Separate paragraph");
+    }
+
+    #[test]
+    fn prepares_and_unscales_small_dark_crop() {
+        let img = RgbaImage::from_pixel(120, 40, Rgba([20, 22, 28, 255]));
+        let (prep, scale, pad) = prepare_ocr_image(&img, true);
+        assert_eq!(scale, 3.0);
+        assert_eq!(pad, OCR_BORDER_PAD);
+        assert_eq!(prep.width(), 120 * 3 + pad * 2);
+        assert_eq!(prep.height(), 40 * 3 + pad * 2);
+        // Inverted dark pixel becomes bright
+        assert!(prep.get_pixel(0, 0)[0] > 200);
+
+        let mapped = unscale_ocr_lines(
+            vec![RawOcrLine {
+                left: pad as f64 + 30.0,
+                top: pad as f64 + 15.0,
+                width: 90.0,
+                height: 24.0,
+                text: "hello".to_string(),
+            }],
+            scale,
+            pad,
+            120,
+            40,
+        );
+        assert_eq!(mapped.len(), 1);
+        assert!((mapped[0].left - 10.0).abs() < 0.01);
+        assert!((mapped[0].top - 5.0).abs() < 0.01);
+        assert!((mapped[0].width - 30.0).abs() < 0.01);
+        assert!((mapped[0].height - 8.0).abs() < 0.01);
     }
 }

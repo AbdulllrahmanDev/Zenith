@@ -16,11 +16,14 @@ use tauri::{
 use automation::{capture_selected_text, replace_selection_in_place, write_clipboard_unicode};
 use capture::{
     annotate_cursor_reticle, capture_region_rect, capture_scrollable_page,
-    capture_window_under_cursor, compute_card_position, encode_png_base64_data_url,
-    get_cursor_pos, get_monitor_areas, CaptureRect,
+    capture_window_under_cursor, compute_card_position, encode_png, encode_png_base64_data_url,
+    get_cursor_pos, get_monitor_areas, CaptureRect, WindowCapture,
 };
 use config::{migrate_legacy_translator_config, TranslatorConfig, KEY_CARD_POS};
-use engine::{explain_cursor_region, translate_inplace, translate_ocr_batch, translate_quick};
+use engine::{
+    explain_cursor_region, translate_inplace, translate_ocr_batch, translate_quick,
+    translate_region_image,
+};
 use hotkeys::{
     start_hotkey_thread, stop_hotkey_thread, update_bindings, HotkeyBindings, HK_ANY_TO_AR,
     HK_AR_TO_EN, HK_FULLPAGE_OVERLAY, HK_SCREEN_OVERLAY, HK_TOGGLE_PANEL,
@@ -29,7 +32,9 @@ use local_runtime::{
     cancel_download, delete_local_model, download_model_and_runtime, get_local_status,
     stop_local_server, LocalDownloadStatus,
 };
-use ocr::{enrich_blocks_with_bg_style, extract_raw_ocr_lines_from_png, group_ocr_lines, OcrBlock};
+use ocr::{
+    enrich_blocks_with_bg_style, extract_raw_ocr_lines_from_rgba, group_ocr_lines, OcrBlock,
+};
 
 static BUSY: AtomicBool = AtomicBool::new(false);
 static OVERLAY_GENERATION: AtomicU64 = AtomicU64::new(0);
@@ -38,6 +43,7 @@ static PENDING_REGION_ACTION: OnceLock<Mutex<RegionAction>> = OnceLock::new();
 static LATEST_CARD: OnceLock<Mutex<Option<CardPayload>>> = OnceLock::new();
 static LATEST_OVERLAY: OnceLock<Mutex<Option<OverlayPayload>>> = OnceLock::new();
 static LATEST_REGION: OnceLock<Mutex<Option<RegionPayload>>> = OnceLock::new();
+static LATEST_REGION_CAPTURE: OnceLock<Mutex<Option<WindowCapture>>> = OnceLock::new();
 static LATEST_SPINNER: OnceLock<Mutex<Option<serde_json::Value>>> = OnceLock::new();
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -103,6 +109,45 @@ fn overlay_state_lock() -> &'static Mutex<Option<OverlayPayload>> {
 
 fn region_state_lock() -> &'static Mutex<Option<RegionPayload>> {
     LATEST_REGION.get_or_init(|| Mutex::new(None))
+}
+
+fn region_capture_lock() -> &'static Mutex<Option<WindowCapture>> {
+    LATEST_REGION_CAPTURE.get_or_init(|| Mutex::new(None))
+}
+
+fn crop_region_from_snapshot(snap: &WindowCapture, rect: CaptureRect) -> Option<WindowCapture> {
+    let snap_left = snap.rect.x;
+    let snap_top = snap.rect.y;
+    let snap_right = snap.rect.x + snap.rgba.width() as i32;
+    let snap_bottom = snap.rect.y + snap.rgba.height() as i32;
+
+    let left = rect.x.max(snap_left);
+    let top = rect.y.max(snap_top);
+    let right = (rect.x + rect.w).min(snap_right);
+    let bottom = (rect.y + rect.h).min(snap_bottom);
+
+    let crop_w = (right - left) as u32;
+    let crop_h = (bottom - top) as u32;
+    if crop_w < 2 || crop_h < 2 {
+        return None;
+    }
+
+    let rel_x = (left - snap_left) as u32;
+    let rel_y = (top - snap_top) as u32;
+    let rgba = image::imageops::crop_imm(&snap.rgba, rel_x, rel_y, crop_w, crop_h).to_image();
+    let png_bytes = encode_png(&rgba).ok()?;
+
+    Some(WindowCapture {
+        rect: CaptureRect {
+            x: left,
+            y: top,
+            w: crop_w as i32,
+            h: crop_h as i32,
+        },
+        cursor_rel: None,
+        rgba,
+        png_bytes,
+    })
 }
 
 fn spinner_state_lock() -> &'static Mutex<Option<serde_json::Value>> {
@@ -591,6 +636,9 @@ pub fn start_region_selection(app: AppHandle) {
 pub fn cancel_region_selection(app: &AppHandle) {
     set_pending_region_action(RegionAction::Overlay);
     clear_window_state("translator-region");
+    if let Ok(mut g) = region_capture_lock().lock() {
+        *g = None;
+    }
     if let Some(win) = app.get_webview_window("translator-region") {
         let _ = win.hide();
     }
@@ -623,6 +671,9 @@ fn start_region_selection_with(app: AppHandle, action: RegionAction) {
 
         let Some(cap) = cap else { return };
         let bg_url = encode_png_base64_data_url(&cap.png_bytes);
+        if let Ok(mut g) = region_capture_lock().lock() {
+            *g = Some(cap);
+        }
 
         let payload = RegionPayload {
             monitor_x: rect.x,
@@ -646,6 +697,7 @@ fn start_region_selection_with(app: AppHandle, action: RegionAction) {
 
 pub fn submit_region_selection(app: AppHandle, x: i32, y: i32, w: i32, h: i32) {
     let action = take_pending_region_action();
+    let snapshot = region_capture_lock().lock().ok().and_then(|mut g| g.take());
     clear_window_state("translator-region");
     if let Some(win) = app.get_webview_window("translator-region") {
         let _ = win.hide();
@@ -661,16 +713,30 @@ pub fn submit_region_selection(app: AppHandle, x: i32, y: i32, w: i32, h: i32) {
         let _reset = BusyGuard;
         let cfg = TranslatorConfig::from_app(&app);
         let gen = OVERLAY_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
-        tokio::time::sleep(std::time::Duration::from_millis(60)).await;
 
         let rect = CaptureRect { x, y, w, h };
-        let cap_res = tokio::task::spawn_blocking(move || capture_region_rect(rect))
-            .await
-            .map_err(|e| e.to_string())
-            .and_then(|r| r);
+        let cap = if let Some(snap) = snapshot {
+            tokio::task::spawn_blocking(move || crop_region_from_snapshot(&snap, rect))
+                .await
+                .ok()
+                .flatten()
+        } else {
+            None
+        };
 
-        let Ok(cap) = cap_res else {
-            return;
+        let cap = match cap {
+            Some(c) => c,
+            None => {
+                tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+                let Ok(c) = tokio::task::spawn_blocking(move || capture_region_rect(rect))
+                    .await
+                    .map_err(|e| e.to_string())
+                    .and_then(|r| r)
+                else {
+                    return;
+                };
+                c
+            }
         };
 
         if action != RegionAction::Overlay {
@@ -684,14 +750,20 @@ pub fn submit_region_selection(app: AppHandle, x: i32, y: i32, w: i32, h: i32) {
             );
         }
 
-        // Extract OCR text from captured region.
-        let png_clone = cap.png_bytes.clone();
-        let raw_lines =
-            tokio::task::spawn_blocking(move || extract_raw_ocr_lines_from_png(&png_clone))
-                .await
-                .ok()
-                .and_then(|r| r.ok())
-                .unwrap_or_default();
+        // Extract OCR text from captured region (prefer Arabic OCR when translating AR -> EN).
+        let rgba_clone = cap.rgba.clone();
+        let prefer_arabic = action == RegionAction::ArToEnCard;
+        let ocr_res = tokio::task::spawn_blocking(move || {
+            extract_raw_ocr_lines_from_rgba(&rgba_clone, prefer_arabic)
+        })
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(|r| r);
+
+        let (raw_lines, ocr_error) = match ocr_res {
+            Ok(lines) => (lines, None),
+            Err(err) => (Vec::new(), Some(err)),
+        };
 
         let blocks = group_ocr_lines(&raw_lines, cap.rgba.width(), cap.rgba.height());
         let anchor = (x + w / 2, y + h / 2);
@@ -700,6 +772,41 @@ pub fn submit_region_selection(app: AppHandle, x: i32, y: i32, w: i32, h: i32) {
             RegionAction::ArToEnCard => {
                 let ocr_text = extract_region_ocr_text(&raw_lines, &blocks);
                 if ocr_text.is_empty() {
+                    if cfg.engine == "cloud" {
+                        let res = translate_region_image(&cfg, &cap.png_bytes, true).await;
+                        hide_spinner(&app);
+                        match res {
+                            Ok(translated) => show_card(
+                                &app,
+                                &cfg,
+                                anchor,
+                                CardPayload {
+                                    title: "الترجمة الإنجليزية".to_string(),
+                                    mode: "full".to_string(),
+                                    source: String::new(),
+                                    text: translated,
+                                    error: false,
+                                    font_size: cfg.font_size,
+                                    timeout_sec: cfg.card_timeout_sec,
+                                },
+                            ),
+                            Err(err) => show_card(
+                                &app,
+                                &cfg,
+                                anchor,
+                                CardPayload {
+                                    title: "خطأ في الترجمة".to_string(),
+                                    mode: "full".to_string(),
+                                    source: String::new(),
+                                    text: err,
+                                    error: true,
+                                    font_size: cfg.font_size,
+                                    timeout_sec: cfg.card_timeout_sec,
+                                },
+                            ),
+                        }
+                        return;
+                    }
                     hide_spinner(&app);
                     show_card(
                         &app,
@@ -709,7 +816,9 @@ pub fn submit_region_selection(app: AppHandle, x: i32, y: i32, w: i32, h: i32) {
                             title: "ترجمة فورية".to_string(),
                             mode: "full".to_string(),
                             source: String::new(),
-                            text: "لم يتم اكتشاف نص واضح في المنطقة المحددة".to_string(),
+                            text: ocr_error.unwrap_or_else(|| {
+                                "لم يتم اكتشاف نص واضح في المنطقة المحددة".to_string()
+                            }),
                             error: true,
                             font_size: cfg.font_size,
                             timeout_sec: cfg.card_timeout_sec,
@@ -790,13 +899,7 @@ pub fn submit_region_selection(app: AppHandle, x: i32, y: i32, w: i32, h: i32) {
                     return;
                 }
                 if cfg.engine == "cloud" {
-                    let annotated = annotate_cursor_reticle(
-                        &cap.rgba,
-                        (cap.rgba.width() / 2) as i32,
-                        (cap.rgba.height() / 2) as i32,
-                    )
-                    .unwrap_or_else(|_| cap.png_bytes.clone());
-                    let res = explain_cursor_region(&app, &cfg, &annotated, &raw_lines, None).await;
+                    let res = translate_region_image(&cfg, &cap.png_bytes, false).await;
                     hide_spinner(&app);
                     match res {
                         Ok(out) => show_card(
@@ -838,7 +941,9 @@ pub fn submit_region_selection(app: AppHandle, x: i32, y: i32, w: i32, h: i32) {
                             title: quick_mode_title(&cfg.output_mode).to_string(),
                             mode: cfg.output_mode.clone(),
                             source: String::new(),
-                            text: "لم يتم اكتشاف نص واضح في المنطقة المحددة".to_string(),
+                            text: ocr_error.unwrap_or_else(|| {
+                                "لم يتم اكتشاف نص واضح في المنطقة المحددة".to_string()
+                            }),
                             error: true,
                             font_size: cfg.font_size,
                             timeout_sec: cfg.card_timeout_sec,
@@ -852,13 +957,7 @@ pub fn submit_region_selection(app: AppHandle, x: i32, y: i32, w: i32, h: i32) {
 
         if blocks.is_empty() && cfg.engine == "cloud" {
             show_spinner_near_cursor(&app, "تحليل المنطقة");
-            let annotated = annotate_cursor_reticle(
-                &cap.rgba,
-                (cap.rgba.width() / 2) as i32,
-                (cap.rgba.height() / 2) as i32,
-            )
-            .unwrap_or_else(|_| cap.png_bytes.clone());
-            let res = explain_cursor_region(&app, &cfg, &annotated, &raw_lines, None).await;
+            let res = translate_region_image(&cfg, &cap.png_bytes, false).await;
             hide_spinner(&app);
             match res {
                 Ok(out) => show_card(
@@ -956,11 +1055,10 @@ async fn process_capture_into_overlay(
     let img_h = cap.rgba.height();
     let img_url = encode_png_base64_data_url(&cap.png_bytes);
 
-    let png_clone = cap.png_bytes.clone();
     let rgba_clone = cap.rgba.clone();
 
     let blocks_res = tokio::task::spawn_blocking(move || -> Result<Vec<OcrBlock>, String> {
-        let lines = extract_raw_ocr_lines_from_png(&png_clone)?;
+        let lines = extract_raw_ocr_lines_from_rgba(&rgba_clone, false)?;
         let mut blocks = group_ocr_lines(&lines, rgba_clone.width(), rgba_clone.height());
         enrich_blocks_with_bg_style(&rgba_clone, &mut blocks);
         Ok(blocks)
@@ -1267,5 +1365,38 @@ mod tests {
             translated: String::new(),
         }];
         assert_eq!(extract_region_ocr_text(&raw, &blocks), "Hello World");
+    }
+
+    #[test]
+    fn crops_region_from_pre_captured_snapshot_with_negative_monitor_origin() {
+        let mut img = image::RgbaImage::from_pixel(200, 120, image::Rgba([10, 20, 30, 255]));
+        img.put_pixel(55, 25, image::Rgba([250, 100, 50, 255]));
+        let snap = WindowCapture {
+            rect: CaptureRect {
+                x: -1920,
+                y: 0,
+                w: 200,
+                h: 120,
+            },
+            cursor_rel: None,
+            rgba: img,
+            png_bytes: Vec::new(),
+        };
+
+        let cropped = crop_region_from_snapshot(
+            &snap,
+            CaptureRect {
+                x: -1870,
+                y: 20,
+                w: 40,
+                h: 30,
+            },
+        )
+        .expect("crop should succeed");
+
+        assert_eq!(cropped.rgba.width(), 40);
+        assert_eq!(cropped.rgba.height(), 30);
+        assert_eq!(cropped.rgba.get_pixel(5, 5), &image::Rgba([250, 100, 50, 255]));
+        assert!(!cropped.png_bytes.is_empty());
     }
 }
