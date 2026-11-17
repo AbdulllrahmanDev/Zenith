@@ -1097,6 +1097,8 @@ export const en = {
 		toggleDetails: "Add details",
 		addButton: "Add",
 		filterAll: "All",
+		filterPending: "Active",
+		filterCompleted: "Done",
 		sourceLocal: "Local",
 		sourceGoogle: "Google",
 		sourceNotion: "Notion",

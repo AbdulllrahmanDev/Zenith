@@ -163,7 +163,26 @@
 	border-radius: 999px;
 	cursor: pointer;
 	white-space: nowrap;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 4px;
+	min-height: 20px;
 	transition: background 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+
+.tasks-filter-chip.icon-only {
+	width: 22px;
+	height: 20px;
+	padding: 0;
+}
+
+.tasks-filter-sep {
+	width: 1px;
+	height: 12px;
+	background: var(--zenith-border, rgba(255, 255, 255, 0.14));
+	margin: 0 2px;
+	flex-shrink: 0;
 }
 
 .tasks-filter-chip:hover {
@@ -243,6 +262,11 @@
 	font-weight: 600;
 	border-radius: 6px;
 	padding: 2px 6px;
+	min-width: 22px;
+	min-height: 20px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 	cursor: pointer;
 	flex-shrink: 0;
 }
@@ -466,12 +490,15 @@
 }
 
 .tasks-source-badge {
-	font-size: 9px;
-	font-weight: 600;
-	padding: 1px 5px;
-	border-radius: 5px;
-	background: rgba(255, 255, 255, 0.08);
-	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.7));
+	width: 18px;
+	height: 18px;
+	border-radius: 6px;
+	background: rgba(255, 255, 255, 0.07);
+	color: var(--zenith-text-muted, rgba(255, 255, 255, 0.72));
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
 }
 
 .tasks-source-badge.google {
@@ -480,11 +507,17 @@
 }
 
 .tasks-source-badge.notion {
-	background: rgba(255, 255, 255, 0.12);
+	background: rgba(255, 255, 255, 0.11);
 	color: var(--zenith-text, #ffffff);
 }
 
+.light-mode .tasks-source-badge {
+	background: rgba(0, 0, 0, 0.06);
+	color: rgba(0, 0, 0, 0.65);
+}
+
 .light-mode .tasks-source-badge.google {
+	background: rgba(37, 99, 235, 0.12);
 	color: #1d4ed8;
 }
 
@@ -493,19 +526,6 @@
 	height: 5px;
 	border-radius: 50%;
 	background: #f59e0b;
-}
-
-.tasks-row-actions {
-	display: flex;
-	align-items: center;
-	gap: 1px;
-	opacity: 0;
-	transition: opacity 0.12s ease;
-}
-
-.tasks-row:hover .tasks-row-actions,
-.tasks-row:focus-within .tasks-row-actions {
-	opacity: 1;
 }
 
 .tasks-edit-stack {

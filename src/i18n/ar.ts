@@ -1097,6 +1097,8 @@ export const ar: TranslationDict = {
 		toggleDetails: "إضافة تفاصيل",
 		addButton: "إضافة",
 		filterAll: "الكل",
+		filterPending: "غير مكتمل",
+		filterCompleted: "مكتمل",
 		sourceLocal: "محلي",
 		sourceGoogle: "Google",
 		sourceNotion: "Notion",

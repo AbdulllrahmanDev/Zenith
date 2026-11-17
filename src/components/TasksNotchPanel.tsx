@@ -4,8 +4,12 @@ import { listen } from "@tauri-apps/api/event";
 import {
 	AlertCircle,
 	Check,
+	CheckCircle2,
 	ChevronDown,
+	Circle,
+	Cloud,
 	FileText,
+	Laptop,
 	ListTodo,
 	Pencil,
 	Plus,
@@ -33,6 +37,34 @@ interface TasksNotchPanelProps {
 }
 
 type TaskFilter = "all" | TaskSource;
+type CompletionFilter = "all" | "pending" | "completed";
+
+function GoogleMarkIcon({ size = 11 }: { size?: number }) {
+	return (
+		<svg
+			width={size}
+			height={size}
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="2.2"
+			strokeLinecap="round"
+			strokeLinejoin="round"
+			aria-hidden="true"
+		>
+			<path d="M20.5 12.2c0-.7-.1-1.4-.2-2H12v4h4.8a4.2 4.2 0 0 1-1.8 2.7v2.3h2.9c1.7-1.6 2.6-4 2.6-7Z" />
+			<path d="M12 21c2.4 0 4.5-.8 6-2.2l-2.9-2.3c-.8.5-1.9.9-3.1.9-2.4 0-4.4-1.6-5.1-3.8H3.9v2.4A9 9 0 0 0 12 21Z" />
+			<path d="M6.9 13.6A5.4 5.4 0 0 1 6.6 12c0-.6.1-1.1.3-1.6V8H3.9A9 9 0 0 0 3 12c0 1.4.3 2.8.9 4l3-2.4Z" />
+			<path d="M12 6.6c1.3 0 2.5.5 3.4 1.3l2.6-2.6A9 9 0 0 0 12 3a9 9 0 0 0-8.1 5l3 2.4c.7-2.2 2.7-3.8 5.1-3.8Z" />
+		</svg>
+	);
+}
+
+function SourceIcon({ source, size = 11 }: { source: TaskSource; size?: number }) {
+	if (source === "google") return <GoogleMarkIcon size={size} />;
+	if (source === "notion") return <Cloud size={size} strokeWidth={2} />;
+	return <Laptop size={size} strokeWidth={2} />;
+}
 
 export function TasksNotchPanel({
 	config,
@@ -68,6 +100,7 @@ export function TasksNotchPanel({
 
 	// Task UI state
 	const [filter, setFilter] = useState<TaskFilter>("all");
+	const [statusFilter, setStatusFilter] = useState<CompletionFilter>("all");
 	const [newTitle, setNewTitle] = useState("");
 	const [newNotes, setNewNotes] = useState("");
 	const [showNewDetails, setShowNewDetails] = useState(false);
@@ -435,10 +468,12 @@ export function TasksNotchPanel({
 	const filteredTasks = useMemo(() => {
 		return snapshot.tasks.filter((task) => {
 			if (filter !== "all" && task.source !== filter) return false;
+			if (statusFilter === "pending") return !task.completed;
+			if (statusFilter === "completed") return task.completed;
 			if (!config.showCompleted && task.completed) return false;
 			return true;
 		});
-	}, [snapshot.tasks, filter, config.showCompleted]);
+	}, [snapshot.tasks, filter, statusFilter, config.showCompleted]);
 
 	const activeTasks = filteredTasks.filter((t) => !t.completed);
 	const completedTasks = filteredTasks.filter((t) => t.completed);
@@ -452,7 +487,7 @@ export function TasksNotchPanel({
 				onDoubleClick={(e) => {
 					if (e.button !== 0 || isEditing) return;
 					const target = e.target as HTMLElement | null;
-					if (target?.closest(".tasks-check-btn") || target?.closest(".tasks-row-actions")) {
+					if (target?.closest(".tasks-check-btn")) {
 						return;
 					}
 					startEditingTask(task);
@@ -540,30 +575,14 @@ export function TasksNotchPanel({
 								<span className="tasks-dirty-dot" title={tp.pendingSync} />
 							)}
 							{config.showSourceBadge && (
-								<span className={`tasks-source-badge ${task.source}`}>
-									{sourceLabel(task.source)}
+								<span
+									className={`tasks-source-badge ${task.source}`}
+									title={sourceLabel(task.source)}
+									aria-label={sourceLabel(task.source)}
+								>
+									<SourceIcon source={task.source} size={11} />
 								</span>
 							)}
-							<div className="tasks-row-actions">
-								<button
-									type="button"
-									className="tasks-icon-btn"
-									title={tp.editTask}
-									aria-label={tp.editTask}
-									onClick={() => startEditingTask(task)}
-								>
-									<Pencil size={11} />
-								</button>
-								<button
-									type="button"
-									className="tasks-icon-btn danger"
-									title={tp.deleteTask}
-									aria-label={tp.deleteTask}
-									onClick={() => void handleDeleteTask(task.id)}
-								>
-									<Trash2 size={11} />
-								</button>
-							</div>
 						</div>
 					</>
 				)}
@@ -660,18 +679,46 @@ export function TasksNotchPanel({
 									<button
 										key={src}
 										type="button"
-										className={`tasks-filter-chip ${filter === src ? "active" : ""}`}
+										className={`tasks-filter-chip icon-only ${filter === src ? "active" : ""}`}
+										title={sourceLabel(src)}
+										aria-label={sourceLabel(src)}
 										onClick={() => setFilter(src)}
 									>
-										{sourceLabel(src)}
+										<SourceIcon source={src} size={11} />
 									</button>
 								))}
+								<span className="tasks-filter-sep" aria-hidden="true" />
+								<button
+									type="button"
+									className={`tasks-filter-chip ${statusFilter === "pending" ? "active" : ""}`}
+									onClick={() =>
+										setStatusFilter((prev) => (prev === "pending" ? "all" : "pending"))
+									}
+								>
+									<Circle size={10} strokeWidth={2.2} />
+									<span>{tp.filterPending}</span>
+								</button>
+								<button
+									type="button"
+									className={`tasks-filter-chip ${statusFilter === "completed" ? "active" : ""}`}
+									onClick={() =>
+										setStatusFilter((prev) =>
+											prev === "completed" ? "all" : "completed"
+										)
+									}
+								>
+									<CheckCircle2 size={10} strokeWidth={2.2} />
+									<span>{tp.filterCompleted}</span>
+								</button>
 							</div>
 							<span className="tasks-meta-count">
-								{activeTasks.length}
-								{config.showCompleted && completedTasks.length > 0
-									? ` / ${activeTasks.length + completedTasks.length}`
-									: ""}
+								{statusFilter === "completed"
+									? completedTasks.length
+									: statusFilter === "pending"
+										? activeTasks.length
+										: config.showCompleted && completedTasks.length > 0
+											? `${activeTasks.length} / ${activeTasks.length + completedTasks.length}`
+											: activeTasks.length}
 							</span>
 						</div>
 
@@ -699,11 +746,14 @@ export function TasksNotchPanel({
 											type="button"
 											className="tasks-source-pick"
 											onClick={cycleTargetSource}
-											title={t.tasksSettings.defaultTarget}
+											title={`${t.tasksSettings.defaultTarget}: ${sourceLabel(targetSource)}`}
+											aria-label={sourceLabel(targetSource)}
 										>
-											{targetSource === "auto"
-												? tp.filterAll
-												: sourceLabel(targetSource)}
+											{targetSource === "auto" ? (
+												tp.filterAll
+											) : (
+												<SourceIcon source={targetSource} size={11} />
+											)}
 										</button>
 									)}
 									<button
@@ -761,8 +811,9 @@ export function TasksNotchPanel({
 								</div>
 							) : (
 								<>
-									{activeTasks.map(renderTaskRow)}
-									{config.showCompleted && completedTasks.length > 0 && (
+									{statusFilter !== "completed" && activeTasks.map(renderTaskRow)}
+									{statusFilter === "completed" && completedTasks.map(renderTaskRow)}
+									{statusFilter === "all" && config.showCompleted && completedTasks.length > 0 && (
 										<>
 											<div className="tasks-section-divider">
 												{tp.completedSection(completedTasks.length)}
@@ -792,8 +843,12 @@ export function TasksNotchPanel({
 							</button>
 
 							{activeNote && config.showSourceBadge && (
-								<span className={`tasks-source-badge ${activeNote.source}`}>
-									{activeNote.source === "notion" ? tp.sourceNotion : tp.sourceLocal}
+								<span
+									className={`tasks-source-badge ${activeNote.source}`}
+									title={sourceLabel(activeNote.source)}
+									aria-label={sourceLabel(activeNote.source)}
+								>
+									<SourceIcon source={activeNote.source} size={11} />
 								</span>
 							)}
 
@@ -802,11 +857,17 @@ export function TasksNotchPanel({
 							{snapshot.sync_status.notion_notes_configured && (
 								<button
 									type="button"
-									className={`tasks-source-pick ${syncNewNoteToNotion ? "" : ""}`}
+									className="tasks-source-pick"
 									title={tp.syncToNotionToggle}
+									aria-label={
+										syncNewNoteToNotion ? tp.sourceNotion : tp.sourceLocal
+									}
 									onClick={() => setSyncNewNoteToNotion((s) => !s)}
 								>
-									{syncNewNoteToNotion ? tp.sourceNotion : tp.sourceLocal}
+									<SourceIcon
+										source={syncNewNoteToNotion ? "notion" : "local"}
+										size={11}
+									/>
 								</button>
 							)}
 
@@ -864,10 +925,12 @@ export function TasksNotchPanel({
 												)}
 											</div>
 											{config.showSourceBadge && (
-												<span className={`tasks-source-badge ${note.source}`}>
-													{note.source === "notion"
-														? tp.sourceNotion
-														: tp.sourceLocal}
+												<span
+													className={`tasks-source-badge ${note.source}`}
+													title={sourceLabel(note.source)}
+													aria-label={sourceLabel(note.source)}
+												>
+													<SourceIcon source={note.source} size={11} />
 												</span>
 											)}
 										</button>
