@@ -751,6 +751,9 @@ export function TasksNotchPanel({
 						<div
 							className="tasks-scroll-area"
 							onWheel={(e) => e.stopPropagation()}
+							onScroll={() => {
+								if (contextMenu) setContextMenu(null);
+							}}
 						>
 							{filteredTasks.length === 0 ? (
 								<div className="tasks-empty">
@@ -931,6 +934,74 @@ export function TasksNotchPanel({
 					</>
 				)}
 			</div>
+
+			{contextMenu && (
+				<div
+					className="tasks-context-menu"
+					dir={dir}
+					role="menu"
+					style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
+					onClick={(e) => e.stopPropagation()}
+					onContextMenu={(e) => {
+						e.preventDefault();
+						e.stopPropagation();
+					}}
+				>
+					{contextMenu.confirmingDelete ? (
+						<div className="tasks-context-confirm-row">
+							<button
+								type="button"
+								className="tasks-context-confirm-btn danger"
+								onClick={() => {
+									const targetId = contextMenu.taskId;
+									setContextMenu(null);
+									void handleDeleteTask(targetId);
+								}}
+							>
+								<Check size={11} strokeWidth={2.5} />
+								<span>{tp.confirmDelete}</span>
+							</button>
+							<button
+								type="button"
+								className="tasks-context-confirm-btn"
+								onClick={() => setContextMenu(null)}
+							>
+								<X size={11} strokeWidth={2.5} />
+								<span>{tp.cancelEdit}</span>
+							</button>
+						</div>
+					) : (
+						<>
+							<button
+								type="button"
+								role="menuitem"
+								className="tasks-context-item"
+								onClick={() => {
+									const task = snapshot.tasks.find((t) => t.id === contextMenu.taskId);
+									setContextMenu(null);
+									if (task) startEditingTask(task);
+								}}
+							>
+								<Pencil size={12} />
+								<span>{tp.editMenu}</span>
+							</button>
+							<button
+								type="button"
+								role="menuitem"
+								className="tasks-context-item danger"
+								onClick={() =>
+									setContextMenu((prev) =>
+										prev ? { ...prev, confirmingDelete: true } : null
+									)
+								}
+							>
+								<Trash2 size={12} />
+								<span>{tp.deleteMenu}</span>
+							</button>
+						</>
+					)}
+				</div>
+			)}
 		</div>
 	);
 }
