@@ -93,7 +93,7 @@ body,
 }
 
 .tr-card-icon-btn.copied {
-	color: var(--zenith-accent, #007aff);
+	color: #32d74b;
 }
 
 .tr-card-close-btn:hover {
@@ -156,8 +156,8 @@ body,
 
 .tr-card-footer-fill {
 	height: 100%;
-	background: var(--zenith-accent, #007aff);
-	opacity: 0.85;
+	background: var(--zenith-text, #ffffff);
+	opacity: 0.55;
 	transition: width 0.2s linear;
 }
 
@@ -217,9 +217,9 @@ body,
 
 .tr-overlay-btn:hover,
 .tr-overlay-btn.active {
-	border-color: var(--zenith-accent, #007aff);
-	background: var(--zenith-accent, #007aff);
-	color: #ffffff;
+	border-color: transparent;
+	background: var(--zenith-text, #ffffff);
+	color: var(--zenith-bg-solid, #111113);
 }
 
 .tr-overlay-scroll {
@@ -266,7 +266,7 @@ body,
 }
 
 .tr-overlay-block:hover {
-	border-color: var(--zenith-accent, #007aff);
+	border-color: var(--zenith-text, #ffffff);
 	z-index: 20;
 	overflow: visible;
 	min-height: fit-content;
@@ -298,7 +298,7 @@ body,
 
 .tr-region-box {
 	position: absolute;
-	border: 2px solid var(--zenith-accent, #007aff);
+	border: 2px solid var(--zenith-text, #ffffff);
 	background: rgba(255, 255, 255, 0.06);
 	box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.25);
 	pointer-events: none;

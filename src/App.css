@@ -1769,8 +1769,8 @@ img {
 	border-bottom-right-radius: inherit;
 	background: radial-gradient(
 		110% 75% at 50% 108%,
-		rgba(56, 189, 248, 0.14) 0%,
-		rgba(34, 211, 238, 0.05) 45%,
+		rgba(255, 255, 255, 0.06) 0%,
+		rgba(255, 255, 255, 0.02) 45%,
 		transparent 72%
 	);
 }
@@ -1791,8 +1791,8 @@ img {
 	width: 15px;
 	height: 15px;
 	border-radius: 50%;
-	border: 2px solid rgba(186, 230, 253, 0.22);
-	border-top-color: #38bdf8;
+	border: 2px solid rgba(255, 255, 255, 0.18);
+	border-top-color: var(--zenith-text, #ffffff);
 	animation: translatorNotchSpin 0.75s linear infinite;
 }
 
@@ -1838,11 +1838,11 @@ img {
 	justify-content: space-between;
 	gap: 10px;
 	padding: 6px 14px 9px;
-	border-top: 1px solid rgba(186, 230, 253, 0.08);
+	border-top: 1px solid var(--zenith-border, rgba(255, 255, 255, 0.08));
 }
 
 .light-mode .translator-notch-footer {
-	border-top-color: rgba(14, 165, 233, 0.12);
+	border-top-color: rgba(0, 0, 0, 0.08);
 }
 
 .translator-notch-title-wrap {
@@ -1866,8 +1866,8 @@ img {
 	height: 6px;
 	border-radius: 50%;
 	flex-shrink: 0;
-	background: linear-gradient(135deg, #67e8f9, #0ea5e9);
-	box-shadow: 0 0 8px rgba(56, 189, 248, 0.85);
+	background: var(--zenith-text, #ffffff);
+	opacity: 0.7;
 }
 
 .translator-notch-content.is-error .translator-notch-dot {
@@ -1907,9 +1907,9 @@ img {
 
 .translator-notch-copy-btn {
 	appearance: none;
-	border: 1px solid rgba(186, 230, 253, 0.35);
-	background: linear-gradient(135deg, #38bdf8 0%, #0284c7 100%);
-	color: #ffffff;
+	border: 1px solid transparent;
+	background: var(--zenith-text, #ffffff);
+	color: var(--zenith-bg-solid, #111113);
 	border-radius: 999px;
 	height: 24px;
 	padding: 0 10px;
@@ -1919,7 +1919,6 @@ img {
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;
-	box-shadow: 0 2px 10px rgba(14, 165, 233, 0.38);
 	transition:
 		transform 0.12s ease,
 		filter 0.15s ease;
@@ -1934,20 +1933,20 @@ img {
 }
 
 .translator-notch-copy-btn.copied {
-	background: linear-gradient(135deg, #22d3ee 0%, #0891b2 100%);
+	opacity: 0.8;
 }
 
 .translator-notch-progress {
 	height: 1.5px;
 	width: 100%;
-	background: rgba(186, 230, 253, 0.08);
+	background: rgba(255, 255, 255, 0.06);
 	overflow: hidden;
 }
 
 .translator-notch-progress-fill {
 	height: 100%;
-	background: linear-gradient(90deg, rgba(34, 211, 238, 0.85), rgba(56, 189, 248, 0.95));
-	box-shadow: 0 0 8px rgba(56, 189, 248, 0.65);
+	background: var(--zenith-text, #ffffff);
+	opacity: 0.5;
 	transition: width 0.2s linear;
 }
 

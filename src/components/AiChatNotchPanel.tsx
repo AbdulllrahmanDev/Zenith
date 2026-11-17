@@ -15,13 +15,13 @@ import {
 	Plus,
 	SendHorizontal,
 	Settings,
-	Sparkles,
 	Square,
 	Trash2,
 	UploadCloud,
 	X
 } from "lucide-react";
 import { useI18n } from "../i18n";
+import { ZenithAiIcon } from "../icons/ZenithAiIcon";
 import type {
 	AiChatNotchConfig,
 	AiChatProviderChoice,
@@ -296,7 +296,7 @@ export function AiChatNotchPanel({
 				<div className="ai-chat-header-start">
 					<div className="ai-chat-title-wrap">
 						<span className="ai-chat-title-icon">
-							<Sparkles size={13} />
+							<ZenithAiIcon size={14} />
 						</span>
 						<span className="ai-chat-title-text">
 							{activeConversation?.title || ac.title}
@@ -357,7 +357,7 @@ export function AiChatNotchPanel({
 					{activeMessages.length === 0 ? (
 						<div className="ai-chat-empty">
 							<div className="ai-chat-empty-badge">
-								<Sparkles size={17} />
+								<ZenithAiIcon size={20} strokeWidth={1.4} />
 							</div>
 							<div className="ai-chat-empty-title">{ac.emptyTitle}</div>
 							<div className="ai-chat-empty-desc">{ac.emptyDesc}</div>
@@ -592,7 +592,7 @@ export function AiChatNotchPanel({
 			{/* Drag Overlay */}
 			{isDragHovering && (
 				<div className="ai-chat-drop-overlay">
-					<UploadCloud size={22} color="var(--zenith-accent, #007aff)" />
+					<UploadCloud size={22} color="var(--zenith-text, #ffffff)" />
 					<div className="ai-chat-drop-title">{ac.dropHintTitle}</div>
 					<div className="ai-chat-drop-sub">{ac.dropHintSub}</div>
 				</div>

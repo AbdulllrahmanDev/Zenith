@@ -147,6 +147,7 @@ export async function applyTheme(
 		setVar("border", "rgba(0, 0, 0, 0.12)");
 		setVar("group-bg", "rgba(0, 0, 0, 0.04)");
 		setVar("accent", "#007aff");
+		setVar("bg-solid", "#ffffff");
 		setVar("scrollbar-thumb", "rgba(0, 0, 0, 0.15)");
 		root.classList.add("light-mode");
 		root.classList.remove("dark-mode");
@@ -166,6 +167,7 @@ export async function applyTheme(
 		setVar("border", isLight ? "rgba(0, 0, 0, 0.12)" : "rgba(255, 255, 255, 0.12)");
 		setVar("group-bg", isLight ? "rgba(0, 0, 0, 0.04)" : "rgba(255, 255, 255, 0.04)");
 		setVar("accent", customColor);
+		setVar("bg-solid", isLight ? "#ffffff" : "#111113");
 		setVar("scrollbar-thumb", isLight ? "rgba(0, 0, 0, 0.15)" : "rgba(255, 255, 255, 0.15)");
 		root.classList.add("theme-custom");
 		root.classList.remove("theme-light", "theme-dark", "theme-adaptive");
@@ -192,6 +194,7 @@ export async function applyTheme(
 			setVar("border", isLight ? "rgba(0, 0, 0, 0.12)" : "rgba(255, 255, 255, 0.12)");
 			setVar("group-bg", isLight ? "rgba(0, 0, 0, 0.04)" : "rgba(255, 255, 255, 0.04)");
 			setVar("accent", accentHex);
+			setVar("bg-solid", isLight ? "#ffffff" : "#111113");
 			setVar("scrollbar-thumb", isLight ? "rgba(0, 0, 0, 0.15)" : "rgba(255, 255, 255, 0.15)");
 			root.classList.add("theme-adaptive");
 			root.classList.remove("theme-light", "theme-dark", "theme-custom");
@@ -215,6 +218,7 @@ export async function applyTheme(
 		setVar("border", "rgba(255, 255, 255, 0.1)");
 		setVar("group-bg", "rgba(255, 255, 255, 0.04)");
 		setVar("accent", "#007aff");
+		setVar("bg-solid", "#111113");
 		setVar("scrollbar-thumb", "rgba(255, 255, 255, 0.1)");
 		root.classList.add("dark-mode");
 		root.classList.remove("light-mode");

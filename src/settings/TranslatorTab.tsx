@@ -12,6 +12,7 @@ import {
 	Type
 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
+import { ZenithAiIcon } from "../icons/ZenithAiIcon";
 import { HotkeyRecorder } from "./HotkeyRecorder";
 import { useI18n } from "../i18n";
 
@@ -100,7 +101,7 @@ export function TranslatorTab(props: TranslatorTabProps) {
 				</SettingRow>
 
 				<SettingRow
-					icon={Sparkles}
+					icon={ZenithAiIcon}
 					label={tr.aiManagedTitle}
 					desc={`${tr.aiManagedDesc} (${activeAiSummary})`}
 				>
@@ -109,7 +110,7 @@ export function TranslatorTab(props: TranslatorTabProps) {
 						className="settings-btn tr-accent-btn"
 						onClick={props.onOpenAiTab}
 					>
-						<Sparkles size={13} />
+						<ZenithAiIcon size={13} />
 						<span>{tr.openAiTabBtn}</span>
 					</button>
 				</SettingRow>

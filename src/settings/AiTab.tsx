@@ -11,10 +11,10 @@ import {
 	Globe,
 	MessageSquare,
 	Play,
-	Power,
-	Sparkles
+	Power
 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
+import { ZenithAiIcon } from "../icons/ZenithAiIcon";
 import { useI18n } from "../i18n";
 
 export interface LocalDownloadStatus {
@@ -404,7 +404,7 @@ export function AiTab(props: AiTabProps) {
 											style={
 												localStatus.downloading
 													? {
-															backgroundImage: `linear-gradient(${dir === "rtl" ? "to left" : "to right"}, var(--zenith-accent, #007aff) ${progressPct}%, rgba(255, 255, 255, 0.08) ${progressPct}%)`
+															backgroundImage: `linear-gradient(${dir === "rtl" ? "to left" : "to right"}, var(--zenith-text, #ffffff) ${progressPct}%, rgba(255, 255, 255, 0.08) ${progressPct}%)`
 														}
 													: undefined
 											}
@@ -450,7 +450,7 @@ export function AiTab(props: AiTabProps) {
 				</SettingRow>
 
 				<SettingRow
-					icon={Sparkles}
+					icon={ZenithAiIcon}
 					label={ai.chatDefaultProvider}
 					desc={ai.chatDefaultProviderDesc}
 				>

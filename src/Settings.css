@@ -3512,8 +3512,9 @@ input:checked + .slider:before {
 }
 
 .tr-seg-btn.active {
-	background: var(--zenith-accent, #007aff);
-	color: #ffffff;
+	background: var(--zenith-text, #ffffff);
+	color: var(--zenith-bg-solid, #111113);
+	box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22);
 }
 
 .tr-api-block,
@@ -3586,17 +3587,18 @@ input:checked + .slider:before {
 }
 
 .tr-accent-btn {
-	background: var(--zenith-accent, #007aff) !important;
-	border-color: var(--zenith-accent, #007aff) !important;
-	color: #ffffff !important;
+	background: var(--zenith-text, #ffffff) !important;
+	border-color: transparent !important;
+	color: var(--zenith-bg-solid, #111113) !important;
+	font-weight: 600;
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
 	white-space: nowrap;
 }
 
-.tr-accent-btn:hover {
-	filter: brightness(1.08);
+.tr-accent-btn:hover:not(:disabled) {
+	opacity: 0.88;
 }
 
 .tr-local-header {
@@ -3627,9 +3629,9 @@ input:checked + .slider:before {
 
 .tr-download-progress-btn {
 	appearance: none;
-	border: 1px solid var(--zenith-accent, #007aff);
-	background-color: var(--zenith-accent, #007aff);
-	color: #ffffff;
+	border: 1px solid transparent;
+	background-color: var(--zenith-text, #ffffff);
+	color: var(--zenith-bg-solid, #111113);
 	font-size: 12px;
 	font-weight: 600;
 	padding: 7px 14px;
@@ -3646,6 +3648,8 @@ input:checked + .slider:before {
 .tr-download-progress-btn.downloading {
 	cursor: default;
 	background-color: transparent;
+	border-color: var(--zenith-border, rgba(255, 255, 255, 0.14));
+	color: var(--zenith-text, #ffffff);
 }
 
 .tr-test-banner {
@@ -3762,8 +3766,8 @@ input:checked + .slider:before {
 	font-weight: 600;
 	padding: 3px 10px;
 	border-radius: 6px;
-	background: var(--zenith-accent, #007aff);
-	color: #ffffff;
+	background: var(--zenith-text, #ffffff);
+	color: var(--zenith-bg-solid, #111113);
 }
 
 .tr-hotkey-btn {
@@ -3772,8 +3776,8 @@ input:checked + .slider:before {
 }
 
 .tr-hotkey-btn.recording {
-	border-color: var(--zenith-accent, #007aff);
-	color: var(--zenith-accent, #007aff);
+	border-color: var(--zenith-text, #ffffff);
+	color: var(--zenith-text, #ffffff);
 }
 
 .tr-prompts-block {
@@ -3812,7 +3816,7 @@ input:checked + .slider:before {
 }
 
 .tr-prompt-textarea:focus {
-	border-color: var(--zenith-accent, #007aff);
+	border-color: var(--zenith-text-muted, rgba(255, 255, 255, 0.45));
 }
 
 :root[data-theme="light"] .tr-prompt-textarea {

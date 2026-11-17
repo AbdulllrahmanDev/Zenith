@@ -4,7 +4,8 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { X, Minus, Maximize2, Minimize2, Settings, Palette, PanelTop, Monitor, Layers, MousePointer, Languages, Info, Megaphone, CheckSquare, Sparkles } from "lucide-react";
+import { X, Minus, Maximize2, Minimize2, Settings, Palette, PanelTop, Monitor, Layers, MousePointer, Languages, Info, Megaphone, CheckSquare } from "lucide-react";
+import { ZenithAiIcon } from "./icons/ZenithAiIcon";
 import {
 	useSettings,
 	GeneralTab,
@@ -29,13 +30,13 @@ const appWindow = getCurrentWebviewWindow();
 const TABS: {
 	id: SettingsTab;
 	labelKey: "general" | "appearance" | "notch" | "tasks" | "ai" | "dock" | "overlays" | "mouse" | "translator" | "about";
-	icon: typeof Settings;
+	icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
 }[] = [
 	{ id: "general", labelKey: "general", icon: Settings },
 	{ id: "appearance", labelKey: "appearance", icon: Palette },
 	{ id: "notch", labelKey: "notch", icon: PanelTop },
 	{ id: "tasks", labelKey: "tasks", icon: CheckSquare },
-	{ id: "ai", labelKey: "ai", icon: Sparkles },
+	{ id: "ai", labelKey: "ai", icon: ZenithAiIcon },
 	{ id: "dock", labelKey: "dock", icon: Monitor },
 	{ id: "overlays", labelKey: "overlays", icon: Layers },
 	{ id: "mouse", labelKey: "mouse", icon: MousePointer },
