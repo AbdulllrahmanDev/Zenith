@@ -68,8 +68,8 @@ Edit `settings.json` with any text editor while Zenith is running. Changes are a
 | `zenith-music-mode-enabled`  | `"true"` / `"false"`              | `"true"` | Enable interactive music media widget.                                                                   |
 | `zenith-music-compact-notch` | `"true"` / `"false"`              | `"true"` | Show compact music display (visualizer + artwork) in collapsed notch.                                    |
 | `zenith-notch-remember-panel` | `"true"` / `"false"` | `"true"` | Click opens the last-used panel when on; when off, click opens `zenith-notch-default-panel`. |
-| `zenith-notch-default-panel` | `"calendar"` / `"command-center"` / `"prayer"` | `"calendar"` | Fixed panel opened on click when panel memory is off. If calendar is disabled, Command Center opens instead. |
-| `zenith-notch-last-panel`    | `"calendar"` / `"command-center"` / `"prayer"` | (unset)  | Last panel the notch was left on, saved by Zenith while panel memory is on. |
+| `zenith-notch-default-panel` | `"calendar"` / `"command-center"` / `"prayer"` / `"tasks"` / `"ai-chat"` | `"calendar"` | Fixed panel opened on click when panel memory is off. If the chosen panel is disabled, Command Center opens instead. |
+| `zenith-notch-last-panel`    | `"calendar"` / `"command-center"` / `"prayer"` / `"tasks"` / `"ai-chat"` | (unset)  | Last panel the notch was left on, saved by Zenith while panel memory is on. |
 | `zenith-notch-click-to-open` | `"true"` / `"false"` | (legacy) | Old setting read only when `zenith-notch-remember-panel` is absent; `"false"` now selects fixed-panel behavior. |
 
 ### Prayer Times
@@ -251,6 +251,16 @@ with open(path, 'w') as f: json.dump(settings, f)
 ## Notes
 
 - All boolean values are strings (`"true"` / `"false"`) for consistency with `localStorage`.
+
+### AI (`الذكاء الاصطناعي`)
+
+Shared AI provider & local model settings (stored under `zenith-translator-*` keys for backwards compatibility and shared with Translator) plus Notch AI Chat settings:
+
+| Key | Type | Default | Description |
+| --- | --- | --- | --- |
+| `zenith-ai-chat-enabled` | boolean string | `"true"` | Enable or disable the AI Chat panel in the Notch and drag-and-drop routing |
+| `zenith-ai-chat-provider` | `"inherit"` \| `"gemini"` \| `"groq"` \| `"openai"` \| `"custom"` \| `"local"` | `"inherit"` | Quick provider override for Notch AI Chat (`"inherit"` uses the shared AI engine & provider) |
+| `zenith-ai-chat-system-prompt` | string | `""` | Optional custom system prompt for Notch AI Chat |
 
 ### Translator (`المترجم`)
 

@@ -81,10 +81,11 @@ export function useSettings() {
 		() => (localStorage.getItem("zenith-notch-remember-panel") ??
 			localStorage.getItem("zenith-notch-click-to-open")) !== "false"
 	);
-	const [notchDefaultPanel, setNotchDefaultPanel] = useState<"calendar" | "command-center" | "prayer" | "tasks">(
-		() => {
-			const s = localStorage.getItem("zenith-notch-default-panel");
-			if (s === "command-center" || s === "prayer" || s === "tasks") return s;
+	const [notchDefaultPanel, setNotchDefaultPanel] = useState<
+		"calendar" | "command-center" | "prayer" | "tasks" | "ai-chat"
+	>(() => {
+		const s = localStorage.getItem("zenith-notch-default-panel");
+		if (s === "command-center" || s === "prayer" || s === "tasks" || s === "ai-chat") return s;
 			return "calendar";
 		}
 	);
@@ -373,6 +374,22 @@ export function useSettings() {
 		() => localStorage.getItem("zenith-translator-custom-prompt-quick") || ""
 	);
 
+	// ── AI Chat state ──
+	const [aiChatEnabled, setAiChatEnabled] = useState(
+		() => localStorage.getItem("zenith-ai-chat-enabled") !== "false"
+	);
+	const [aiChatProvider, setAiChatProvider] = useState<
+		"inherit" | "gemini" | "groq" | "openai" | "custom" | "local"
+	>(() => {
+		const s = localStorage.getItem("zenith-ai-chat-provider");
+		return s === "gemini" || s === "groq" || s === "openai" || s === "custom" || s === "local"
+			? s
+			: "inherit";
+	});
+	const [aiChatSystemPrompt, setAiChatSystemPrompt] = useState(
+		() => localStorage.getItem("zenith-ai-chat-system-prompt") || ""
+	);
+
 	// ── Tasks & Notes state ──
 	const [tasksEnabled, setTasksEnabled] = useState(
 		() => localStorage.getItem("zenith-tasks-enabled") !== "false"
@@ -491,8 +508,11 @@ export function useSettings() {
 			apply(getVal("zenith-music-mode-enabled"), setMusicModeEnabled, readBool);
 			apply(getVal("zenith-notch-remember-panel") ?? getVal("zenith-notch-click-to-open"),
 				setNotchRememberPanel, readBool);
-			apply(getVal("zenith-notch-default-panel"), setNotchDefaultPanel,
-				(v) => v === "command-center" ? "command-center" : "calendar");
+			apply(getVal("zenith-notch-default-panel"), setNotchDefaultPanel, (v) =>
+				v === "command-center" || v === "prayer" || v === "tasks" || v === "ai-chat"
+					? v
+					: "calendar"
+			);
 			apply(getVal("zenith-music-compact-notch"), setMusicCompactNotch, readBool);
 			apply(getVal("zenith-shelf-persist"), setShelfPersist, readBool);
 			apply(getVal("zenith-volume-overlay-enabled"), setVolumeOverlayEnabled, readBool);
@@ -623,6 +643,14 @@ export function useSettings() {
 			apply(getVal("zenith-translator-overlay-opacity"), setTranslatorOverlayOpacity, (v) => parseInt(v, 10) || 88);
 			apply(getVal("zenith-translator-custom-prompt-inplace"), setTranslatorCustomPromptInplace, (v) => v);
 			apply(getVal("zenith-translator-custom-prompt-quick"), setTranslatorCustomPromptQuick, (v) => v);
+
+			apply(getVal("zenith-ai-chat-enabled"), setAiChatEnabled, (v) => v !== "false");
+			apply(getVal("zenith-ai-chat-provider"), setAiChatProvider, (v) =>
+				v === "gemini" || v === "groq" || v === "openai" || v === "custom" || v === "local"
+					? v
+					: "inherit"
+			);
+			apply(getVal("zenith-ai-chat-system-prompt"), setAiChatSystemPrompt, (v) => v);
 
 			apply(getVal("zenith-tasks-enabled"), setTasksEnabled, (v) => v !== "false");
 			apply(getVal("zenith-tasks-default-tab"), setTasksDefaultTab, (v) =>
@@ -795,8 +823,8 @@ export function useSettings() {
 		"zenith-notch-remember-panel": setNotchRememberPanel,
 		"zenith-notch-default-panel": (v: unknown) =>
 			setNotchDefaultPanel(
-				v === "command-center" || v === "prayer" || v === "tasks"
-					? (v as "command-center" | "prayer" | "tasks")
+				v === "command-center" || v === "prayer" || v === "tasks" || v === "ai-chat"
+					? (v as "command-center" | "prayer" | "tasks" | "ai-chat")
 					: "calendar"
 			),
 		"zenith-music-compact-notch": setMusicCompactNotch,
@@ -873,6 +901,14 @@ export function useSettings() {
 		"zenith-translator-overlay-opacity": setTranslatorOverlayOpacity,
 		"zenith-translator-custom-prompt-inplace": setTranslatorCustomPromptInplace,
 		"zenith-translator-custom-prompt-quick": setTranslatorCustomPromptQuick,
+		"zenith-ai-chat-enabled": (v: unknown) => setAiChatEnabled(v !== false && v !== "false"),
+		"zenith-ai-chat-provider": (v: unknown) =>
+			setAiChatProvider(
+				v === "gemini" || v === "groq" || v === "openai" || v === "custom" || v === "local"
+					? v
+					: "inherit"
+			),
+		"zenith-ai-chat-system-prompt": (v: unknown) => setAiChatSystemPrompt(String(v ?? "")),
 		"zenith-mouse-sound-volume": setMouseSoundVolume,
 		"zenith-mouse-menu-radius": setMouseMenuRadius,
 		"zenith-mouse-icon-size": setMouseIconSize,
@@ -1141,7 +1177,7 @@ export function useSettings() {
 		saveSetting("zenith-notch-remember-panel", String(next));
 	};
 
-	const changeNotchDefaultPanel = (panel: "calendar" | "command-center" | "prayer" | "tasks") => {
+	const changeNotchDefaultPanel = (panel: "calendar" | "command-center" | "prayer" | "tasks" | "ai-chat") => {
 		setNotchDefaultPanel(panel);
 		saveSetting("zenith-notch-default-panel", panel);
 	};
@@ -1649,6 +1685,21 @@ export function useSettings() {
 		saveSetting("zenith-translator-custom-prompt-quick", v);
 	};
 
+	// ── AI Chat handlers ──
+	const toggleAiChatEnabled = () => {
+		const next = !aiChatEnabled;
+		setAiChatEnabled(next);
+		saveSetting("zenith-ai-chat-enabled", String(next));
+	};
+	const handleAiChatProviderChange = (v: "inherit" | "gemini" | "groq" | "openai" | "custom" | "local") => {
+		setAiChatProvider(v);
+		saveSetting("zenith-ai-chat-provider", v);
+	};
+	const handleAiChatSystemPromptChange = (v: string) => {
+		setAiChatSystemPrompt(v);
+		saveSetting("zenith-ai-chat-system-prompt", v);
+	};
+
 	// ── Tasks & Notes handlers ──
 	const toggleTasksEnabled = () => {
 		const next = !tasksEnabled;
@@ -2140,6 +2191,14 @@ export function useSettings() {
 		handleTranslatorCustomPromptInplaceChange,
 		translatorCustomPromptQuick,
 		handleTranslatorCustomPromptQuickChange,
+
+		// AI Chat
+		aiChatEnabled,
+		toggleAiChatEnabled,
+		aiChatProvider,
+		handleAiChatProviderChange,
+		aiChatSystemPrompt,
+		handleAiChatSystemPromptChange,
 
 		// Tasks & Notes
 		tasksEnabled,

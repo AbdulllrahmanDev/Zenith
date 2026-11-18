@@ -762,6 +762,491 @@ pub async fn translate_ocr_batch(
     Ok(out)
 }
 
+#[derive(Debug, Clone)]
+pub struct ChatTurnAttachmentImage {
+    pub mime_type: String,
+    pub data_base64: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ChatTurnMessage {
+    pub role: String,
+    pub text: String,
+    pub images: Vec<ChatTurnAttachmentImage>,
+}
+
+pub fn resolve_chat_config(
+    base: &TranslatorConfig,
+    provider_override: Option<&str>,
+) -> TranslatorConfig {
+    let mut cfg = base.clone();
+    let Some(raw) = provider_override else {
+        return cfg;
+    };
+    let norm = raw.trim().to_ascii_lowercase();
+    match norm.as_str() {
+        "" | "inherit" => cfg,
+        "local" => {
+            cfg.engine = "local".to_string();
+            cfg
+        }
+        "gemini" | "groq" | "openai" | "custom" => {
+            cfg.engine = "cloud".to_string();
+            cfg.provider = norm;
+            cfg
+        }
+        _ => cfg,
+    }
+}
+
+pub fn build_openai_chat_messages(
+    system_prompt: &str,
+    history: &[ChatTurnMessage],
+) -> Vec<Value> {
+    let mut messages = Vec::new();
+    if !system_prompt.trim().is_empty() {
+        messages.push(json!({ "role": "system", "content": system_prompt.trim() }));
+    }
+    for msg in history {
+        let role = if msg.role == "assistant" { "assistant" } else { "user" };
+        if msg.images.is_empty() || role == "assistant" {
+            if !msg.text.trim().is_empty() {
+                messages.push(json!({ "role": role, "content": msg.text }));
+            }
+        } else {
+            let mut parts = Vec::new();
+            if !msg.text.trim().is_empty() {
+                parts.push(json!({ "type": "text", "text": msg.text }));
+            }
+            for img in &msg.images {
+                parts.push(json!({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": format!("data:{};base64,{}", img.mime_type, img.data_base64)
+                    }
+                }));
+            }
+            if !parts.is_empty() {
+                messages.push(json!({ "role": role, "content": parts }));
+            }
+        }
+    }
+    messages
+}
+
+pub fn build_anthropic_chat_messages(history: &[ChatTurnMessage]) -> Vec<Value> {
+    fn turn_parts(msg: &ChatTurnMessage, role: &str) -> Vec<Value> {
+        let mut parts = Vec::new();
+        if role == "user" {
+            for img in &msg.images {
+                parts.push(json!({
+                    "type": "image",
+                    "source": {
+                        "type": "base64",
+                        "media_type": img.mime_type,
+                        "data": img.data_base64
+                    }
+                }));
+            }
+        }
+        if !msg.text.trim().is_empty() {
+            parts.push(json!({ "type": "text", "text": msg.text }));
+        }
+        parts
+    }
+
+    // Store paired (role, parts) first so consecutive same-role turns coalesce cleanly
+    // (e.g. after skipped "error" messages, Anthropic rejects adjacent user turns).
+    let mut grouped: Vec<(&'static str, Vec<Value>)> = Vec::new();
+    for msg in history {
+        let role = if msg.role == "assistant" { "assistant" } else { "user" };
+        let mut parts = turn_parts(msg, role);
+        if parts.is_empty() {
+            continue;
+        }
+        if let Some((last_role, last_parts)) = grouped.last_mut() {
+            if *last_role == role {
+                last_parts.append(&mut parts);
+                continue;
+            }
+        }
+        grouped.push((role, parts));
+    }
+
+    grouped
+        .into_iter()
+        .map(|(role, parts)| {
+            if parts.len() == 1 && parts[0].get("type").and_then(|t| t.as_str()) == Some("text") {
+                if let Some(txt) = parts[0].get("text").and_then(|t| t.as_str()) {
+                    return json!({ "role": role, "content": txt });
+                }
+            }
+            json!({ "role": role, "content": parts })
+        })
+        .collect()
+}
+
+pub fn build_gemini_chat_contents(history: &[ChatTurnMessage]) -> Vec<Value> {
+    let mut grouped: Vec<(&'static str, Vec<Value>)> = Vec::new();
+    for msg in history {
+        let role = if msg.role == "assistant" { "model" } else { "user" };
+        let mut parts = Vec::new();
+        if !msg.text.trim().is_empty() {
+            parts.push(json!({ "text": msg.text }));
+        }
+        if role == "user" {
+            for img in &msg.images {
+                parts.push(json!({
+                    "inline_data": {
+                        "mime_type": img.mime_type,
+                        "data": img.data_base64
+                    }
+                }));
+            }
+        }
+        if parts.is_empty() {
+            continue;
+        }
+        if let Some((last_role, last_parts)) = grouped.last_mut() {
+            if *last_role == role {
+                last_parts.append(&mut parts);
+                continue;
+            }
+        }
+        grouped.push((role, parts));
+    }
+    grouped
+        .into_iter()
+        .map(|(role, parts)| json!({ "role": role, "parts": parts }))
+        .collect()
+}
+
+fn sanitize_err_secret(message: String, api_key: &str) -> String {
+    let key = api_key.trim();
+    if key.is_empty() {
+        message
+    } else {
+        message.replace(key, "[REDACTED]")
+    }
+}
+
+fn format_chat_reqwest_err(prefix: &str, e: reqwest::Error, api_key: &str) -> String {
+    sanitize_err_secret(format!("{prefix}: {}", e.without_url()), api_key)
+}
+
+async fn post_openai_chat(
+    url: &str,
+    api_key: &str,
+    model: &str,
+    system_prompt: &str,
+    history: &[ChatTurnMessage],
+    max_tokens: u32,
+) -> Result<String, String> {
+    let client = http_client(60)?;
+    let body = json!({
+        "model": model,
+        "messages": build_openai_chat_messages(system_prompt, history),
+        "temperature": 0.4,
+        "max_tokens": max_tokens
+    });
+    let mut req = client.post(url);
+    if !api_key.trim().is_empty() {
+        req = req.bearer_auth(api_key.trim());
+    }
+    let resp = req
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format_chat_reqwest_err("Connection error", e, api_key))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let err_body = resp.text().await.unwrap_or_default();
+        return Err(sanitize_err_secret(format!("Provider error ({status}): {err_body}"), api_key));
+    }
+    let val: Value = resp
+        .json()
+        .await
+        .map_err(|e| format_chat_reqwest_err("Invalid provider response", e, api_key))?;
+    extract_openai_content(&val).ok_or_else(|| "Provider returned an empty response.".to_string())
+}
+
+async fn post_anthropic_chat(
+    url: &str,
+    api_key: &str,
+    model: &str,
+    system_prompt: &str,
+    history: &[ChatTurnMessage],
+    max_tokens: u32,
+) -> Result<String, String> {
+    let client = http_client(60)?;
+    let mut body = json!({
+        "model": model,
+        "max_tokens": max_tokens,
+        "temperature": 0.4,
+        "messages": build_anthropic_chat_messages(history)
+    });
+    if !system_prompt.trim().is_empty() {
+        body["system"] = json!(system_prompt.trim());
+    }
+    let mut req = client.post(url).header("anthropic-version", "2023-06-01");
+    if !api_key.trim().is_empty() {
+        req = req.header("x-api-key", api_key.trim());
+    }
+    let resp = req
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format_chat_reqwest_err("Connection error", e, api_key))?;
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let err_body = resp.text().await.unwrap_or_default();
+        return Err(sanitize_err_secret(format!("Provider error ({status}): {err_body}"), api_key));
+    }
+    let val: Value = resp
+        .json()
+        .await
+        .map_err(|e| format_chat_reqwest_err("Invalid provider response", e, api_key))?;
+    extract_anthropic_content(&val).ok_or_else(|| "Provider returned an empty response.".to_string())
+}
+
+async fn post_gemini_chat(
+    api_key: &str,
+    custom_url: Option<&str>,
+    custom_model: Option<&str>,
+    system_prompt: &str,
+    history: &[ChatTurnMessage],
+    max_tokens: u32,
+) -> Result<String, String> {
+    let client = http_client(60)?;
+    let mut body = json!({
+        "contents": build_gemini_chat_contents(history),
+        "generationConfig": {
+            "temperature": 0.4,
+            "maxOutputTokens": max_tokens
+        }
+    });
+    if !system_prompt.trim().is_empty() {
+        body["system_instruction"] = json!({ "parts": [{ "text": system_prompt.trim() }] });
+    }
+
+    if let Some(url) = custom_url {
+        let endpoint = normalize_gemini_generate_url(url, custom_model.unwrap_or(""))?;
+        let mut req = client.post(&endpoint);
+        if !api_key.trim().is_empty() && !endpoint.contains("key=") {
+            req = req.header("x-goog-api-key", api_key.trim());
+        }
+        let resp = req
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format_chat_reqwest_err("Connection error", e, api_key))?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let err_body = resp.text().await.unwrap_or_default();
+            return Err(sanitize_err_secret(format!("Provider error ({status}): {err_body}"), api_key));
+        }
+        let val: Value = resp
+            .json()
+            .await
+            .map_err(|e| format_chat_reqwest_err("Invalid provider response", e, api_key))?;
+        return extract_gemini_content(&val)
+            .ok_or_else(|| "Provider returned an empty response.".to_string());
+    }
+
+    let trimmed_key = api_key.trim();
+    let candidates = if trimmed_key.starts_with("AQ.") {
+        vec![format!(
+            "https://aiplatform.googleapis.com/v1/publishers/google/models/{GEMINI_DEFAULT_MODEL}:generateContent"
+        )]
+    } else {
+        vec![
+            format!(
+                "https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_DEFAULT_MODEL}:generateContent"
+            ),
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent".to_string(),
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent".to_string(),
+        ]
+    };
+
+    let mut last_err = "Failed connecting to Gemini".to_string();
+    for url in candidates {
+        let mut req = client.post(&url);
+        if !trimmed_key.is_empty() {
+            req = req.header("x-goog-api-key", trimmed_key);
+        }
+        let resp = match req.json(&body).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                last_err = format_chat_reqwest_err("Gemini connection error", e, trimmed_key);
+                continue;
+            }
+        };
+        if resp.status().is_success() {
+            let val: Value = resp
+                .json()
+                .await
+                .map_err(|e| format_chat_reqwest_err("Invalid Gemini response", e, trimmed_key))?;
+            if let Some(text) = extract_gemini_content(&val) {
+                return Ok(text);
+            }
+            last_err = "Gemini returned an empty response.".to_string();
+            continue;
+        }
+        let status = resp.status();
+        let body_txt = resp.text().await.unwrap_or_default();
+        last_err = sanitize_err_secret(format!("Gemini error ({status}): {body_txt}"), trimmed_key);
+        if status.as_u16() != 404 && status.as_u16() != 429 && status.as_u16() != 503 {
+            break;
+        }
+    }
+    Err(last_err)
+}
+
+pub async fn run_chat_completion(
+    app: &AppHandle,
+    cfg: &TranslatorConfig,
+    provider_override: Option<&str>,
+    system_prompt: &str,
+    history: &[ChatTurnMessage],
+    max_tokens: u32,
+) -> Result<(String, String), String> {
+    let effective = resolve_chat_config(cfg, provider_override);
+    let explicit_cloud = provider_override
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && !s.eq_ignore_ascii_case("inherit") && !s.eq_ignore_ascii_case("local"));
+
+    if effective.engine == "local" {
+        let mut msgs = Vec::new();
+        if !system_prompt.trim().is_empty() {
+            msgs.push(LocalChatMessage {
+                role: "system".to_string(),
+                content: system_prompt.trim().to_string(),
+            });
+        }
+        for turn in history {
+            if !turn.text.trim().is_empty() {
+                msgs.push(LocalChatMessage {
+                    role: if turn.role == "assistant" {
+                        "assistant".to_string()
+                    } else {
+                        "user".to_string()
+                    },
+                    content: turn.text.clone(),
+                });
+            }
+        }
+        let reply = run_local_chat(app, msgs, max_tokens, 0.4).await?;
+        return Ok((reply, "local".to_string()));
+    }
+
+    if let Some(exp) = explicit_cloud {
+        match exp.to_ascii_lowercase().as_str() {
+            "gemini" if effective.api_key.trim().is_empty() => {
+                return Err("Gemini API key is missing in AI Settings.".to_string());
+            }
+            "groq" if effective.groq_api_key.trim().is_empty() => {
+                return Err("Groq API key is missing in AI Settings.".to_string());
+            }
+            "openai" if effective.openai_api_key.trim().is_empty() => {
+                return Err("OpenAI API key is missing in AI Settings.".to_string());
+            }
+            "custom" if effective.custom_api_url.trim().is_empty() => {
+                return Err("Custom API URL is missing in AI Settings.".to_string());
+            }
+            _ => {}
+        }
+    }
+
+    let has_images = history.iter().any(|m| !m.images.is_empty());
+    match effective.resolve_cloud_target()? {
+        CloudTarget::Groq { api_key } => {
+            let model = if has_images { GROQ_VISION_MODEL } else { GROQ_TEXT_MODEL };
+            let reply = post_openai_chat(
+                "https://api.groq.com/openai/v1/chat/completions",
+                api_key,
+                model,
+                system_prompt,
+                history,
+                max_tokens,
+            )
+            .await?;
+            Ok((reply, "groq".to_string()))
+        }
+        CloudTarget::OpenAi { api_key } => {
+            let reply = post_openai_chat(
+                "https://api.openai.com/v1/chat/completions",
+                api_key,
+                OPENAI_MODEL,
+                system_prompt,
+                history,
+                max_tokens,
+            )
+            .await?;
+            Ok((reply, "openai".to_string()))
+        }
+        CloudTarget::Gemini { api_key } => {
+            let reply =
+                post_gemini_chat(api_key, None, None, system_prompt, history, max_tokens).await?;
+            Ok((reply, "gemini".to_string()))
+        }
+        CloudTarget::Custom {
+            format,
+            url,
+            api_key,
+            model,
+        } => {
+            let reply = match format {
+                "anthropic" => {
+                    let endpoint = normalize_anthropic_messages_url(url)?;
+                    let model_name = if model.trim().is_empty() {
+                        ANTHROPIC_DEFAULT_MODEL
+                    } else {
+                        model.trim()
+                    };
+                    post_anthropic_chat(
+                        &endpoint,
+                        api_key,
+                        model_name,
+                        system_prompt,
+                        history,
+                        max_tokens,
+                    )
+                    .await?
+                }
+                "gemini" => {
+                    post_gemini_chat(
+                        api_key,
+                        Some(url),
+                        Some(model),
+                        system_prompt,
+                        history,
+                        max_tokens,
+                    )
+                    .await?
+                }
+                _ => {
+                    let endpoint = normalize_openai_chat_url(url)?;
+                    let model_name = if model.trim().is_empty() {
+                        OPENAI_MODEL
+                    } else {
+                        model.trim()
+                    };
+                    post_openai_chat(
+                        &endpoint,
+                        api_key,
+                        model_name,
+                        system_prompt,
+                        history,
+                        max_tokens,
+                    )
+                    .await?
+                }
+            };
+            Ok((reply, "custom".to_string()))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -849,5 +1334,74 @@ mod tests {
             "content": [{ "type": "text", "text": "  أهلا بكم  " }]
         });
         assert_eq!(extract_anthropic_content(&anthropic), Some("أهلا بكم".to_string()));
+    }
+
+    #[test]
+    fn resolves_provider_override_without_mutating_base_keys() {
+        let cfg = TranslatorConfig {
+            engine: "cloud".into(),
+            provider: "gemini".into(),
+            groq_api_key: "gsk_test".into(),
+            ..Default::default()
+        };
+
+        let local = resolve_chat_config(&cfg, Some("local"));
+        assert_eq!(local.engine, "local");
+
+        let groq = resolve_chat_config(&cfg, Some("groq"));
+        assert_eq!(groq.engine, "cloud");
+        assert_eq!(groq.provider, "groq");
+
+        let inherited = resolve_chat_config(&cfg, Some("inherit"));
+        assert_eq!(inherited.provider, "gemini");
+    }
+
+    #[test]
+    fn builds_multimodal_chat_payloads_for_openai_anthropic_and_gemini() {
+        let history = vec![
+            ChatTurnMessage {
+                role: "user".into(),
+                text: "Analyze this".into(),
+                images: vec![ChatTurnAttachmentImage {
+                    mime_type: "image/png".into(),
+                    data_base64: "QUJD".into(),
+                }],
+            },
+            ChatTurnMessage {
+                role: "assistant".into(),
+                text: "Looks good".into(),
+                images: vec![],
+            },
+        ];
+
+        let oa = build_openai_chat_messages("Be concise", &history);
+        assert_eq!(oa.len(), 3);
+        assert_eq!(oa[0]["role"], "system");
+        assert_eq!(oa[1]["content"][1]["type"], "image_url");
+
+        let ant = build_anthropic_chat_messages(&history);
+        assert_eq!(ant.len(), 2);
+        assert_eq!(ant[0]["content"][0]["type"], "image");
+
+        let gem = build_gemini_chat_contents(&history);
+        assert_eq!(gem.len(), 2);
+        assert_eq!(gem[1]["role"], "model");
+        assert_eq!(gem[0]["parts"][1]["inline_data"]["data"], "QUJD");
+
+        // Consecutive user turns (e.g. after a skipped error turn) must coalesce for Anthropic & Gemini.
+        let consecutive = vec![
+            ChatTurnMessage { role: "user".into(), text: "First".into(), images: vec![] },
+            ChatTurnMessage { role: "user".into(), text: "Second".into(), images: vec![] },
+        ];
+        let ant_merged = build_anthropic_chat_messages(&consecutive);
+        assert_eq!(ant_merged.len(), 1);
+        assert_eq!(ant_merged[0]["role"], "user");
+        let gem_merged = build_gemini_chat_contents(&consecutive);
+        assert_eq!(gem_merged.len(), 1);
+        assert_eq!(gem_merged[0]["parts"].as_array().unwrap().len(), 2);
+
+        let sanitized = sanitize_err_secret("GET https://x?key=AIzaSecret123 failed".into(), "AIzaSecret123");
+        assert!(!sanitized.contains("AIzaSecret123"));
+        assert!(sanitized.contains("[REDACTED]"));
     }
 }

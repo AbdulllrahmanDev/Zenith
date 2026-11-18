@@ -48,9 +48,10 @@ interface NotchTabProps {
 	toggleCalendar: () => void;
 	notchRememberPanel: boolean;
 	toggleNotchRememberPanel: () => void;
-	notchDefaultPanel: "calendar" | "command-center" | "prayer" | "tasks";
-	changeNotchDefaultPanel: (panel: "calendar" | "command-center" | "prayer" | "tasks") => void;
+	notchDefaultPanel: "calendar" | "command-center" | "prayer" | "tasks" | "ai-chat";
+	changeNotchDefaultPanel: (panel: "calendar" | "command-center" | "prayer" | "tasks" | "ai-chat") => void;
 	tasksEnabled: boolean;
+	aiChatEnabled: boolean;
 	prayerEnabled: boolean;
 	togglePrayer: () => void;
 	prayerLocationMode: "auto" | "manual";
@@ -123,6 +124,7 @@ export function NotchTab({
 	notchDefaultPanel,
 	changeNotchDefaultPanel,
 	tasksEnabled,
+	aiChatEnabled,
 	prayerEnabled,
 	togglePrayer,
 	prayerLocationMode,
@@ -345,7 +347,7 @@ export function NotchTab({
 							value={notchDefaultPanel}
 							onChange={(e) =>
 								changeNotchDefaultPanel(
-									e.target.value as "calendar" | "command-center" | "prayer" | "tasks"
+									e.target.value as "calendar" | "command-center" | "prayer" | "tasks" | "ai-chat"
 								)
 							}
 						>
@@ -353,6 +355,7 @@ export function NotchTab({
 							<option value="command-center">{n.panelCommandCenter}</option>
 							<option value="prayer" disabled={!prayerEnabled}>{n.panelPrayer}</option>
 							<option value="tasks" disabled={!tasksEnabled}>{n.panelTasks}</option>
+							<option value="ai-chat" disabled={!aiChatEnabled}>{n.panelAiChat}</option>
 						</select>
 					</SettingRow>
 				)}

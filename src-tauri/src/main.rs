@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod ai_chat;
 mod battery;
 mod bluetooth;
 mod commands;
@@ -269,7 +270,15 @@ fn main() {
             tasks_google_start_auth,
             tasks_google_disconnect,
             tasks_test_notion,
-            tasks_open_settings
+            tasks_open_settings,
+            ai_chat_get_state,
+            ai_chat_new_conversation,
+            ai_chat_select_conversation,
+            ai_chat_delete_conversation,
+            ai_chat_prepare_attachments,
+            ai_chat_send_message,
+            ai_chat_cancel,
+            ai_chat_open_settings
         ])
         .setup(|app| {
             init_taskbar_marker(app.handle());

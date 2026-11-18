@@ -5291,6 +5291,61 @@ pub fn tasks_open_settings(app: AppHandle) {
     let _ = app.emit_to("settings", "open-settings-tab", "tasks");
 }
 
+#[tauri::command]
+pub fn ai_chat_get_state(app: AppHandle) -> crate::ai_chat::AiChatSnapshot {
+    crate::ai_chat::get_state(&app)
+}
+
+#[tauri::command]
+pub fn ai_chat_new_conversation(app: AppHandle) -> Result<crate::ai_chat::AiChatSnapshot, String> {
+    crate::ai_chat::new_conversation(&app)
+}
+
+#[tauri::command]
+pub fn ai_chat_select_conversation(
+    app: AppHandle,
+    id: String,
+) -> Result<crate::ai_chat::AiChatSnapshot, String> {
+    crate::ai_chat::select_conversation(&app, id)
+}
+
+#[tauri::command]
+pub fn ai_chat_delete_conversation(
+    app: AppHandle,
+    id: String,
+) -> Result<crate::ai_chat::AiChatSnapshot, String> {
+    crate::ai_chat::delete_conversation(&app, id)
+}
+
+#[tauri::command]
+pub async fn ai_chat_prepare_attachments(
+    paths: Vec<String>,
+) -> Vec<crate::ai_chat::ChatAttachment> {
+    crate::ai_chat::prepare_attachments(paths).await
+}
+
+#[tauri::command]
+pub async fn ai_chat_send_message(
+    app: AppHandle,
+    conversation_id: Option<String>,
+    text: String,
+    attachments: Vec<crate::ai_chat::ChatAttachment>,
+    provider_override: Option<String>,
+) -> Result<crate::ai_chat::AiChatSnapshot, String> {
+    crate::ai_chat::send_message(app, conversation_id, text, attachments, provider_override).await
+}
+
+#[tauri::command]
+pub fn ai_chat_cancel(app: AppHandle) -> crate::ai_chat::AiChatSnapshot {
+    crate::ai_chat::cancel(&app)
+}
+
+#[tauri::command]
+pub fn ai_chat_open_settings(app: AppHandle) {
+    open_settings_window(app.clone());
+    let _ = app.emit_to("settings", "open-settings-tab", "ai");
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LocalizedUiStrings {
     pub settings_window_title: &'static str,

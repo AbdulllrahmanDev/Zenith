@@ -4,13 +4,14 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { X, Minus, Maximize2, Minimize2, Settings, Palette, PanelTop, Monitor, Layers, MousePointer, Languages, Info, Megaphone, CheckSquare } from "lucide-react";
+import { X, Minus, Maximize2, Minimize2, Settings, Palette, PanelTop, Monitor, Layers, MousePointer, Languages, Info, Megaphone, CheckSquare, Sparkles } from "lucide-react";
 import {
 	useSettings,
 	GeneralTab,
 	AppearanceTab,
 	NotchTab,
 	TasksTab,
+	AiTab,
 	DockTab,
 	OverlaysTab,
 	MouseTab,
@@ -27,13 +28,14 @@ const appWindow = getCurrentWebviewWindow();
 
 const TABS: {
 	id: SettingsTab;
-	labelKey: "general" | "appearance" | "notch" | "tasks" | "dock" | "overlays" | "mouse" | "translator" | "about";
+	labelKey: "general" | "appearance" | "notch" | "tasks" | "ai" | "dock" | "overlays" | "mouse" | "translator" | "about";
 	icon: typeof Settings;
 }[] = [
 	{ id: "general", labelKey: "general", icon: Settings },
 	{ id: "appearance", labelKey: "appearance", icon: Palette },
 	{ id: "notch", labelKey: "notch", icon: PanelTop },
 	{ id: "tasks", labelKey: "tasks", icon: CheckSquare },
+	{ id: "ai", labelKey: "ai", icon: Sparkles },
 	{ id: "dock", labelKey: "dock", icon: Monitor },
 	{ id: "overlays", labelKey: "overlays", icon: Layers },
 	{ id: "mouse", labelKey: "mouse", icon: MousePointer },
@@ -60,7 +62,7 @@ function SettingsApp() {
 	useEffect(() => {
 		let unlisten: (() => void) | undefined;
 		listen<string>("open-settings-tab", (ev) => {
-			if (ev.payload === "translator" || ev.payload === "tasks") {
+			if (ev.payload === "translator" || ev.payload === "tasks" || ev.payload === "ai") {
 				setActiveTab(ev.payload);
 			}
 		})
@@ -303,6 +305,7 @@ function SettingsApp() {
 							notchDefaultPanel={settings.notchDefaultPanel}
 							changeNotchDefaultPanel={settings.changeNotchDefaultPanel}
 							tasksEnabled={settings.tasksEnabled}
+							aiChatEnabled={settings.aiChatEnabled}
 							timerSoundEnabled={settings.timerSoundEnabled}
 							toggleTimerSound={settings.toggleTimerSound}
 							musicModeEnabled={settings.musicModeEnabled}
@@ -500,10 +503,8 @@ function SettingsApp() {
 							handleMouseHoverSoundChange={settings.handleMouseHoverSoundChange}
 						/>
 					)}
-					{activeTab === "translator" && (
-						<TranslatorTab
-							translatorEnabled={settings.translatorEnabled}
-							toggleTranslatorEnabled={settings.toggleTranslatorEnabled}
+					{activeTab === "ai" && (
+						<AiTab
 							translatorEngine={settings.translatorEngine}
 							handleTranslatorEngineChange={settings.handleTranslatorEngineChange}
 							translatorProvider={settings.translatorProvider}
@@ -522,6 +523,21 @@ function SettingsApp() {
 							handleTranslatorCustomModelChange={settings.handleTranslatorCustomModelChange}
 							translatorCustomApiFormat={settings.translatorCustomApiFormat}
 							handleTranslatorCustomApiFormatChange={settings.handleTranslatorCustomApiFormatChange}
+							aiChatEnabled={settings.aiChatEnabled}
+							toggleAiChatEnabled={settings.toggleAiChatEnabled}
+							aiChatProvider={settings.aiChatProvider}
+							handleAiChatProviderChange={settings.handleAiChatProviderChange}
+							aiChatSystemPrompt={settings.aiChatSystemPrompt}
+							handleAiChatSystemPromptChange={settings.handleAiChatSystemPromptChange}
+						/>
+					)}
+					{activeTab === "translator" && (
+						<TranslatorTab
+							translatorEnabled={settings.translatorEnabled}
+							toggleTranslatorEnabled={settings.toggleTranslatorEnabled}
+							translatorEngine={settings.translatorEngine}
+							translatorProvider={settings.translatorProvider}
+							onOpenAiTab={() => setActiveTab("ai")}
 							translatorTargetLanguage={settings.translatorTargetLanguage}
 							handleTranslatorTargetLanguageChange={settings.handleTranslatorTargetLanguageChange}
 							translatorOutputMode={settings.translatorOutputMode}

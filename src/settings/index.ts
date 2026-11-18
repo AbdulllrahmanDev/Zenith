@@ -4,6 +4,7 @@ export { GeneralTab } from "./GeneralTab";
 export { AppearanceTab } from "./AppearanceTab";
 export { NotchTab } from "./NotchTab";
 export { TasksTab } from "./TasksTab";
+export { AiTab } from "./AiTab";
 export { DockTab } from "./DockTab";
 export { OverlaysTab } from "./OverlaysTab";
 export { MouseTab } from "./MouseTab";

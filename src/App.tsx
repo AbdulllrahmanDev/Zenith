@@ -41,8 +41,10 @@ import { WifiPanel } from "./components/WifiPanel";
 import { BluetoothPanel } from "./components/BluetoothPanel";
 import { PrayerTimesPanel } from "./components/PrayerTimesPanel";
 import { TasksNotchPanel } from "./components/TasksNotchPanel";
+import { AiChatNotchPanel } from "./components/AiChatNotchPanel";
 import { AthanNotchBanner } from "./components/AthanNotchBanner";
 import type { TasksNotchConfig, TasksSubTab } from "./types/tasks";
+import type { AiChatNotchConfig, AiChatProviderChoice } from "./types/aiChat";
 import { NotificationPanel } from "./components/NotificationPanel";
 import { usePrayerTimes, formatPrayerTime } from "./hooks/usePrayerTimes";
 import {
@@ -75,8 +77,8 @@ import {
  *   Dragging files onto the notch also opens the shelf. Wheel/swipe switches
  *   between tool panels, including when a live activity occupies the pill.
  */
-type NotchPanel = "calendar" | "command-center" | "prayer" | "tasks";
-const NOTCH_PANELS: readonly NotchPanel[] = ["calendar", "command-center", "prayer", "tasks"];
+type NotchPanel = "calendar" | "command-center" | "prayer" | "tasks" | "ai-chat";
+const NOTCH_PANELS: readonly NotchPanel[] = ["calendar", "command-center", "prayer", "tasks", "ai-chat"];
 const asNotchPanel = (value: unknown): NotchPanel | null =>
 	NOTCH_PANELS.includes(value as NotchPanel) ? (value as NotchPanel) : null;
 
@@ -444,6 +446,7 @@ type NotchPanelMode =
 	| "command-center"
 	| "prayer"
 	| "tasks"
+	| "ai-chat"
 	| "announcement"
 	| "translator"
 	| "status"
@@ -1025,6 +1028,32 @@ function App() {
 		autoSync: localStorage.getItem("zenith-tasks-auto-sync") !== "false",
 		syncIntervalSec: parseInt(localStorage.getItem("zenith-tasks-sync-interval") || "120", 10) || 120
 	}));
+	const [aiChatConfig, setAiChatConfig] = useState<AiChatNotchConfig>(() => {
+		const rawProv = localStorage.getItem("zenith-ai-chat-provider");
+		const defaultProvider: AiChatProviderChoice =
+			rawProv === "gemini" ||
+			rawProv === "groq" ||
+			rawProv === "openai" ||
+			rawProv === "custom" ||
+			rawProv === "local"
+				? rawProv
+				: "inherit";
+		const rawSharedProv = localStorage.getItem("zenith-translator-provider");
+		const sharedProvider =
+			rawSharedProv === "groq" || rawSharedProv === "openai" || rawSharedProv === "custom"
+				? rawSharedProv
+				: "gemini";
+		return {
+			enabled: localStorage.getItem("zenith-ai-chat-enabled") !== "false",
+			defaultProvider,
+			sharedEngine: localStorage.getItem("zenith-translator-engine") === "local" ? "local" : "cloud",
+			sharedProvider
+		};
+	});
+	const aiChatEnabledRef = useRef(aiChatConfig.enabled);
+	aiChatEnabledRef.current = aiChatConfig.enabled;
+	const [pendingAiDropPaths, setPendingAiDropPaths] = useState<string[]>([]);
+	const consumePendingAiDrop = useCallback(() => setPendingAiDropPaths([]), []);
 
 	const [notificationsEnabled, setNotificationsEnabled] = useState(
 		() => localStorage.getItem("zenith-notifications-enabled") !== "false"
@@ -1077,6 +1106,8 @@ function App() {
 	const [lastPanel, setLastPanel] = useState<NotchPanel | null>(() =>
 		asNotchPanel(localStorage.getItem("zenith-notch-last-panel"))
 	);
+	const lastPanelRef = useRef<NotchPanel | null>(lastPanel);
+	lastPanelRef.current = lastPanel;
 	const [settingsMusicCompactNotch, setSettingsMusicCompactNotch] = useState(
 		() => localStorage.getItem("zenith-music-compact-notch") !== "false"
 	);
@@ -1170,6 +1201,25 @@ function App() {
 				setShelfPersist(getVal("zenith-shelf-persist", "false") === "true");
 				setSettingsMusicCompactNotch(getVal("zenith-music-compact-notch", "true") !== "false");
 				setLastPanel(asNotchPanel(getVal("zenith-notch-last-panel")));
+				setAiChatConfig({
+					enabled: getVal("zenith-ai-chat-enabled", "true") !== "false",
+					defaultProvider: (() => {
+						const p = getVal("zenith-ai-chat-provider", "inherit");
+						return p === "gemini" ||
+							p === "groq" ||
+							p === "openai" ||
+							p === "custom" ||
+							p === "local"
+							? p
+							: "inherit";
+					})(),
+					sharedEngine:
+						getVal("zenith-translator-engine", "cloud") === "local" ? "local" : "cloud",
+					sharedProvider: (() => {
+						const p = getVal("zenith-translator-provider", "gemini");
+						return p === "groq" || p === "openai" || p === "custom" ? p : "gemini";
+					})()
+				});
 				const viz =
 					getVal("zenith-media-visualizer-enabled") ?? getVal("zenith-visualizer-enabled", "true");
 				setSettingsVisualizerEnabled(viz !== "false");
@@ -1368,7 +1418,28 @@ function App() {
 				})),
 			"zenith-tasks-auto-sync": (v) => setTasksConfig((prev) => ({ ...prev, autoSync: v !== false && v !== "false" })),
 			"zenith-tasks-sync-interval": (v) =>
-				setTasksConfig((prev) => ({ ...prev, syncIntervalSec: Number(v) || 120 }))
+				setTasksConfig((prev) => ({ ...prev, syncIntervalSec: Number(v) || 120 })),
+			"zenith-ai-chat-enabled": (v) =>
+				setAiChatConfig((prev) => ({ ...prev, enabled: v !== false && v !== "false" })),
+			"zenith-ai-chat-provider": (v) =>
+				setAiChatConfig((prev) => ({
+					...prev,
+					defaultProvider:
+						v === "gemini" || v === "groq" || v === "openai" || v === "custom" || v === "local"
+							? v
+							: "inherit"
+				})),
+			"zenith-translator-engine": (v) =>
+				setAiChatConfig((prev) => ({
+					...prev,
+					sharedEngine: v === "local" ? "local" : "cloud"
+				})),
+			"zenith-translator-provider": (v) =>
+				setAiChatConfig((prev) => ({
+					...prev,
+					sharedProvider:
+						v === "groq" || v === "openai" || v === "custom" ? v : "gemini"
+				}))
 		},
 		[windowLabel]
 	);
@@ -1740,6 +1811,7 @@ function App() {
 			prev === "calendar" ||
 			prev === "prayer" ||
 			prev === "tasks" ||
+			prev === "ai-chat" ||
 			prev === "status" ||
 			prev === "shelf" ||
 			prev === "wifi" ||
@@ -1888,9 +1960,17 @@ function App() {
 	const shelfPrevModeRef = useRef<NotchPanelMode>("status");
 	const shelfPrevOpenRef = useRef(false);
 	const shelfDragActiveRef = useRef(false);
+	const aiDragPrevModeRef = useRef<NotchPanelMode>("status");
+	const aiDragPrevOpenRef = useRef(false);
+	const aiDragActiveRef = useRef(false);
 	useEffect(() => {
 		let unlisteners: (() => void)[] = [];
 		let cancelled = false;
+
+		const shouldRouteDropToAi = () =>
+			aiChatEnabledRef.current &&
+			(notchPanelModeRef.current === "ai-chat" ||
+				(!isOpenRef.current && lastPanelRef.current === "ai-chat"));
 
 		const enter = (event: { payload: { paths?: string[]; text?: string } }) => {
 			// Our own drag-out starts with the cursor over the notch; ignore
@@ -1899,6 +1979,18 @@ function App() {
 			console.info("[shelf] drag-enter:", event.payload.paths ?? event.payload.text);
 			setIsDragHovering(true);
 			const prev = notchPanelModeRef.current;
+			const hasPaths = (event.payload.paths?.length ?? 0) > 0;
+			if (hasPaths && shouldRouteDropToAi()) {
+				if (prev === "announcement") return;
+				if (!isOpenRef.current || prev !== "ai-chat") {
+					aiDragPrevModeRef.current = prev;
+					aiDragPrevOpenRef.current = isOpenRef.current;
+					aiDragActiveRef.current = true;
+					setIsOpen(true);
+					setNotchPanelMode("ai-chat");
+				}
+				return;
+			}
 			if (prev === "announcement" || prev === "shelf") return;
 			shelfPrevModeRef.current = prev;
 			shelfPrevOpenRef.current = isOpenRef.current;
@@ -1908,6 +2000,13 @@ function App() {
 		};
 		const leave = () => {
 			setIsDragHovering(false);
+			if (aiDragActiveRef.current) {
+				aiDragActiveRef.current = false;
+				if (notchPanelModeRef.current === "ai-chat") {
+					setIsOpen(aiDragPrevOpenRef.current);
+					setNotchPanelMode(aiDragPrevModeRef.current);
+				}
+			}
 			if (shelfDragActiveRef.current) {
 				shelfDragActiveRef.current = false;
 				if (notchPanelModeRef.current === "shelf") {
@@ -1918,10 +2017,23 @@ function App() {
 		};
 		const drop = (event: { payload: { paths?: string[]; text?: string } }) => {
 			setIsDragHovering(false);
+			const wasAiDrag = aiDragActiveRef.current;
+			aiDragActiveRef.current = false;
 			shelfDragActiveRef.current = false;
 			shelfSelfDropAtRef.current = Date.now();
 			const paths = event.payload.paths ?? [];
 			const text = event.payload.text;
+			if (
+				paths.length > 0 &&
+				(wasAiDrag || shouldRouteDropToAi())
+			) {
+				if (notchPanelModeRef.current !== "announcement") {
+					setIsOpen(true);
+					setNotchPanelMode("ai-chat");
+				}
+				setPendingAiDropPaths(paths);
+				return;
+			}
 			console.info("[shelf] drop:", paths.length > 0 ? paths : text);
 			if (paths.length === 0 && !text) return;
 			if (paths.length > 0) addShelfItems(paths);
@@ -2067,6 +2179,10 @@ function App() {
 			target.closest(".qp-list") ||
 			target.closest(".prayer-split-view") ||
 			target.closest(".tasks-content-pane") ||
+			target.closest(".ai-chat-messages") ||
+			target.closest(".ai-chat-history-list") ||
+			target.closest(".ai-chat-staged-row") ||
+			target.closest(".ai-chat-input") ||
 			target.closest(".translator-notch-content")
 		) {
 			return;
@@ -2086,6 +2202,7 @@ function App() {
 		if (panel === "calendar") return settingsCalendarEnabled;
 		if (panel === "prayer") return settingsPrayerEnabled;
 		if (panel === "tasks") return tasksConfig.enabled;
+		if (panel === "ai-chat") return aiChatConfig.enabled;
 		return true;
 	}
 
@@ -2381,6 +2498,13 @@ function App() {
 			setNotchPanelMode(isOpen ? openingPanel() : collapsedMode);
 		}
 	}, [tasksConfig.enabled, notchPanelMode, isOpen]);
+
+	// Reset notch panel mode when AI Chat setting is disabled
+	useEffect(() => {
+		if (!aiChatConfig.enabled && notchPanelMode === "ai-chat") {
+			setNotchPanelMode(isOpen ? openingPanel() : collapsedMode);
+		}
+	}, [aiChatConfig.enabled, notchPanelMode, isOpen]);
 
 	const rememberTasksSubTab = useCallback((tab: TasksSubTab) => {
 		setTasksConfig((prev) => ({ ...prev, lastTab: tab }));
@@ -3115,6 +3239,7 @@ function App() {
 		if (isCalendarMode) return 480;
 		if (notchPanelMode === "prayer" && isOpen) return 480;
 		if (notchPanelMode === "tasks" && isOpen) return 480;
+		if (notchPanelMode === "ai-chat" && isOpen) return 480;
 		if (notchPanelMode === "shelf") return 380;
 		if (notchPanelMode === "command-center" && isOpen) return 350;
 		if (notchPanelMode === "wifi" || notchPanelMode === "bluetooth" || notchPanelMode === "notifications") return 350;
@@ -3159,6 +3284,7 @@ function App() {
 		if (notchPanelMode === "calendar") return calendarMonthRows >= 6 ? 305 : 273;
 		if (notchPanelMode === "prayer") return isOpen ? 273 : 36;
 		if (notchPanelMode === "tasks") return isOpen ? 284 : 36;
+		if (notchPanelMode === "ai-chat") return isOpen ? 310 : 36;
 		// Shelf expands on mode alone (no hover needed: there is no cursor
 		// hover during an OS drag) and is sized to exactly one row of tiles,
 		// plus room for the scrollbar once the tiles overflow it.
@@ -3310,8 +3436,8 @@ function App() {
 						scaleY: 1,
 						borderTopLeftRadius: isImpacted ? 0 : 18,
 						borderTopRightRadius: isImpacted ? 0 : 18,
-						borderBottomLeftRadius: (isCalendarMode || notchPanelMode === "prayer" || notchPanelMode === "tasks" || notchPanelMode === "translator" || (showAthanBanner && isOpen)) ? 26 : 18,
-						borderBottomRightRadius: (isCalendarMode || notchPanelMode === "prayer" || notchPanelMode === "tasks" || notchPanelMode === "translator" || (showAthanBanner && isOpen)) ? 26 : 18,
+						borderBottomLeftRadius: (isCalendarMode || notchPanelMode === "prayer" || notchPanelMode === "tasks" || notchPanelMode === "ai-chat" || notchPanelMode === "translator" || (showAthanBanner && isOpen)) ? 26 : 18,
+						borderBottomRightRadius: (isCalendarMode || notchPanelMode === "prayer" || notchPanelMode === "tasks" || notchPanelMode === "ai-chat" || notchPanelMode === "translator" || (showAthanBanner && isOpen)) ? 26 : 18,
 						filter: isVisible ? "blur(0px)" : "blur(8px)",
 						pointerEvents: isVisible ? "auto" : "none"
 					}}
@@ -4543,6 +4669,29 @@ function App() {
 												config={tasksConfig}
 												onPinChange={setNotchPinned}
 												onRememberSubTab={rememberTasksSubTab}
+											/>
+										</motion.div>
+									)}
+								</AnimatePresence>
+
+								{/* AI Chat Panel */}
+								<AnimatePresence>
+									{aiChatConfig.enabled && notchPanelMode === "ai-chat" && !showAthanBanner && (
+										<motion.div
+											key="ai-chat-view"
+											className="ai-chat-notch-wrapper"
+											onClick={(e) => e.stopPropagation()}
+											initial={{ opacity: 0 }}
+											animate={{ opacity: 1 }}
+											exit={{ opacity: 0, filter: "blur(4px)", transition: { duration: 0.1 } }}
+											transition={{ type: "spring", stiffness: 400, damping: 30 }}
+										>
+											<AiChatNotchPanel
+												config={aiChatConfig}
+												pendingDropPaths={pendingAiDropPaths}
+												onConsumePendingDrop={consumePendingAiDrop}
+												isDragHovering={isDragHovering}
+												onPinChange={setNotchPinned}
 											/>
 										</motion.div>
 									)}
