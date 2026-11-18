@@ -594,6 +594,7 @@ export function TasksNotchPanel({
 		<div
 			ref={shellRef}
 			className="tasks-notch-shell"
+			dir={dir}
 			onClick={(e) => e.stopPropagation()}
 			onContextMenu={(e) => {
 				e.preventDefault();

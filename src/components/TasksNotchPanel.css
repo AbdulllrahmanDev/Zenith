@@ -11,24 +11,23 @@
 	align-items: stretch;
 }
 
-/* Keep the switcher rail pinned on the visual left while the content pane
-   respects dir={dir} (RTL for Arabic, LTR for English). */
+/* Switcher rail sits at inline-start (left in LTR, right in Arabic RTL). */
 .tasks-notch-shell {
 	position: relative;
-	direction: ltr;
 	display: flex;
 	flex-direction: row;
 	align-items: stretch;
 	width: 100%;
 	height: 100%;
-	padding: 4px 12px 10px 10px;
+	padding-block: 4px 10px;
+	padding-inline: 10px 12px;
 	gap: 8px;
 	box-sizing: border-box;
 	color: var(--zenith-text, #ffffff);
 	overflow: hidden;
 }
 
-/* ── Left Icon Switcher Rail ── */
+/* ── Inline-Start Icon Switcher Rail ── */
 .tasks-rail {
 	width: 34px;
 	flex-shrink: 0;
@@ -37,8 +36,8 @@
 	align-items: center;
 	justify-content: space-between;
 	padding: 4px 0;
-	border-right: 1px solid var(--zenith-border, rgba(255, 255, 255, 0.08));
-	padding-right: 6px;
+	border-inline-end: 1px solid var(--zenith-border, rgba(255, 255, 255, 0.08));
+	padding-inline-end: 6px;
 }
 
 .tasks-rail-group {
