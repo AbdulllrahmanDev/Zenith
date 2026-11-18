@@ -240,7 +240,6 @@
 	font-size: 11.5px;
 	font-family: inherit;
 	padding: 2px 4px;
-	unicode-bidi: plaintext;
 	text-align: start;
 	caret-color: var(--zenith-text, #ffffff);
 }
@@ -639,7 +638,6 @@
 	font-weight: 600;
 	font-family: inherit;
 	padding: 2px 0 5px;
-	unicode-bidi: plaintext;
 	text-align: start;
 	caret-color: var(--zenith-text, #ffffff);
 }
@@ -661,7 +659,6 @@
 	line-height: 1.55;
 	font-family: inherit;
 	padding: 2px 0;
-	unicode-bidi: plaintext;
 	text-align: start;
 	caret-color: var(--zenith-text, #ffffff);
 }

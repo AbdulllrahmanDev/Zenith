@@ -510,7 +510,7 @@ export function TasksNotchPanel({
 					<div className="tasks-edit-stack">
 						<input
 							type="text"
-							dir="auto"
+							dir={editTitle ? "auto" : dir}
 							lang={lang}
 							autoFocus
 							className="tasks-input"
@@ -526,7 +526,7 @@ export function TasksNotchPanel({
 						/>
 						<input
 							type="text"
-							dir="auto"
+							dir={editNotes ? "auto" : dir}
 							lang={lang}
 							className="tasks-input tasks-input-sub"
 							placeholder={tp.addNoteDetailPlaceholder}
@@ -729,7 +729,7 @@ export function TasksNotchPanel({
 								<div className="tasks-add-row">
 									<input
 										type="text"
-										dir="auto"
+										dir={newTitle ? "auto" : dir}
 										lang={lang}
 										className="tasks-input"
 										placeholder={tp.addTaskPlaceholder}
@@ -781,7 +781,7 @@ export function TasksNotchPanel({
 								{showNewDetails && (
 									<input
 										type="text"
-										dir="auto"
+										dir={newNotes ? "auto" : dir}
 										lang={lang}
 										className="tasks-input tasks-input-sub"
 										placeholder={tp.addNoteDetailPlaceholder}
@@ -942,7 +942,7 @@ export function TasksNotchPanel({
 							<div className="notes-editor-card">
 								<input
 									type="text"
-									dir="auto"
+									dir={noteTitleDraft ? "auto" : dir}
 									lang={lang}
 									className="notes-title-input"
 									placeholder={tp.noteTitlePlaceholder}
@@ -962,7 +962,7 @@ export function TasksNotchPanel({
 									onKeyDown={(e) => e.stopPropagation()}
 								/>
 								<textarea
-									dir="auto"
+									dir={noteContentDraft ? "auto" : dir}
 									lang={lang}
 									className="notes-textarea"
 									placeholder={tp.noteBodyPlaceholder}
