@@ -1,7 +1,11 @@
 .tasks-notch-wrapper {
+	position: absolute;
+	top: 36px;
+	left: 0;
 	width: 100%;
 	height: calc(100% - 36px);
 	box-sizing: border-box;
+	z-index: 2;
 	overflow: hidden;
 	display: flex;
 	align-items: stretch;
