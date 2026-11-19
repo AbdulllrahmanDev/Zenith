@@ -21,6 +21,7 @@ import {
 	X
 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
+import { ZenithSelect } from "../components/ZenithSelect";
 import { useI18n } from "../i18n";
 import {
 	KNOWN_FOLDER_OPTIONS,
@@ -220,7 +221,7 @@ export function DockTab({
 							label={d.display}
 							desc={displays.length > 1 ? d.displayMultiDesc : d.displaySingleDesc}
 						>
-							<select
+							<ZenithSelect
 								className="settings-select"
 								value={displays.length <= 1 ? "primary" : dockDisplay}
 								disabled={displays.length <= 1}
@@ -236,7 +237,7 @@ export function DockTab({
 												: `${disp.name} (${disp.width}x${disp.height})`}
 										</option>
 									))}
-							</select>
+							</ZenithSelect>
 						</SettingRow>
 
 						{displays.length > 1 && (
@@ -261,7 +262,7 @@ export function DockTab({
 							label={d.behavior}
 							desc={d.behaviorDesc}
 						>
-							<select
+							<ZenithSelect
 								className="settings-select"
 								value={dockMode}
 								onChange={(e) => setDockModeValue(e.target.value)}
@@ -269,7 +270,7 @@ export function DockTab({
 								<option value="fixed">{d.modeFixed}</option>
 								<option value="smart">{d.modeSmart}</option>
 								<option value="peek">{d.modePeek}</option>
-							</select>
+							</ZenithSelect>
 						</SettingRow>
 
 						{dockMode !== "fixed" && (
@@ -365,7 +366,7 @@ export function DockTab({
 							label={d.dockExtras}
 							desc={d.dockExtrasDesc}
 						>
-							<select
+							<ZenithSelect
 								className="settings-select"
 								value={dockExtrasPosition}
 								onChange={(e) => handleDockExtrasPositionChange(e.target.value)}
@@ -373,7 +374,7 @@ export function DockTab({
 								<option value="off">{d.extrasOff}</option>
 								<option value="left">{d.extrasLeft}</option>
 								<option value="right">{d.extrasRight}</option>
-							</select>
+							</ZenithSelect>
 						</SettingRow>
 
 						{dockExtrasPosition !== "off" && (

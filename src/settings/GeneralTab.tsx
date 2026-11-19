@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Power, Download, Clock, BatteryWarning, RefreshCw, RotateCcw, LogOut, Languages, Keyboard } from "lucide-react";
 import { SettingRow } from "./SettingRow";
+import { ZenithSelect } from "../components/ZenithSelect";
 import { HotkeyRecorder } from "./HotkeyRecorder";
 import { useI18n, type AppLanguage } from "../i18n";
 
@@ -49,14 +50,14 @@ export function GeneralTab({
 					desc={g.languageDesc}
 					divider={false}
 				>
-					<select
+					<ZenithSelect
 						className="settings-select"
 						value={lang}
 						onChange={(e) => setLanguage(e.target.value as AppLanguage)}
 					>
 						<option value="en">{g.langEnglish}</option>
 						<option value="ar">{g.langArabic}</option>
-					</select>
+					</ZenithSelect>
 				</SettingRow>
 			</div>
 

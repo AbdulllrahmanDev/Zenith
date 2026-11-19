@@ -23,6 +23,7 @@ import {
 	Tag
 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
+import { ZenithSelect } from "../components/ZenithSelect";
 import { useI18n } from "../i18n";
 import type {
 	GoogleAuthStatus,
@@ -346,7 +347,7 @@ export function TasksTab(props: TasksTabProps) {
 					desc={ts.defaultTargetDesc}
 					divider={false}
 				>
-					<select
+					<ZenithSelect
 						className="settings-select"
 						value={props.tasksDefaultSource}
 						onChange={(e) =>
@@ -359,7 +360,7 @@ export function TasksTab(props: TasksTabProps) {
 						<option value="local">{ts.targetLocal}</option>
 						<option value="google">{ts.targetGoogle}</option>
 						<option value="notion">{ts.targetNotion}</option>
-					</select>
+					</ZenithSelect>
 				</SettingRow>
 			</div>
 
@@ -531,7 +532,7 @@ export function TasksTab(props: TasksTabProps) {
 						desc={ts.googleTaskListDesc}
 						divider={false}
 					>
-						<select
+						<ZenithSelect
 							className="settings-select"
 							value={props.tasksGoogleListId}
 							onChange={(e) => props.handleTasksGoogleListIdChange(e.target.value)}
@@ -542,7 +543,7 @@ export function TasksTab(props: TasksTabProps) {
 									{l.title}
 								</option>
 							))}
-						</select>
+						</ZenithSelect>
 					</SettingRow>
 				)}
 			</div>
@@ -563,7 +564,7 @@ export function TasksTab(props: TasksTabProps) {
 
 				{props.tasksAutoSync && (
 					<SettingRow icon={Clock} label={ts.syncInterval} desc={ts.syncIntervalDesc}>
-						<select
+						<ZenithSelect
 							className="settings-select"
 							value={String(props.tasksSyncIntervalSec)}
 							onChange={(e) =>
@@ -573,7 +574,7 @@ export function TasksTab(props: TasksTabProps) {
 							<option value="60">{ts.interval60}</option>
 							<option value="120">{ts.interval120}</option>
 							<option value="300">{ts.interval300}</option>
-						</select>
+						</ZenithSelect>
 					</SettingRow>
 				)}
 

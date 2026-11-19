@@ -24,19 +24,30 @@ function convertSettingValue(value: any): any {
  * @param handlers - Map of zenith-prefixed key -> setter
  * @param deps - Optional additional dependency array
  */
+export interface UseSettingsSyncOptions {
+	shouldApply?: (key: string, value: any, source: "local-event" | "external") => boolean;
+}
+
 export function useSettingsSync(
 	handlers: Record<string, (value: any) => void>,
-	deps?: React.DependencyList
+	deps?: React.DependencyList,
+	options?: UseSettingsSyncOptions
 ) {
 	const handlersRef = useRef(handlers);
 	handlersRef.current = handlers;
+	const optionsRef = useRef(options);
+	optionsRef.current = options;
 
 	useEffect(() => {
 		const unlistenSC = listen<{ key: string; value: any }>("settings-changed", (event) => {
 			const { key, value } = event.payload;
 			const handler = handlersRef.current[key];
 			if (handler && value !== null && value !== undefined) {
-				handler(convertSettingValue(value));
+				const converted = convertSettingValue(value);
+				if (optionsRef.current?.shouldApply && !optionsRef.current.shouldApply(key, converted, "local-event")) {
+					return;
+				}
+				handler(converted);
 			}
 		});
 
@@ -55,7 +66,11 @@ export function useSettingsSync(
 
 				const handler = handlersRef.current[key];
 				if (handler && value !== null && value !== undefined) {
-					handler(convertSettingValue(value));
+					const converted = convertSettingValue(value);
+					if (optionsRef.current?.shouldApply && !optionsRef.current.shouldApply(key, converted, "external")) {
+						return;
+					}
+					handler(converted);
 				}
 			}
 		);

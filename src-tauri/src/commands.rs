@@ -2534,6 +2534,17 @@ pub fn open_settings_window(app: AppHandle) {
     }
 }
 
+pub fn toggle_settings_window(app: AppHandle) {
+    if let Some(win) = app.get_webview_window("settings") {
+        let is_open = win.is_visible().unwrap_or(false) && !win.is_minimized().unwrap_or(false);
+        if is_open {
+            let _ = win.hide();
+            return;
+        }
+    }
+    open_settings_window(app);
+}
+
 #[tauri::command]
 pub fn hide_overlay(app: AppHandle) {
     if let Some(win) = app.get_webview_window("overlay") {

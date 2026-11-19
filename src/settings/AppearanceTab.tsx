@@ -1,5 +1,6 @@
 import { Palette, Droplet, Contrast, Droplets, Sun, Square, Maximize2 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
+import { ZenithSelect } from "../components/ZenithSelect";
 import { useI18n } from "../i18n";
 
 interface AppearanceTabProps {
@@ -45,7 +46,7 @@ export function AppearanceTab({
 			<div className="setting-group-label">{a.themeGroup}</div>
 			<div className="setting-group">
 				<SettingRow icon={Palette} label={a.themeMode} desc={a.themeModeDesc}>
-					<select
+					<ZenithSelect
 						className="settings-select"
 						value={themeMode}
 						onChange={(e) => handleThemeModeChange(e.target.value)}
@@ -54,7 +55,7 @@ export function AppearanceTab({
 						<option value="light">{a.themeLight}</option>
 						<option value="custom">{a.themeCustom}</option>
 						<option value="adaptive">{a.themeAdaptive}</option>
-					</select>
+					</ZenithSelect>
 				</SettingRow>
 
 				{showCustomColor && (

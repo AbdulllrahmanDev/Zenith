@@ -102,7 +102,7 @@ impl Default for TranslatorConfig {
             custom_api_url: String::new(),
             custom_api_key: String::new(),
             custom_model: String::new(),
-            custom_api_format: "openai".to_string(),
+            custom_api_format: "auto".to_string(),
             local_model_id: DEFAULT_LOCAL_MODEL_ID.to_string(),
             hotkey_ar_to_en: "Ctrl+Alt+A".to_string(),
             hotkey_any_to_ar: "Ctrl+Alt+X".to_string(),
@@ -171,7 +171,7 @@ impl TranslatorConfig {
         }
         if let Some(v) = lookup(KEY_CUSTOM_API_FORMAT) {
             let norm = v.trim().to_ascii_lowercase();
-            if norm == "openai" || norm == "anthropic" || norm == "gemini" {
+            if norm == "auto" || norm == "openai" || norm == "anthropic" || norm == "gemini" {
                 cfg.custom_api_format = norm;
             }
         }
@@ -482,5 +482,8 @@ mod tests {
         map.insert(KEY_API_KEY.to_string(), "AIza-test".to_string());
         let missing_url_cfg = TranslatorConfig::from_lookup(|k| map.get(k).cloned());
         assert!(missing_url_cfg.resolve_cloud_target().is_err());
+
+        let default_cfg = TranslatorConfig::default();
+        assert_eq!(default_cfg.custom_api_format, "auto");
     }
 }

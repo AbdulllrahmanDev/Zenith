@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { useI18n } from "../i18n";
 import { ZenithAiIcon } from "../icons/ZenithAiIcon";
+import { ZenithSelect } from "./ZenithSelect";
 import type {
 	AiChatNotchConfig,
 	AiChatProviderChoice,
@@ -305,11 +306,18 @@ export function AiChatNotchPanel({
 				</div>
 
 				<div className="ai-chat-header-end">
-					<select
+					<ZenithSelect
 						className="ai-chat-provider-select"
 						value={providerChoice}
 						onChange={(e) => setProviderChoice(e.target.value as AiChatProviderChoice)}
 						aria-label={ac.title}
+						onOpenChange={(isOpen) => {
+							if (isOpen) {
+								onPinChange(true);
+							} else if (!focusedRef.current) {
+								onPinChange(false);
+							}
+						}}
 					>
 						<option value="inherit">{autoProviderLabel}</option>
 						<option value="gemini">{ac.providerGemini}</option>
@@ -317,7 +325,7 @@ export function AiChatNotchPanel({
 						<option value="openai">{ac.providerOpenai}</option>
 						<option value="custom">{ac.providerCustom}</option>
 						<option value="local">{ac.providerLocal}</option>
-					</select>
+					</ZenithSelect>
 
 					<button
 						type="button"

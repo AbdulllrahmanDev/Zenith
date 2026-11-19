@@ -31,6 +31,7 @@ import { useI18n } from "../i18n";
 import { triggerTestAthan, triggerTestNotification } from "../hooks/usePrayerTimes";
 import { detectLocation } from "../utils/locationService";
 import { SettingRow } from "./SettingRow";
+import { ZenithSelect } from "../components/ZenithSelect";
 import { StatusWidgetConfig } from "../components/StatusWidgetConfig";
 import type { WidgetConfig } from "./types";
 import type { DisplayInfo } from "../dockApps";
@@ -280,7 +281,7 @@ export function NotchTab({
 					label={n.display}
 					desc={displays.length > 1 ? n.displayMultiDesc : n.displaySingleDesc}
 				>
-					<select
+					<ZenithSelect
 						className="settings-select"
 						value={displays.length <= 1 ? "primary" : notchDisplay}
 						disabled={displays.length <= 1}
@@ -296,11 +297,11 @@ export function NotchTab({
 										: `${disp.name} (${disp.width}x${disp.height})`}
 								</option>
 							))}
-					</select>
+					</ZenithSelect>
 				</SettingRow>
 
 				<SettingRow icon={PanelTop} label={n.notchBehavior} desc={n.notchBehaviorDesc}>
-					<select
+					<ZenithSelect
 						className="settings-select"
 						value={notchMode}
 						onChange={(e) => setNotchModeValue(e.target.value)}
@@ -308,7 +309,7 @@ export function NotchTab({
 						<option value="fixed">{n.modeFixed}</option>
 						<option value="smart">{n.modeSmart}</option>
 						<option value="peek">{n.modePeek}</option>
-					</select>
+					</ZenithSelect>
 				</SettingRow>
 
 				{notchMode !== "fixed" && (
@@ -342,7 +343,7 @@ export function NotchTab({
 
 				{!notchRememberPanel && (
 					<SettingRow icon={PanelTop} label={n.defaultPanel} desc={n.defaultPanelDesc}>
-						<select
+						<ZenithSelect
 							className="settings-select"
 							value={notchDefaultPanel}
 							onChange={(e) =>
@@ -356,7 +357,7 @@ export function NotchTab({
 							<option value="prayer" disabled={!prayerEnabled}>{n.panelPrayer}</option>
 							<option value="tasks" disabled={!tasksEnabled}>{n.panelTasks}</option>
 							<option value="ai-chat" disabled={!aiChatEnabled}>{n.panelAiChat}</option>
-						</select>
+						</ZenithSelect>
 					</SettingRow>
 				)}
 
@@ -590,7 +591,7 @@ export function NotchTab({
 									: n.locationModeManualDesc
 							}
 						>
-							<select
+							<ZenithSelect
 								className="settings-select"
 								value={prayerLocationMode}
 								onChange={(e) =>
@@ -599,7 +600,7 @@ export function NotchTab({
 							>
 								<option value="auto">{n.locationAutoOpt}</option>
 								<option value="manual">{n.locationManualOpt}</option>
-							</select>
+							</ZenithSelect>
 						</SettingRow>
 
 						{/* AUTO MODE: GPS detect button and status (City/Country completely hidden) */}
@@ -655,7 +656,7 @@ export function NotchTab({
 											</button>
 										</div>
 									) : (
-										<select
+										<ZenithSelect
 											className="settings-select"
 											value={matchedCountry ? matchedCountry.country : ""}
 											onChange={(e) => handleCountryChange(e.target.value)}
@@ -670,7 +671,7 @@ export function NotchTab({
 												</option>
 											))}
 											<option value="custom">{n.otherCustomCountry}</option>
-										</select>
+										</ZenithSelect>
 									)}
 								</SettingRow>
 
@@ -716,7 +717,7 @@ export function NotchTab({
 											)}
 										</div>
 									) : (
-										<select
+										<ZenithSelect
 											className="settings-select"
 											value={prayerCity}
 											onChange={(e) => handleCityChange(e.target.value)}
@@ -732,7 +733,7 @@ export function NotchTab({
 												</option>
 											))}
 											<option value="custom">{n.otherCity}</option>
-										</select>
+										</ZenithSelect>
 									)}
 								</SettingRow>
 							</>
@@ -744,7 +745,7 @@ export function NotchTab({
 							label={n.calcMethod}
 							desc={n.calcMethodDesc}
 						>
-							<select
+							<ZenithSelect
 								className="settings-select"
 								value={prayerMethod}
 								onChange={(e) => setPrayerMethodValue(e.target.value)}
@@ -759,7 +760,7 @@ export function NotchTab({
 								<option value="8">{n.calcMethods["8"]}</option>
 								<option value="9">{n.calcMethods["9"]}</option>
 								<option value="10">{n.calcMethods["10"]}</option>
-							</select>
+							</ZenithSelect>
 						</SettingRow>
 
 						{/* Time Offset */}
@@ -768,7 +769,7 @@ export function NotchTab({
 							label={n.timeOffset}
 							desc={n.timeOffsetDesc}
 						>
-							<select
+							<ZenithSelect
 								className="settings-select"
 								value={prayerTimeOffset}
 								onChange={(e) => setPrayerTimeOffsetValue(e.target.value)}
@@ -778,7 +779,7 @@ export function NotchTab({
 								<option value="0">{n.offsetZero}</option>
 								<option value="60">{n.offsetPos1}</option>
 								<option value="120">{n.offsetPos2}</option>
-							</select>
+							</ZenithSelect>
 						</SettingRow>
 
 						{/* Athan Alert */}
@@ -787,7 +788,7 @@ export function NotchTab({
 							label={n.athanAlert}
 							desc={n.athanAlertDesc}
 						>
-							<select
+							<ZenithSelect
 								className="settings-select"
 								value={prayerAlertType}
 								onChange={(e) => setPrayerAlertTypeValue(e.target.value)}
@@ -795,7 +796,7 @@ export function NotchTab({
 								<option value="sound_notification">{n.alertSoundNotification}</option>
 								<option value="notification_only">{n.alertNotificationOnly}</option>
 								<option value="off">{n.alertOff}</option>
-							</select>
+							</ZenithSelect>
 						</SettingRow>
 
 						{/* 15-Minute Pre-Alert */}

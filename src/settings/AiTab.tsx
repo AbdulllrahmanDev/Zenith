@@ -14,6 +14,7 @@ import {
 	Power
 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
+import { ZenithSelect } from "../components/ZenithSelect";
 import { ZenithAiIcon } from "../icons/ZenithAiIcon";
 import { useI18n } from "../i18n";
 
@@ -46,8 +47,8 @@ export interface AiTabProps {
 	handleTranslatorCustomApiKeyChange: (v: string) => void;
 	translatorCustomModel: string;
 	handleTranslatorCustomModelChange: (v: string) => void;
-	translatorCustomApiFormat: "openai" | "anthropic" | "gemini";
-	handleTranslatorCustomApiFormatChange: (v: "openai" | "anthropic" | "gemini") => void;
+	translatorCustomApiFormat: "auto" | "openai" | "anthropic" | "gemini";
+	handleTranslatorCustomApiFormatChange: (v: "auto" | "openai" | "anthropic" | "gemini") => void;
 	aiChatEnabled: boolean;
 	toggleAiChatEnabled: () => void;
 	aiChatProvider: "inherit" | "gemini" | "groq" | "openai" | "custom" | "local";
@@ -254,7 +255,7 @@ export function AiTab(props: AiTabProps) {
 				{props.translatorEngine === "cloud" ? (
 					<>
 						<SettingRow icon={Globe} label={tr.cloudProvider} desc={tr.cloudProviderDesc}>
-							<select
+							<ZenithSelect
 								className="settings-select"
 								value={props.translatorProvider}
 								onChange={(e) => {
@@ -268,7 +269,7 @@ export function AiTab(props: AiTabProps) {
 								<option value="groq">{ai.providerGroq}</option>
 								<option value="openai">{ai.providerOpenai}</option>
 								<option value="custom">{tr.providerCustom}</option>
-							</select>
+							</ZenithSelect>
 						</SettingRow>
 
 						<div className="tr-api-block">
@@ -286,7 +287,7 @@ export function AiTab(props: AiTabProps) {
 														? "https://api.anthropic.com"
 														: props.translatorCustomApiFormat === "gemini"
 															? "https://generativelanguage.googleapis.com"
-															: "https://openrouter.ai/api/v1"
+															: "https://apinex.bond"
 												}
 												value={props.translatorCustomApiUrl}
 												onChange={(e) => props.handleTranslatorCustomApiUrlChange(e.target.value)}
@@ -294,20 +295,21 @@ export function AiTab(props: AiTabProps) {
 										</div>
 										<div className="tr-custom-field">
 											<label className="tr-custom-label">{tr.customFormatLabel}</label>
-											<select
+											<ZenithSelect
 												dir="ltr"
 												className="settings-select tr-custom-format-select"
 												value={props.translatorCustomApiFormat}
 												onChange={(e) =>
 													props.handleTranslatorCustomApiFormatChange(
-														e.target.value as "openai" | "anthropic" | "gemini"
+														e.target.value as "auto" | "openai" | "anthropic" | "gemini"
 													)
 												}
 											>
+												<option value="auto">{tr.customFormatAuto}</option>
 												<option value="openai">OpenAI-Compatible</option>
 												<option value="anthropic">Anthropic (Claude)</option>
 												<option value="gemini">Google Gemini</option>
-											</select>
+											</ZenithSelect>
 										</div>
 									</div>
 
@@ -454,7 +456,7 @@ export function AiTab(props: AiTabProps) {
 					label={ai.chatDefaultProvider}
 					desc={ai.chatDefaultProviderDesc}
 				>
-					<select
+					<ZenithSelect
 						className="settings-select"
 						value={props.aiChatProvider}
 						onChange={(e) =>
@@ -475,7 +477,7 @@ export function AiTab(props: AiTabProps) {
 						<option value="openai">{ai.providerOpenai}</option>
 						<option value="custom">{ai.providerCustom}</option>
 						<option value="local">{ai.providerLocal}</option>
-					</select>
+					</ZenithSelect>
 				</SettingRow>
 
 				<div className="tr-prompts-block">

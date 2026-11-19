@@ -1,5 +1,7 @@
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 use tauri::AppHandle;
 
@@ -7,7 +9,7 @@ use super::config::{CloudTarget, TranslatorConfig};
 use super::local_runtime::{run_local_chat, LocalChatMessage};
 use super::ocr::{pick_nearest_ocr_lines, OcrBlock, RawOcrLine};
 
-const GEMINI_DEFAULT_MODEL: &str = "gemini-2.5-flash-lite";
+const GEMINI_DEFAULT_MODEL: &str = "gemini-flash-lite-latest";
 const GROQ_TEXT_MODEL: &str = "llama-3.3-70b-versatile";
 const GROQ_VISION_MODEL: &str = "meta-llama/llama-4-scout-17b-16e-instruct";
 const OPENAI_MODEL: &str = "gpt-4o-mini";
@@ -114,11 +116,28 @@ pub fn parse_json_string_array(raw: &str, expected: usize) -> Option<Vec<String>
     }
 }
 
-fn http_client(timeout_secs: u64) -> Result<reqwest::Client, String> {
+static HTTP_CLIENT_45: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
+static HTTP_CLIENT_60: OnceLock<Result<reqwest::Client, String>> = OnceLock::new();
+
+fn build_http_client(timeout_secs: u64) -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(8))
         .timeout(Duration::from_secs(timeout_secs))
+        .pool_idle_timeout(Duration::from_secs(60))
         .build()
         .map_err(|e| format!("HTTP client init failed: {e}"))
+}
+
+fn http_client(timeout_secs: u64) -> Result<reqwest::Client, String> {
+    match timeout_secs {
+        45 => HTTP_CLIENT_45
+            .get_or_init(|| build_http_client(45))
+            .clone(),
+        60 => HTTP_CLIENT_60
+            .get_or_init(|| build_http_client(60))
+            .clone(),
+        _ => build_http_client(timeout_secs),
+    }
 }
 
 fn validate_http_url(raw: &str) -> Result<String, String> {
@@ -195,6 +214,81 @@ pub fn normalize_gemini_generate_url(raw: &str, model: &str) -> Result<String, S
     } else {
         Ok(format!("{clean}/v1beta/models/{model_name}:generateContent"))
     }
+}
+
+static DETECTED_CUSTOM_FORMATS: OnceLock<Mutex<HashMap<String, &'static str>>> = OnceLock::new();
+
+fn detected_custom_format_cache() -> &'static Mutex<HashMap<String, &'static str>> {
+    DETECTED_CUSTOM_FORMATS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn custom_format_cache_key(url: &str, model: &str) -> String {
+    let norm_url = url.trim().trim_end_matches('#').trim_end_matches('/').to_ascii_lowercase();
+    let norm_model = model.trim().to_ascii_lowercase();
+    format!("{norm_url}|{norm_model}")
+}
+
+fn record_detected_custom_format(url: &str, model: &str, fmt: &'static str) {
+    let key = custom_format_cache_key(url, model);
+    if let Ok(mut guard) = detected_custom_format_cache().lock() {
+        guard.insert(key, fmt);
+    }
+}
+
+pub fn infer_custom_format_candidates(url: &str, model: &str) -> Vec<&'static str> {
+    let clean = url.trim().trim_end_matches('#').trim_end_matches('/').to_ascii_lowercase();
+    let model_lower = model.trim().to_ascii_lowercase();
+
+    // Explicit URL protocol cues
+    if clean.contains(":generatecontent")
+        || clean.contains("generativelanguage.googleapis.com")
+        || clean.contains("aiplatform.googleapis.com")
+        || clean.ends_with("/v1beta")
+        || clean.ends_with("/models")
+    {
+        return vec!["gemini"];
+    }
+    if clean.contains("api.anthropic.com") || clean.ends_with("/messages") {
+        return vec!["anthropic"];
+    }
+    if clean.ends_with("/chat/completions")
+        || clean.contains("openrouter.ai")
+        || clean.contains("api.openai.com")
+        || clean.contains("api.deepseek.com")
+        || clean.contains("api.groq.com")
+    {
+        return vec!["openai"];
+    }
+
+    // Generic base URL / aggregator proxy: OpenAI-compatible is the universal default,
+    // with smart fallback order based on the model name if the proxy is native-only.
+    let mut order: Vec<&'static str> = if model_lower.contains("claude") {
+        vec!["openai", "anthropic", "gemini"]
+    } else {
+        vec!["openai", "gemini", "anthropic"]
+    };
+
+    let key = custom_format_cache_key(url, model);
+    if let Ok(guard) = detected_custom_format_cache().lock() {
+        if let Some(&cached) = guard.get(&key) {
+            if let Some(pos) = order.iter().position(|&f| f == cached) {
+                order.remove(pos);
+                order.insert(0, cached);
+            }
+        }
+    }
+    order
+}
+
+fn is_protocol_mismatch_error(err: &str) -> bool {
+    let lower = err.to_ascii_lowercase();
+    ["(404", "(405", "(400", "(415", "(422", "(501"]
+        .iter()
+        .any(|code| lower.contains(code))
+        || lower.contains("empty response")
+        || lower.contains("invalid provider response")
+        || err.contains("برد فارغ")
+        || err.contains("فشل قراءة رد")
 }
 
 pub fn extract_openai_content(val: &Value) -> Option<String> {
@@ -427,6 +521,61 @@ async fn call_gemini_endpoint(
     extract_gemini_content(&val).ok_or_else(|| "رد فارغ من المزود".to_string())
 }
 
+static WORKING_GEMINI_URLS: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+
+fn working_gemini_url_cache() -> &'static Mutex<HashMap<String, String>> {
+    WORKING_GEMINI_URLS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn gemini_key_fingerprint(api_key: &str) -> String {
+    let trimmed = api_key.trim();
+    if trimmed.len() <= 12 {
+        trimmed.to_string()
+    } else {
+        format!("{}..{}..{}", &trimmed[..6], trimmed.len(), &trimmed[trimmed.len() - 6..])
+    }
+}
+
+fn record_working_gemini_url(api_key: &str, url: &str) {
+    let fp = gemini_key_fingerprint(api_key);
+    if let Ok(mut guard) = working_gemini_url_cache().lock() {
+        guard.insert(fp, url.to_string());
+    }
+}
+
+fn gemini_candidate_urls(api_key: &str) -> Vec<String> {
+    let mut candidates = vec![
+        format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_DEFAULT_MODEL}:generateContent"
+        ),
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent".to_string(),
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent".to_string(),
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent".to_string(),
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent".to_string(),
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent".to_string(),
+    ];
+    if api_key.trim().starts_with("AQ.") {
+        candidates.push(
+            "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash-lite:generateContent"
+                .to_string(),
+        );
+    }
+    let fp = gemini_key_fingerprint(api_key);
+    if let Ok(guard) = working_gemini_url_cache().lock() {
+        if let Some(cached) = guard.get(&fp) {
+            if let Some(pos) = candidates.iter().position(|u| u == cached) {
+                let winner = candidates.remove(pos);
+                candidates.insert(0, winner);
+            }
+        }
+    }
+    candidates
+}
+
+fn is_vertex_disabled_err(err: &str) -> bool {
+    err.contains("SERVICE_DISABLED") || err.contains("BILLING_DISABLED")
+}
+
 async fn call_gemini(
     api_key: &str,
     sys: &str,
@@ -436,31 +585,30 @@ async fn call_gemini(
 ) -> Result<String, String> {
     let client = http_client(45)?;
     let body = build_gemini_body(sys, user_text, image_png, max_tokens);
+    let trimmed_key = api_key.trim();
+    let is_aq = trimmed_key.starts_with("AQ.");
+    let candidates = gemini_candidate_urls(trimmed_key);
 
-    let candidates = if api_key.starts_with("AQ.") {
-        vec![format!(
-            "https://aiplatform.googleapis.com/v1/publishers/google/models/{GEMINI_DEFAULT_MODEL}:generateContent?key={api_key}"
-        )]
-    } else {
-        vec![
-            format!(
-                "https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_DEFAULT_MODEL}:generateContent?key={api_key}"
-            ),
-            format!(
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-            ),
-            format!(
-                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
-            ),
-        ]
-    };
-
+    let mut gl_err: Option<String> = None;
     let mut last_err = "تعذر الاتصال بـ Gemini".to_string();
+    let mut skip_generativelanguage = false;
     for url in candidates {
-        let resp = match client.post(&url).json(&body).send().await {
+        let is_gl = url.contains("generativelanguage.googleapis.com");
+        if skip_generativelanguage && is_gl {
+            continue;
+        }
+        let mut req = client.post(&url);
+        if !trimmed_key.is_empty() {
+            req = req.header("x-goog-api-key", trimmed_key);
+        }
+        let resp = match req.json(&body).send().await {
             Ok(r) => r,
             Err(e) => {
-                last_err = format!("خطأ اتصال Gemini: {e}");
+                let err = format!("خطأ اتصال Gemini: {e}");
+                if is_gl && gl_err.is_none() {
+                    gl_err = Some(err.clone());
+                }
+                last_err = err;
                 continue;
             }
         };
@@ -470,21 +618,104 @@ async fn call_gemini(
                 .await
                 .map_err(|e| format!("فشل قراءة رد Gemini: {e}"))?;
             if let Some(cleaned) = extract_gemini_content(&val) {
+                record_working_gemini_url(trimmed_key, &url);
                 return Ok(cleaned);
             }
-            last_err = "عاد Gemini برد فارغ".to_string();
+            let err = "عاد Gemini برد فارغ".to_string();
+            if is_gl && gl_err.is_none() {
+                gl_err = Some(err.clone());
+            }
+            last_err = err;
             continue;
         }
         let status = resp.status();
         let body_txt = resp.text().await.unwrap_or_default();
-        last_err = format!("خطأ Gemini ({status}): {body_txt}");
-        // Retry next model only if model not found / rate-limited / overloaded
-        if status.as_u16() != 404 && status.as_u16() != 429 && status.as_u16() != 503 {
+        let err = sanitize_err_secret(format!("خطأ Gemini ({status}): {body_txt}"), trimmed_key);
+        if is_gl {
+            gl_err = Some(err.clone());
+        }
+        last_err = if !is_gl && is_vertex_disabled_err(&err) {
+            gl_err.clone().unwrap_or(err)
+        } else {
+            err
+        };
+        let code = status.as_u16();
+        if code != 404 && code != 429 && code != 503 {
+            if is_aq && is_gl {
+                skip_generativelanguage = true;
+                continue;
+            }
             break;
         }
     }
 
     Err(last_err)
+}
+
+struct CustomEndpoint<'a> {
+    url: &'a str,
+    api_key: &'a str,
+    model: &'a str,
+}
+
+async fn call_custom_with_format(
+    format: &str,
+    target: &CustomEndpoint<'_>,
+    sys: &str,
+    user_text: &str,
+    image_png: Option<&[u8]>,
+    max_tokens: u32,
+) -> Result<String, String> {
+    match format {
+        "anthropic" => {
+            let endpoint = normalize_anthropic_messages_url(target.url)?;
+            let model_name = if target.model.trim().is_empty() {
+                ANTHROPIC_DEFAULT_MODEL
+            } else {
+                target.model.trim()
+            };
+            call_anthropic(
+                &endpoint,
+                target.api_key,
+                model_name,
+                sys,
+                user_text,
+                image_png,
+                max_tokens,
+            )
+            .await
+        }
+        "gemini" => {
+            let endpoint = normalize_gemini_generate_url(target.url, target.model)?;
+            call_gemini_endpoint(
+                &endpoint,
+                Some(target.api_key),
+                sys,
+                user_text,
+                image_png,
+                max_tokens,
+            )
+            .await
+        }
+        _ => {
+            let endpoint = normalize_openai_chat_url(target.url)?;
+            let model_name = if target.model.trim().is_empty() {
+                OPENAI_MODEL
+            } else {
+                target.model.trim()
+            };
+            call_openai_compatible(
+                &endpoint,
+                target.api_key,
+                model_name,
+                sys,
+                user_text,
+                image_png,
+                max_tokens,
+            )
+            .await
+        }
+    }
 }
 
 async fn call_cloud_target(
@@ -532,48 +763,39 @@ async fn call_cloud_target(
             url,
             api_key,
             model,
-        } => match format {
-            "anthropic" => {
-                let endpoint = normalize_anthropic_messages_url(url)?;
-                let model_name = if model.trim().is_empty() {
-                    ANTHROPIC_DEFAULT_MODEL
-                } else {
-                    model.trim()
-                };
-                call_anthropic(&endpoint, api_key, model_name, sys, user_text, image_png, max_tokens)
-                    .await
+        } => {
+            let target = CustomEndpoint { url, api_key, model };
+            if format != "auto" {
+                return call_custom_with_format(
+                    format, &target, sys, user_text, image_png, max_tokens,
+                )
+                .await;
             }
-            "gemini" => {
-                let endpoint = normalize_gemini_generate_url(url, model)?;
-                call_gemini_endpoint(
-                    &endpoint,
-                    Some(api_key),
-                    sys,
-                    user_text,
-                    image_png,
-                    max_tokens,
+            let candidates = infer_custom_format_candidates(url, model);
+            let mut first_err: Option<String> = None;
+            for candidate in candidates {
+                match call_custom_with_format(
+                    candidate, &target, sys, user_text, image_png, max_tokens,
                 )
                 .await
+                {
+                    Ok(reply) => {
+                        record_detected_custom_format(url, model, candidate);
+                        return Ok(reply);
+                    }
+                    Err(err) => {
+                        let retry = is_protocol_mismatch_error(&err);
+                        if first_err.is_none() {
+                            first_err = Some(err);
+                        }
+                        if !retry {
+                            break;
+                        }
+                    }
+                }
             }
-            _ => {
-                let endpoint = normalize_openai_chat_url(url)?;
-                let model_name = if model.trim().is_empty() {
-                    OPENAI_MODEL
-                } else {
-                    model.trim()
-                };
-                call_openai_compatible(
-                    &endpoint,
-                    api_key,
-                    model_name,
-                    sys,
-                    user_text,
-                    image_png,
-                    max_tokens,
-                )
-                .await
-            }
-        },
+            Err(first_err.unwrap_or_else(|| "Custom API request failed".to_string()))
+        }
     }
 }
 
@@ -1054,22 +1276,17 @@ async fn post_gemini_chat(
     }
 
     let trimmed_key = api_key.trim();
-    let candidates = if trimmed_key.starts_with("AQ.") {
-        vec![format!(
-            "https://aiplatform.googleapis.com/v1/publishers/google/models/{GEMINI_DEFAULT_MODEL}:generateContent"
-        )]
-    } else {
-        vec![
-            format!(
-                "https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_DEFAULT_MODEL}:generateContent"
-            ),
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent".to_string(),
-            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent".to_string(),
-        ]
-    };
+    let is_aq = trimmed_key.starts_with("AQ.");
+    let candidates = gemini_candidate_urls(trimmed_key);
 
+    let mut gl_err: Option<String> = None;
     let mut last_err = "Failed connecting to Gemini".to_string();
+    let mut skip_generativelanguage = false;
     for url in candidates {
+        let is_gl = url.contains("generativelanguage.googleapis.com");
+        if skip_generativelanguage && is_gl {
+            continue;
+        }
         let mut req = client.post(&url);
         if !trimmed_key.is_empty() {
             req = req.header("x-goog-api-key", trimmed_key);
@@ -1077,7 +1294,11 @@ async fn post_gemini_chat(
         let resp = match req.json(&body).send().await {
             Ok(r) => r,
             Err(e) => {
-                last_err = format_chat_reqwest_err("Gemini connection error", e, trimmed_key);
+                let err = format_chat_reqwest_err("Gemini connection error", e, trimmed_key);
+                if is_gl && gl_err.is_none() {
+                    gl_err = Some(err.clone());
+                }
+                last_err = err;
                 continue;
             }
         };
@@ -1087,19 +1308,95 @@ async fn post_gemini_chat(
                 .await
                 .map_err(|e| format_chat_reqwest_err("Invalid Gemini response", e, trimmed_key))?;
             if let Some(text) = extract_gemini_content(&val) {
+                record_working_gemini_url(trimmed_key, &url);
                 return Ok(text);
             }
-            last_err = "Gemini returned an empty response.".to_string();
+            let err = "Gemini returned an empty response.".to_string();
+            if is_gl && gl_err.is_none() {
+                gl_err = Some(err.clone());
+            }
+            last_err = err;
             continue;
         }
         let status = resp.status();
         let body_txt = resp.text().await.unwrap_or_default();
-        last_err = sanitize_err_secret(format!("Gemini error ({status}): {body_txt}"), trimmed_key);
-        if status.as_u16() != 404 && status.as_u16() != 429 && status.as_u16() != 503 {
+        let err = sanitize_err_secret(format!("Gemini error ({status}): {body_txt}"), trimmed_key);
+        if is_gl {
+            gl_err = Some(err.clone());
+        }
+        last_err = if !is_gl && is_vertex_disabled_err(&err) {
+            gl_err.clone().unwrap_or(err)
+        } else {
+            err
+        };
+        let code = status.as_u16();
+        if code != 404 && code != 429 && code != 503 {
+            if is_aq && is_gl {
+                skip_generativelanguage = true;
+                continue;
+            }
             break;
         }
     }
     Err(last_err)
+}
+
+async fn post_custom_chat_with_format(
+    format: &str,
+    url: &str,
+    api_key: &str,
+    model: &str,
+    system_prompt: &str,
+    history: &[ChatTurnMessage],
+    max_tokens: u32,
+) -> Result<String, String> {
+    match format {
+        "anthropic" => {
+            let endpoint = normalize_anthropic_messages_url(url)?;
+            let model_name = if model.trim().is_empty() {
+                ANTHROPIC_DEFAULT_MODEL
+            } else {
+                model.trim()
+            };
+            post_anthropic_chat(
+                &endpoint,
+                api_key,
+                model_name,
+                system_prompt,
+                history,
+                max_tokens,
+            )
+            .await
+        }
+        "gemini" => {
+            post_gemini_chat(
+                api_key,
+                Some(url),
+                Some(model),
+                system_prompt,
+                history,
+                max_tokens,
+            )
+            .await
+        }
+        _ => {
+            let endpoint = normalize_openai_chat_url(url)?;
+            let model_name = if model.trim().is_empty() {
+                OPENAI_MODEL
+            } else {
+                model.trim()
+            };
+            post_openai_chat(
+                &endpoint,
+                api_key,
+                model_name,
+                system_prompt,
+                history,
+                max_tokens,
+            )
+            .await
+        }
+    }
 }
 
 pub async fn run_chat_completion(
@@ -1195,51 +1492,54 @@ pub async fn run_chat_completion(
             api_key,
             model,
         } => {
-            let reply = match format {
-                "anthropic" => {
-                    let endpoint = normalize_anthropic_messages_url(url)?;
-                    let model_name = if model.trim().is_empty() {
-                        ANTHROPIC_DEFAULT_MODEL
-                    } else {
-                        model.trim()
-                    };
-                    post_anthropic_chat(
-                        &endpoint,
+            let reply = if format != "auto" {
+                post_custom_chat_with_format(
+                    format,
+                    url,
+                    api_key,
+                    model,
+                    system_prompt,
+                    history,
+                    max_tokens,
+                )
+                .await?
+            } else {
+                let candidates = infer_custom_format_candidates(url, model);
+                let mut first_err: Option<String> = None;
+                let mut resolved: Option<String> = None;
+                for candidate in candidates {
+                    match post_custom_chat_with_format(
+                        candidate,
+                        url,
                         api_key,
-                        model_name,
+                        model,
                         system_prompt,
                         history,
                         max_tokens,
                     )
-                    .await?
+                    .await
+                    {
+                        Ok(text) => {
+                            record_detected_custom_format(url, model, candidate);
+                            resolved = Some(text);
+                            break;
+                        }
+                        Err(err) => {
+                            let retry = is_protocol_mismatch_error(&err);
+                            if first_err.is_none() {
+                                first_err = Some(err);
+                            }
+                            if !retry {
+                                break;
+                            }
+                        }
+                    }
                 }
-                "gemini" => {
-                    post_gemini_chat(
-                        api_key,
-                        Some(url),
-                        Some(model),
-                        system_prompt,
-                        history,
-                        max_tokens,
-                    )
-                    .await?
-                }
-                _ => {
-                    let endpoint = normalize_openai_chat_url(url)?;
-                    let model_name = if model.trim().is_empty() {
-                        OPENAI_MODEL
-                    } else {
-                        model.trim()
-                    };
-                    post_openai_chat(
-                        &endpoint,
-                        api_key,
-                        model_name,
-                        system_prompt,
-                        history,
-                        max_tokens,
-                    )
-                    .await?
+                match resolved {
+                    Some(text) => text,
+                    None => {
+                        return Err(first_err.unwrap_or_else(|| "Custom API request failed".to_string()));
+                    }
                 }
             };
             Ok((reply, "custom".to_string()))
@@ -1403,5 +1703,41 @@ mod tests {
         let sanitized = sanitize_err_secret("GET https://x?key=AIzaSecret123 failed".into(), "AIzaSecret123");
         assert!(!sanitized.contains("AIzaSecret123"));
         assert!(sanitized.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn infers_custom_format_candidates_and_mismatch_errors() {
+        assert_eq!(
+            infer_custom_format_candidates("https://generativelanguage.googleapis.com", ""),
+            vec!["gemini"]
+        );
+        assert_eq!(
+            infer_custom_format_candidates("https://api.anthropic.com", ""),
+            vec!["anthropic"]
+        );
+        assert_eq!(
+            infer_custom_format_candidates("https://openrouter.ai/api/v1", ""),
+            vec!["openai"]
+        );
+        assert_eq!(
+            infer_custom_format_candidates("https://apinex.bond", "gemini-2.5-flash"),
+            vec!["openai", "gemini", "anthropic"]
+        );
+        assert_eq!(
+            infer_custom_format_candidates("https://apinex.bond", "claude-3-5-sonnet"),
+            vec!["openai", "anthropic", "gemini"]
+        );
+
+        assert!(is_protocol_mismatch_error("Provider error (404 Not Found): not found"));
+        assert!(is_protocol_mismatch_error("Provider returned an empty response."));
+        assert!(!is_protocol_mismatch_error("Provider error (401 Unauthorized): invalid api key"));
+
+        let aq_urls = gemini_candidate_urls("AQ.test_auth_key");
+        assert!(aq_urls[0].starts_with("https://generativelanguage.googleapis.com/"));
+        assert!(aq_urls.last().unwrap().starts_with("https://aiplatform.googleapis.com/"));
+
+        let aiza_urls = gemini_candidate_urls("AIzaTestKey");
+        assert_eq!(aiza_urls.len(), 6);
+        assert!(aiza_urls.iter().all(|u| u.starts_with("https://generativelanguage.googleapis.com/")));
     }
 }

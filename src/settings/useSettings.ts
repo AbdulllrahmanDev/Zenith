@@ -22,12 +22,20 @@ function readBool(val: string | null): boolean {
 	return val === "true";
 }
 
+type CustomApiFormat = "auto" | "openai" | "anthropic" | "gemini";
+
+function parseCustomApiFormat(v: unknown): CustomApiFormat {
+	return v === "openai" || v === "anthropic" || v === "gemini" ? v : "auto";
+}
+
 export function useSettings() {
 	const [saveError, setSaveError] = useState(
 		() => sessionStorage.getItem("zenith-settings-save-error") !== null
 	);
 	const saveQueue = useRef<Promise<void>>(Promise.resolve());
 	const saveFailed = useRef(false);
+	const debouncedSaveTimers = useRef<Record<string, number>>({});
+	const pendingLocalWrites = useRef<Record<string, { value: string | null; until: number }>>({});
 	const [autostart, setAutostart] = useState(false);
 	const [weatherEnabled, setWeatherEnabled] = useState(true);
 	const [calendarEnabled, setCalendarEnabled] = useState(true);
@@ -323,10 +331,9 @@ export function useSettings() {
 	const [translatorCustomModel, setTranslatorCustomModel] = useState(
 		() => localStorage.getItem("zenith-translator-custom-model") || ""
 	);
-	const [translatorCustomApiFormat, setTranslatorCustomApiFormat] = useState<"openai" | "anthropic" | "gemini">(() => {
-		const f = localStorage.getItem("zenith-translator-custom-api-format");
-		return f === "anthropic" || f === "gemini" ? f : "openai";
-	});
+	const [translatorCustomApiFormat, setTranslatorCustomApiFormat] = useState<CustomApiFormat>(() =>
+		parseCustomApiFormat(localStorage.getItem("zenith-translator-custom-api-format"))
+	);
 	const [translatorTargetLanguage, setTranslatorTargetLanguage] = useState(
 		() => localStorage.getItem("zenith-translator-target-language") || "Arabic"
 	);
@@ -621,9 +628,7 @@ export function useSettings() {
 			apply(getVal("zenith-translator-custom-api-url"), setTranslatorCustomApiUrl, (v) => v);
 			apply(getVal("zenith-translator-custom-api-key"), setTranslatorCustomApiKey, (v) => v);
 			apply(getVal("zenith-translator-custom-model"), setTranslatorCustomModel, (v) => v);
-			apply(getVal("zenith-translator-custom-api-format"), setTranslatorCustomApiFormat, (v) =>
-				v === "anthropic" || v === "gemini" ? v : "openai"
-			);
+			apply(getVal("zenith-translator-custom-api-format"), setTranslatorCustomApiFormat, parseCustomApiFormat);
 			apply(getVal("zenith-translator-target-language"), setTranslatorTargetLanguage, (v) => v);
 			apply(getVal("zenith-translator-output-mode"), setTranslatorOutputMode, (v) =>
 				v === "explain" || v === "summarize" ? v : "full"
@@ -692,6 +697,7 @@ export function useSettings() {
 	}, []);
 
 	const saveSetting = (key: string, value: string | null): Promise<boolean> => {
+		pendingLocalWrites.current[key] = { value, until: Date.now() + 900 };
 		const operation = saveQueue.current.then(async () => {
 			if (saveFailed.current) return false;
 			try {
@@ -717,6 +723,30 @@ export function useSettings() {
 		saveQueue.current = operation.then(() => {});
 		return operation;
 	};
+
+	const saveSettingDebounced = (key: string, value: string | null, delayMs = 90) => {
+		pendingLocalWrites.current[key] = { value, until: Date.now() + 900 };
+		try {
+			if (value === null) localStorage.removeItem(key);
+			else localStorage.setItem(key, value);
+		} catch {}
+		const existing = debouncedSaveTimers.current[key];
+		if (existing !== undefined) {
+			window.clearTimeout(existing);
+		}
+		debouncedSaveTimers.current[key] = window.setTimeout(() => {
+			delete debouncedSaveTimers.current[key];
+			void saveSetting(key, value);
+		}, delayMs);
+	};
+
+	useEffect(() => {
+		return () => {
+			for (const timerId of Object.values(debouncedSaveTimers.current)) {
+				window.clearTimeout(timerId);
+			}
+		};
+	}, []);
 
 	const saveLocation = (key: "zenith-weather-lat" | "zenith-weather-lon", value: string | null): Promise<boolean> => {
 		const operation = saveQueue.current.then(async () => {
@@ -883,7 +913,7 @@ export function useSettings() {
 		"zenith-translator-custom-api-key": setTranslatorCustomApiKey,
 		"zenith-translator-custom-model": setTranslatorCustomModel,
 		"zenith-translator-custom-api-format": (v: unknown) =>
-			setTranslatorCustomApiFormat(v === "anthropic" || v === "gemini" ? v : "openai"),
+			setTranslatorCustomApiFormat(parseCustomApiFormat(v)),
 		"zenith-translator-target-language": setTranslatorTargetLanguage,
 		"zenith-translator-output-mode": (v: unknown) =>
 			setTranslatorOutputMode(v === "explain" || v === "summarize" ? v : "full"),
@@ -943,6 +973,13 @@ export function useSettings() {
 		"zenith-tasks-google-client-id": (v: unknown) => setTasksGoogleClientId(String(v ?? "")),
 		"zenith-tasks-google-client-secret": (v: unknown) => setTasksGoogleClientSecret(String(v ?? "")),
 		"zenith-tasks-google-list-id": (v: unknown) => setTasksGoogleListId(String(v || "@default"))
+	}, undefined, {
+		shouldApply: (key, value, source) => {
+			if (source !== "local-event") return true;
+			const pending = pendingLocalWrites.current[key];
+			if (!pending || Date.now() > pending.until) return true;
+			return String(pending.value ?? "") === String(value ?? "");
+		}
 	});
 
 	// ── Listen for system accent changes (adaptive theme) ──
@@ -1280,7 +1317,7 @@ export function useSettings() {
 
 	const handleMouseInstantDwellMsChange = (val: number) => {
 		setMouseInstantDwellMs(val);
-		saveSetting("zenith-mouse-instant-dwell-ms", String(val));
+		saveSettingDebounced("zenith-mouse-instant-dwell-ms", String(val));
 	};
 
 	const handleMouseInstantSensitivityChange = (val: "low" | "medium" | "high") => {
@@ -1313,7 +1350,7 @@ export function useSettings() {
 
 	const handleMouseWorkspacePeekDelayMsChange = (val: number) => {
 		setMouseWorkspacePeekDelayMs(val);
-		saveSetting("zenith-mouse-workspace-peek-delay-ms", String(val));
+		saveSettingDebounced("zenith-mouse-workspace-peek-delay-ms", String(val));
 	};
 
 	const toggleMouseGameMode = () => {
@@ -1346,37 +1383,37 @@ export function useSettings() {
 
 	const handleMouseSoundVolumeChange = (val: number) => {
 		setMouseSoundVolume(val);
-		saveSetting("zenith-mouse-sound-volume", String(val));
+		saveSettingDebounced("zenith-mouse-sound-volume", String(val));
 	};
 
 	const handleMouseMenuRadiusChange = (val: number) => {
 		setMouseMenuRadius(val);
-		saveSetting("zenith-mouse-menu-radius", String(val));
+		saveSettingDebounced("zenith-mouse-menu-radius", String(val));
 	};
 
 	const handleMouseIconSizeChange = (val: number) => {
 		setMouseIconSize(val);
-		saveSetting("zenith-mouse-icon-size", String(val));
+		saveSettingDebounced("zenith-mouse-icon-size", String(val));
 	};
 
 	const handleMouseAppSpacingChange = (val: number) => {
 		setMouseAppSpacing(val);
-		saveSetting("zenith-mouse-app-spacing", String(val));
+		saveSettingDebounced("zenith-mouse-app-spacing", String(val));
 	};
 
 	const handleMouseBackdropOpacityChange = (val: number) => {
 		setMouseBackdropOpacity(val);
-		saveSetting("zenith-mouse-backdrop-opacity", String(val));
+		saveSettingDebounced("zenith-mouse-backdrop-opacity", String(val));
 	};
 
 	const handleMouseHoverColorChange = (val: string) => {
 		setMouseHoverColor(val);
-		saveSetting("zenith-mouse-hover-color", val);
+		saveSettingDebounced("zenith-mouse-hover-color", val);
 	};
 
 	const handleMouseActivationThresholdChange = (val: number) => {
 		setMouseActivationThreshold(val);
-		saveSetting("zenith-mouse-activation-threshold", String(val));
+		saveSettingDebounced("zenith-mouse-activation-threshold", String(val));
 	};
 
 	const toggleMouseShowLabels = () => {
@@ -1630,7 +1667,7 @@ export function useSettings() {
 		setTranslatorCustomModel(v);
 		saveSetting("zenith-translator-custom-model", v);
 	};
-	const handleTranslatorCustomApiFormatChange = (v: "openai" | "anthropic" | "gemini") => {
+	const handleTranslatorCustomApiFormatChange = (v: CustomApiFormat) => {
 		setTranslatorCustomApiFormat(v);
 		saveSetting("zenith-translator-custom-api-format", v);
 	};

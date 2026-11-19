@@ -86,8 +86,10 @@ export const WheelPreview: React.FC<WheelPreviewProps> = ({
   const sectorOuterRadius = Math.max(actualMenuRadius + actualIconSize * 1.65, deadZoneRadius + 40);
   const falloffRadius = actualMenuRadius + actualIconSize * 0.85;
 
-  const naturalSpan = (actualMenuRadius + actualIconSize / 2 + 88) * 2;
-  const scale = Math.min(0.68, size / Math.max(360, naturalSpan));
+  const unscaledEdge = actualMenuRadius + actualIconSize / 2 + 26;
+  const baseScale = size / 470;
+  const fitScale = (size - 12) / Math.max(360, unscaledEdge * 2);
+  const scale = Math.min(baseScale, fitScale);
 
   const scrimBg = useMemo(
     () =>
@@ -165,6 +167,22 @@ export const WheelPreview: React.FC<WheelPreviewProps> = ({
           />
         )}
 
+        {/* Center Dead-Zone indicator ring */}
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            width: deadZoneRadius * 2,
+            height: deadZoneRadius * 2,
+            transform: "translate(-50%, -50%)",
+            borderRadius: "50%",
+            border: "1.5px dashed rgba(255, 255, 255, 0.24)",
+            pointerEvents: "none",
+            zIndex: 8,
+          }}
+        />
+
         {/* Center hub */}
         <div
           style={{
@@ -212,8 +230,7 @@ export const WheelPreview: React.FC<WheelPreviewProps> = ({
                 top: 0,
                 transform: `translate3d(${snapToDevicePixel(ix)}px, ${snapToDevicePixel(
                   iy
-                )}px, 0) scale(${isActive ? 1.06 : 1})`,
-                transition: "transform 150ms cubic-bezier(0.22, 1, 0.36, 1)",
+                )}px, 0)`,
                 zIndex: isActive ? 25 : 15,
               }}
             >
@@ -223,7 +240,8 @@ export const WheelPreview: React.FC<WheelPreviewProps> = ({
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  transform: "translate(-50%, -50%)",
+                  transform: `translate(-50%, -50%) scale(${isActive ? 1.06 : 1})`,
+                  transition: "transform 140ms cubic-bezier(0.22, 1, 0.36, 1)",
                 }}
               >
                 <div

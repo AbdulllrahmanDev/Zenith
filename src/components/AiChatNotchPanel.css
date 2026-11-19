@@ -583,7 +583,7 @@
 /* ── Drop Overlay ── */
 .ai-chat-drop-overlay {
 	position: absolute;
-	inset: 4px;
+	inset: 4px 16px;
 	z-index: 8;
 	border-radius: 14px;
 	border: 1.5px dashed rgba(255, 255, 255, 0.4);

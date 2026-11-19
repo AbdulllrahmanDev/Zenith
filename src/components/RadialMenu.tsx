@@ -137,7 +137,6 @@ const RadialSlice = React.memo(
 		const fired = echo === "fired";
 		const waveSize = actualIconSize + 6;
 		const waveRadius = 21;
-		const isFolder = item.type === "submenu" && item.children && item.children.length > 0;
 
 		return (
 			<div
@@ -310,31 +309,6 @@ const RadialSlice = React.memo(
 								aria-hidden
 							>
 								{numberHint}
-							</div>
-						)}
-
-						{/* Bottom-Right Submenu/Folder Badge */}
-						{isFolder && (
-							<div
-								style={{
-									position: "absolute",
-									bottom: "-4px",
-									right: "-4px",
-									width: "20px",
-									height: "20px",
-									background: "#ffffff",
-									borderRadius: "999px",
-									display: "flex",
-									alignItems: "center",
-									justifyContent: "center",
-									gap: "2px",
-									border: "2px solid #1A1A1A",
-									zIndex: 30,
-									boxShadow: "0 2px 6px rgba(0,0,0,0.45)"
-								}}
-							>
-								<div style={{ width: 4, height: 4, borderRadius: "50%", background: "#000" }} />
-								<div style={{ width: 4, height: 4, borderRadius: "50%", background: "#000" }} />
 							</div>
 						)}
 					</div>
@@ -1515,28 +1489,11 @@ export default function RadialMenu({
 						<div
 							style={{
 								display: "flex",
-								flexDirection: "column",
 								alignItems: "center",
-								justifyContent: "center",
-								gap: "3px"
+								justifyContent: "center"
 							}}
 						>
 							<CornerUpLeft size={Math.round(actualIconSize * 0.45)} strokeWidth={1.6} />
-							{!isCenterActive && (
-								<div style={{ display: "flex", gap: "3px", marginTop: "2px" }}>
-									{folderStack.map((_, i) => (
-										<div
-											key={i}
-											style={{
-												width: 4,
-												height: 4,
-												borderRadius: "50%",
-												background: "rgba(255,255,255,0.45)"
-											}}
-										/>
-									))}
-								</div>
-							)}
 						</div>
 					)}
 				</div>

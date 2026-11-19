@@ -30,9 +30,12 @@ import {
 	Edit3,
 	X,
 	Upload,
-	Image as ImageIcon
+	Image as ImageIcon,
+	Tag,
+	Eye
 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
+import { ZenithSelect } from "../components/ZenithSelect";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -1705,7 +1708,7 @@ export function MouseTab({
 										type="range"
 										min="80"
 										max="210"
-										step="2"
+										step="1"
 										value={mouseMenuRadius}
 										onChange={(e) => handleMouseMenuRadiusChange(parseInt(e.target.value, 10))}
 										className="settings-slider"
@@ -1722,7 +1725,7 @@ export function MouseTab({
 										type="range"
 										min="40"
 										max="76"
-										step="2"
+										step="1"
 										value={mouseIconSize}
 										onChange={(e) => handleMouseIconSizeChange(parseInt(e.target.value, 10))}
 										className="settings-slider"
@@ -1739,7 +1742,7 @@ export function MouseTab({
 										type="range"
 										min="4"
 										max="28"
-										step="2"
+										step="1"
 										value={mouseAppSpacing}
 										onChange={(e) => handleMouseAppSpacingChange(parseInt(e.target.value, 10))}
 										className="settings-slider"
@@ -1756,7 +1759,7 @@ export function MouseTab({
 										type="range"
 										min="36"
 										max="96"
-										step="2"
+										step="1"
 										value={mouseActivationThreshold}
 										onChange={(e) =>
 											handleMouseActivationThresholdChange(parseInt(e.target.value, 10))
@@ -1775,7 +1778,7 @@ export function MouseTab({
 										type="range"
 										min="0"
 										max="1"
-										step="0.05"
+										step="0.01"
 										value={mouseBackdropOpacity}
 										onChange={(e) => handleMouseBackdropOpacityChange(parseFloat(e.target.value))}
 										className="settings-slider"
@@ -1802,7 +1805,7 @@ export function MouseTab({
 					</SettingRow>
 
 					<SettingRow
-						icon={Sparkles}
+						icon={Tag}
 						label={m.showShortcutLabels}
 						desc={m.showShortcutLabelsDesc}
 					>
@@ -1818,7 +1821,7 @@ export function MouseTab({
 
 					{mouseShowLabels && (
 						<SettingRow
-							icon={Sparkles}
+							icon={Eye}
 							label={m.alwaysShowAllLabels}
 							desc={m.alwaysShowAllLabelsDesc}
 						>
@@ -1876,7 +1879,7 @@ export function MouseTab({
 							desc={m.triggerMouseButtonDesc}
 						>
 							<div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-								<select
+								<ZenithSelect
 									className="settings-select"
 									value={mouseTriggerButton}
 									onChange={(e) => handleMouseTriggerButtonChange(e.target.value)}
@@ -1892,7 +1895,7 @@ export function MouseTab({
 									<option value="Ctrl+right">{m.triggers["Ctrl+right"]}</option>
 									<option value="Ctrl+x1">{m.triggers["Ctrl+x1"]}</option>
 									<option value="Ctrl+x2">{m.triggers["Ctrl+x2"]}</option>
-								</select>
+								</ZenithSelect>
 								<button
 									type="button"
 									className={`settings-btn ${recording ? "primary" : ""}`}
@@ -1974,7 +1977,7 @@ export function MouseTab({
 							label={m.spawnPosition}
 							desc={m.spawnPositionDesc}
 						>
-							<select
+							<ZenithSelect
 								className="settings-select"
 								value={mousePlacement}
 								onChange={(e) =>
@@ -1983,7 +1986,7 @@ export function MouseTab({
 							>
 								<option value="cursor">{m.underMousePointer}</option>
 								<option value="center">{m.centerOfScreen}</option>
-							</select>
+							</ZenithSelect>
 						</SettingRow>
 
 						<SettingRow
@@ -1991,7 +1994,7 @@ export function MouseTab({
 							label={m.targetDisplay}
 							desc={m.targetDisplayDesc}
 						>
-							<select
+							<ZenithSelect
 								className="settings-select"
 								value={mouseMonitor}
 								onChange={(e) =>
@@ -2000,7 +2003,7 @@ export function MouseTab({
 							>
 								<option value="cursor">{m.followMousePointer}</option>
 								<option value="primary">{m.primaryMonitorOnly}</option>
-							</select>
+							</ZenithSelect>
 						</SettingRow>
 
 						<SettingRow
@@ -2041,7 +2044,7 @@ export function MouseTab({
 									label={m.peekLayout}
 									desc={m.peekLayoutDesc}
 								>
-									<select
+									<ZenithSelect
 										className="settings-select"
 										value={mouseWorkspacePeekStyle}
 										onChange={(e) =>
@@ -2052,7 +2055,7 @@ export function MouseTab({
 									>
 										<option value="fan">{m.compactCard}</option>
 										<option value="ring">{m.expandedList}</option>
-									</select>
+									</ZenithSelect>
 								</SettingRow>
 								<SettingRow
 									icon={Sliders}
@@ -2084,7 +2087,7 @@ export function MouseTab({
 							desc={m.dwellLaunchDesc}
 							divider={mouseInstantActivate === "dwell"}
 						>
-							<select
+							<ZenithSelect
 								className="settings-select"
 								value={mouseInstantActivate}
 								onChange={(e) =>
@@ -2093,7 +2096,7 @@ export function MouseTab({
 							>
 								<option value="off">{m.dwellDisabled}</option>
 								<option value="dwell">{m.dwellEnabled}</option>
-							</select>
+							</ZenithSelect>
 						</SettingRow>
 
 						{mouseInstantActivate === "dwell" && (
@@ -2122,7 +2125,7 @@ export function MouseTab({
 									desc={m.settleSensitivityDesc}
 									divider={false}
 								>
-									<select
+									<ZenithSelect
 										className="settings-select"
 										value={mouseInstantSensitivity}
 										onChange={(e) =>
@@ -2134,7 +2137,7 @@ export function MouseTab({
 										<option value="low">{m.sensitivityLow}</option>
 										<option value="medium">{m.sensitivityMedium}</option>
 										<option value="high">{m.sensitivityHigh}</option>
-									</select>
+									</ZenithSelect>
 								</SettingRow>
 							</>
 						)}
@@ -2165,7 +2168,7 @@ export function MouseTab({
 									label={m.protectionScope}
 									desc={m.protectionScopeDesc}
 								>
-									<select
+									<ZenithSelect
 										className="settings-select"
 										value={mouseGameModeScope}
 										onChange={(e) =>
@@ -2174,7 +2177,7 @@ export function MouseTab({
 									>
 										<option value="all">{m.scopeAllFullscreen}</option>
 										<option value="list">{m.scopeBlockedList}</option>
-									</select>
+									</ZenithSelect>
 								</SettingRow>
 
 								{mouseGameModeScope === "list" && (
@@ -2264,7 +2267,7 @@ export function MouseTab({
 								label={m.wheelOpenVoice}
 								desc={m.wheelOpenVoiceDesc}
 							>
-								<select
+								<ZenithSelect
 									className="settings-select"
 									value={mouseOpenSound}
 									onChange={(e) => {
@@ -2279,7 +2282,7 @@ export function MouseTab({
 											{m.radialSounds[s.id as keyof typeof m.radialSounds] ?? s.name}
 										</option>
 									))}
-								</select>
+								</ZenithSelect>
 							</SettingRow>
 
 							<SettingRow
@@ -2287,7 +2290,7 @@ export function MouseTab({
 								label={m.sliceHoverVoice}
 								desc={m.sliceHoverVoiceDesc}
 							>
-								<select
+								<ZenithSelect
 									className="settings-select"
 									value={mouseHoverSound}
 									onChange={(e) => {
@@ -2302,7 +2305,7 @@ export function MouseTab({
 											{m.radialSounds[s.id as keyof typeof m.radialSounds] ?? s.name}
 										</option>
 									))}
-								</select>
+								</ZenithSelect>
 							</SettingRow>
 
 							<div style={{ padding: "12px 14px" }}>

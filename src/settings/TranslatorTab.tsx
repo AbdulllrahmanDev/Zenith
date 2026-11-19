@@ -12,6 +12,7 @@ import {
 	Type
 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
+import { ZenithSelect } from "../components/ZenithSelect";
 import { ZenithAiIcon } from "../icons/ZenithAiIcon";
 import { HotkeyRecorder } from "./HotkeyRecorder";
 import { useI18n } from "../i18n";
@@ -120,7 +121,7 @@ export function TranslatorTab(props: TranslatorTabProps) {
 			<div className="setting-group-label">{tr.modesGroup}</div>
 			<div className="setting-group">
 				<SettingRow icon={Languages} label={tr.targetLanguage} desc={tr.targetLanguageDesc}>
-					<select
+					<ZenithSelect
 						className="settings-select"
 						value={props.translatorTargetLanguage}
 						onChange={(e) => props.handleTranslatorTargetLanguageChange(e.target.value)}
@@ -130,7 +131,7 @@ export function TranslatorTab(props: TranslatorTabProps) {
 								{tr.targetLanguages[langKey]}
 							</option>
 						))}
-					</select>
+					</ZenithSelect>
 				</SettingRow>
 
 				<SettingRow icon={Sliders} label={tr.outputMode} desc={tr.outputModeDesc}>

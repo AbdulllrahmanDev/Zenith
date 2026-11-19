@@ -318,7 +318,7 @@ pub fn sync_hotkeys_from_settings(app: &AppHandle) {
 fn handle_hotkey(app: &AppHandle, id: i32) {
     let cfg = TranslatorConfig::from_app(app);
     if id == HK_TOGGLE_PANEL {
-        crate::commands::open_settings_window(app.clone());
+        crate::commands::toggle_settings_window(app.clone());
         return;
     }
     if !cfg.enabled {
