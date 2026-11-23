@@ -82,7 +82,7 @@ tauri-plugin-autostart = "2.5.1"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-updater = "2"
 wmi = "0.14"
-tokio = { version = "1", features = ["time", "sync"] }
+tokio = { version = "1", features = ["time", "sync", "process", "io-util"] }
 webview2-com = "0.38"
 image = "0.25"
 # Reads the thumbnail or text inside Office files for shelf previews.
@@ -92,4 +92,5 @@ tauri-plugin-dialog = "2"
 rustfft = "6"
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "stream"] }
 futures-util = "0.3"
+sha2 = "0.10"
 

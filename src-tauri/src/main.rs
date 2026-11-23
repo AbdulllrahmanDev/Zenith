@@ -4,6 +4,7 @@ mod ai_chat;
 mod battery;
 mod bluetooth;
 mod commands;
+mod converter;
 mod diagnostics;
 mod dock_extras;
 mod services;
@@ -278,7 +279,9 @@ fn main() {
             ai_chat_prepare_attachments,
             ai_chat_send_message,
             ai_chat_cancel,
-            ai_chat_open_settings
+            ai_chat_open_settings,
+            converter::converter_convert,
+            converter::converter_cancel
         ])
         .setup(|app| {
             init_taskbar_marker(app.handle());
