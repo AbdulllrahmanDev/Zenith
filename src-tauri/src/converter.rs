@@ -1969,11 +1969,28 @@ pub async fn converter_remove_engine(
 
 // ─── Drag Trigger Config, Arbitration & Overlay IDropTarget Bridge ───────────
 
+const REJECTED_SHELL_CLASSES: &[&str] = &[
+    "Shell_TrayWnd",
+    "Shell_SecondaryTrayWnd",
+    "NotifyIconOverflowWindow",
+    "MSTaskSwWClass",
+    "TaskListThumbnailWnd",
+    "TrayNotifyWnd",
+    "TopLevelWindowForOverflowXamlIsland",
+    "Windows.UI.Core.CoreWindow",
+];
+
 const EXPLORER_AND_DESKTOP_CLASSES: &[&str] = &[
     "CabinetWClass",
     "ExploreWClass",
     "Progman",
     "WorkerW",
+];
+
+const DESKTOP_OWNED_LAYER_CLASSES: &[&str] = &[
+    "SHELLDLL_DefView",
+    "SysListView32",
+    "DirectUIHWND",
 ];
 
 const FILE_MANAGER_PROCESSES: &[&str] = &[
@@ -2222,17 +2239,49 @@ pub fn is_converter_explorer_or_desktop_class(window_class: Option<&str>) -> boo
         .any(|known| known.eq_ignore_ascii_case(cls))
 }
 
+fn is_rejected_shell_class(window_class: Option<&str>) -> bool {
+    let Some(cls) = window_class.map(str::trim).filter(|s| !s.is_empty()) else {
+        return false;
+    };
+    REJECTED_SHELL_CLASSES
+        .iter()
+        .any(|rejected| rejected.eq_ignore_ascii_case(cls))
+}
+
+fn is_desktop_owned_layer_class(window_class: Option<&str>) -> bool {
+    let Some(cls) = window_class.map(str::trim).filter(|s| !s.is_empty()) else {
+        return false;
+    };
+    DESKTOP_OWNED_LAYER_CLASSES
+        .iter()
+        .any(|known| known.eq_ignore_ascii_case(cls))
+}
+
 /// Returns true if the drag originated from Explorer, Desktop, a supported file manager,
 /// or a supported browser (only when `browser_drag_enabled` is true).
+/// Rejects taskbar/shell chrome classes and restricts `explorer.exe` to Explorer/Desktop classes.
 pub fn is_converter_drag_source(
     window_class: Option<&str>,
     process_name: Option<&str>,
     browser_drag_enabled: bool,
 ) -> bool {
-    if is_converter_explorer_or_desktop_class(window_class) {
+    if is_rejected_shell_class(window_class) {
+        return false;
+    }
+
+    let proc_stem = normalize_process_stem(process_name);
+    let is_explorer_proc = proc_stem.as_deref() == Some("explorer");
+
+    if is_converter_explorer_or_desktop_class(window_class)
+        && (proc_stem.is_none() || is_explorer_proc)
+    {
         return true;
     }
-    if let Some(stem) = normalize_process_stem(process_name) {
+    if is_explorer_proc && is_desktop_owned_layer_class(window_class) {
+        return true;
+    }
+
+    if let Some(stem) = proc_stem {
         if FILE_MANAGER_PROCESSES.contains(&stem.as_str()) {
             return true;
         }
@@ -2461,7 +2510,22 @@ impl windows::Win32::System::Ole::IDropTarget_Impl for ConverterDropTarget_Impl 
         pt: &windows::Win32::Foundation::POINTL,
         effect: *mut windows::Win32::System::Ole::DROPEFFECT,
     ) -> windows::core::Result<()> {
+        use windows::Win32::Foundation::POINT;
         use windows::Win32::System::Ole::{DROPEFFECT_COPY, DROPEFFECT_NONE};
+
+        if crate::services::is_point_over_notch_window(POINT { x: pt.x, y: pt.y }) {
+            unsafe {
+                *self.enter_valid.get() = false;
+                *self.cursor_effect.get() = DROPEFFECT_NONE;
+                *self.last_css_pos.get() = None;
+                *self.cached_payload.get() = None;
+                if !effect.is_null() {
+                    *effect = DROPEFFECT_NONE;
+                }
+            }
+            close_converter_overlay(&self.app);
+            return Ok(());
+        }
 
         let (paths, urls) = pdata
             .as_ref()
@@ -2521,7 +2585,23 @@ impl windows::Win32::System::Ole::IDropTarget_Impl for ConverterDropTarget_Impl 
         pt: &windows::Win32::Foundation::POINTL,
         effect: *mut windows::Win32::System::Ole::DROPEFFECT,
     ) -> windows::core::Result<()> {
+        use windows::Win32::Foundation::POINT;
+        use windows::Win32::System::Ole::DROPEFFECT_NONE;
+
         unsafe {
+            if crate::services::is_point_over_notch_window(POINT { x: pt.x, y: pt.y }) {
+                *self.enter_valid.get() = false;
+                *self.cursor_effect.get() = DROPEFFECT_NONE;
+                *self.last_css_pos.get() = None;
+                *self.cached_payload.get() = None;
+                if !effect.is_null() {
+                    *effect = DROPEFFECT_NONE;
+                }
+                CONVERTER_OLE_DRAG_ENTERED.store(false, Ordering::SeqCst);
+                close_converter_overlay(&self.app);
+                return Ok(());
+            }
+
             if !effect.is_null() {
                 *effect = *self.cursor_effect.get();
             }
@@ -3349,11 +3429,25 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  Filee-2.5.0-wi
     fn is_converter_drag_source_matches_file_managers_and_optional_browsers() {
         for class in ["CabinetWClass", "ExploreWClass", "Progman", "WorkerW"] {
             assert!(
+                is_converter_drag_source(Some(class), Some("explorer"), false),
+                "expected class {class} with explorer to match"
+            );
+            assert!(
                 is_converter_drag_source(Some(class), Some("explorer.exe"), false),
-                "expected class {class} to match"
+                "expected class {class} with explorer.exe to match"
             );
             assert!(is_converter_drag_source(Some(class), None, false));
         }
+        assert!(is_converter_drag_source(
+            Some("SHELLDLL_DefView"),
+            Some("explorer"),
+            false
+        ));
+        assert!(is_converter_drag_source(
+            Some("QWidget"),
+            Some("dopus"),
+            false
+        ));
 
         for proc_name in [
             "Files",
@@ -3401,6 +3495,17 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  Filee-2.5.0-wi
         }
 
         assert!(!is_converter_drag_source(None, None, true));
+        assert!(!is_converter_drag_source(None, Some("explorer"), true));
+        assert!(!is_converter_drag_source(
+            None,
+            Some("explorer.exe"),
+            true
+        ));
+        assert!(!is_converter_drag_source(
+            Some("#32770"),
+            Some("explorer.exe"),
+            true
+        ));
         assert!(!is_converter_drag_source(
             Some("Notepad"),
             Some("notepad.exe"),
@@ -3413,7 +3518,22 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  Filee-2.5.0-wi
         ));
         assert!(!is_converter_drag_source(
             Some("Shell_TrayWnd"),
+            Some("explorer"),
+            true
+        ));
+        assert!(!is_converter_drag_source(
+            Some("Shell_TrayWnd"),
             Some("explorer.exe"),
+            true
+        ));
+        assert!(!is_converter_drag_source(
+            Some("Shell_SecondaryTrayWnd"),
+            Some("explorer"),
+            true
+        ));
+        assert!(!is_converter_drag_source(
+            Some("NotifyIconOverflowWindow"),
+            Some("explorer"),
             true
         ));
     }

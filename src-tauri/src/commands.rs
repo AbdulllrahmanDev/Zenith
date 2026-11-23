@@ -2802,7 +2802,28 @@ pub fn position_and_activate_overlay(
     })
 }
 
+/// Keeps every visible Notch window above the fullscreen overlay in TOPMOST Z-order
+/// so Notch Shelf drops are never intercepted by `"overlay"`.
+pub fn keep_notch_above_overlay() {
+    let Ok(notch_hwnds) = crate::state::NOTCH_HWNDS.lock().map(|g| g.clone()) else {
+        return;
+    };
+    for (_label, hwnd_val) in notch_hwnds {
+        let hwnd = HWND(hwnd_val as *mut _);
+        let visible = unsafe {
+            windows::Win32::UI::WindowsAndMessaging::IsWindowVisible(hwnd).as_bool()
+        };
+        if visible {
+            crate::utils::re_assert_topmost(hwnd);
+        }
+    }
+}
+
 pub fn show_overlay_for_radial(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
+    crate::converter::set_converter_overlay_open(false);
+    crate::converter::CONVERTER_OLE_DRAG_ENTERED.store(false, Ordering::SeqCst);
+    crate::converter::CONVERTER_OLE_DROP_DONE.store(false, Ordering::SeqCst);
+    let _ = app.emit_to("overlay", "converter-donut-close", serde_json::json!({}));
     crate::services::set_radial_menu_open(true);
     let monitor_choice =
         crate::utils::get_setting_str(app, "zenith-mouse-monitor").unwrap_or_else(|| "cursor".into());
@@ -2841,7 +2862,9 @@ pub fn show_overlay_for_converter(app: &AppHandle, cursor_x: i32, cursor_y: i32)
     }
     if position_and_activate_overlay(app, cursor_x, cursor_y, "cursor").is_none() {
         crate::converter::close_converter_overlay_for_session(app, session_id);
+        return;
     }
+    keep_notch_above_overlay();
 }
 
 #[tauri::command]
