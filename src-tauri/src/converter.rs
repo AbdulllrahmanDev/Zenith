@@ -1016,6 +1016,9 @@ pub fn parse_engine_progress_line(line: &str) -> Option<EngineInstallProgressEve
 pub fn validate_engine_id(id: &str) -> Result<&str, String> {
     if id.is_empty()
         || id.len() > 64
+        || id.starts_with('-')
+        || id.ends_with('-')
+        || id.contains("--")
         || !id
             .bytes()
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
@@ -1363,10 +1366,17 @@ fn extract_portable_zip_verified_with_hook<F: FnOnce()>(
     zip_path: &Path,
     staging_dir: &Path,
     bin_dir: &Path,
-    expected_sha256: Option<&str>,
+    expected_sha256: &str,
     expected_size: u64,
     on_verified: F,
 ) -> Result<(), String> {
+    if !is_valid_sha256_hex(expected_sha256) {
+        return Err(
+            "INTEGRITY_ERROR: Missing or malformed expected SHA-256 checksum for converter runtime archive."
+                .to_string(),
+        );
+    }
+
     let zip_bytes = std::fs::read(zip_path)
         .map_err(|e| format!("Failed to read downloaded runtime archive: {e}"))?;
     if expected_size > 0 && zip_bytes.len() as u64 != expected_size {
@@ -1376,13 +1386,11 @@ fn extract_portable_zip_verified_with_hook<F: FnOnce()>(
         ));
     }
 
-    if let Some(expected_hex) = expected_sha256 {
-        let actual_hex = compute_sha256_hex(&zip_bytes);
-        if !actual_hex.eq_ignore_ascii_case(expected_hex) {
-            return Err(format!(
-                "INTEGRITY_ERROR: Converter runtime archive SHA-256 mismatch (expected {expected_hex}, got {actual_hex})"
-            ));
-        }
+    let actual_hex = compute_sha256_hex(&zip_bytes);
+    if !actual_hex.eq_ignore_ascii_case(expected_sha256) {
+        return Err(format!(
+            "INTEGRITY_ERROR: Converter runtime archive SHA-256 mismatch (expected {expected_sha256}, got {actual_hex})"
+        ));
     }
 
     on_verified();
@@ -1443,7 +1451,7 @@ fn extract_portable_zip_verified(
     zip_path: &Path,
     staging_dir: &Path,
     bin_dir: &Path,
-    expected_sha256: Option<&str>,
+    expected_sha256: &str,
     expected_size: u64,
 ) -> Result<(), String> {
     extract_portable_zip_verified_with_hook(
@@ -1454,6 +1462,23 @@ fn extract_portable_zip_verified(
         expected_size,
         || {},
     )
+}
+
+fn resolve_expected_sha256(
+    sums_sha: Option<String>,
+    digest_sha: Option<String>,
+    asset_name: &str,
+) -> Result<String, String> {
+    match (sums_sha, digest_sha) {
+        (Some(s), Some(d)) if !s.eq_ignore_ascii_case(&d) => Err(
+            "INTEGRITY_ERROR: Release SHA256SUMS and GitHub asset digest disagree.".to_string(),
+        ),
+        (Some(s), _) => Ok(s.to_ascii_lowercase()),
+        (None, Some(d)) => Ok(d.to_ascii_lowercase()),
+        (None, None) => Err(format!(
+            "INTEGRITY_ERROR: No SHA-256 checksum published for {asset_name}. Refusing unverified download."
+        )),
+    }
 }
 
 fn map_github_reqwest_error(context: &str, err: reqwest::Error) -> String {
@@ -1584,16 +1609,7 @@ async fn ensure_core_inner(
         None
     };
 
-    let expected_sha256 = match (sums_sha, digest_sha) {
-        (Some(s), Some(d)) if s != d => {
-            return Err(
-                "INTEGRITY_ERROR: Release SHA256SUMS and GitHub asset digest disagree.".to_string(),
-            );
-        }
-        (Some(s), _) => Some(s),
-        (None, Some(d)) => Some(d),
-        (None, None) => None,
-    };
+    let expected_sha256 = resolve_expected_sha256(sums_sha, digest_sha, &portable_asset.name)?;
 
     let zip_part = paths.downloads_dir.join("filee-portable.zip.part");
     if zip_part.exists() {
@@ -1674,7 +1690,7 @@ async fn ensure_core_inner(
             &zip_part_clone,
             &staging_clone,
             &bin_dir_clone,
-            expected_sha256.as_deref(),
+            &expected_sha256,
             expected_size,
             || {
                 emit_core_progress(&app_clone, "extracting", 0.88, "Extracting converter runtime...");
@@ -2359,6 +2375,11 @@ mod tests {
         assert_eq!(validate_engine_id("7zip"), Ok("7zip"));
 
         assert!(validate_engine_id("").is_err());
+        assert!(validate_engine_id("-").is_err());
+        assert!(validate_engine_id("-o").is_err());
+        assert!(validate_engine_id("--help").is_err());
+        assert!(validate_engine_id("ffmpeg-").is_err());
+        assert!(validate_engine_id("foo--bar").is_err());
         assert!(validate_engine_id("FFmpeg").is_err());
         assert!(validate_engine_id("ffmpeg --help").is_err());
         assert!(validate_engine_id("../evil").is_err());
@@ -2477,17 +2498,30 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  Filee-2.5.0-wi
             &zip_path,
             &staging_dir,
             &bin_dir,
-            Some(&wrong_sha),
+            &wrong_sha,
             zip_bytes.len() as u64,
         )
         .unwrap_err();
         assert!(err.starts_with("INTEGRITY_ERROR:"), "got: {err}");
 
+        let missing_sha_err = extract_portable_zip_verified(
+            &zip_path,
+            &staging_dir,
+            &bin_dir,
+            "",
+            zip_bytes.len() as u64,
+        )
+        .unwrap_err();
+        assert!(
+            missing_sha_err.starts_with("INTEGRITY_ERROR:"),
+            "got: {missing_sha_err}"
+        );
+
         extract_portable_zip_verified(
             &zip_path,
             &staging_dir,
             &bin_dir,
-            Some(&actual_sha),
+            &actual_sha,
             zip_bytes.len() as u64,
         )
         .expect("verified extraction should succeed");
@@ -2497,5 +2531,36 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  Filee-2.5.0-wi
         assert!(!bin_dir.join("filee.portable").exists());
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn resolve_expected_sha256_requires_verified_hash_and_detects_mismatch() {
+        let sha_a = "a".repeat(64);
+        let sha_b = "b".repeat(64);
+
+        let missing = resolve_expected_sha256(None, None, "Filee-2.5.0-win-Portable.zip")
+            .unwrap_err();
+        assert!(missing.starts_with("INTEGRITY_ERROR:"), "got: {missing}");
+
+        let disagree = resolve_expected_sha256(
+            Some(sha_a.clone()),
+            Some(sha_b),
+            "Filee-2.5.0-win-Portable.zip",
+        )
+        .unwrap_err();
+        assert!(disagree.starts_with("INTEGRITY_ERROR:"), "got: {disagree}");
+
+        assert_eq!(
+            resolve_expected_sha256(
+                Some(sha_a.to_ascii_uppercase()),
+                Some(sha_a.clone()),
+                "Filee-2.5.0-win-Portable.zip",
+            ),
+            Ok(sha_a.clone())
+        );
+        assert_eq!(
+            resolve_expected_sha256(None, Some(sha_a.clone()), "Filee-2.5.0-win-Portable.zip"),
+            Ok(sha_a)
+        );
     }
 }

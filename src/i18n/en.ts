@@ -1307,7 +1307,9 @@ export const en = {
 			installingTitle: "Setting Up Core Runtime...",
 			setupButton: "Set Up Core Runtime",
 			retryButton: "Retry Setup",
+			retryCheckButton: "Retry",
 			checking: "Checking...",
+			statusCheckFailedTitle: "Could Not Check Core Runtime",
 			stages: {
 				checking: "Checking latest release...",
 				copying: "Installing bundled runtime...",

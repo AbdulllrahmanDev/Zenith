@@ -99,6 +99,8 @@ export function ConverterTab({
 	const [subTab, setSubTab] = useState<ConverterSubTab>("general");
 
 	const [runtimeStatus, setRuntimeStatus] = useState<ConverterRuntimeStatus | null>(null);
+	const [statusChecking, setStatusChecking] = useState(true);
+	const [statusError, setStatusError] = useState<string | null>(null);
 	const [coreProgress, setCoreProgress] = useState<CoreInstallProgressEvent | null>(null);
 	const [coreActionRunning, setCoreActionRunning] = useState(false);
 	const [coreError, setCoreError] = useState<string | null>(null);
@@ -111,6 +113,8 @@ export function ConverterTab({
 	const [packErrors, setPackErrors] = useState<Record<string, string>>({});
 
 	const refreshStatusAndPacks = useCallback(async () => {
+		setStatusChecking(true);
+		setStatusError(null);
 		setEnginesLoading(true);
 		setEnginesError(null);
 		const [statusRes, enginesRes] = await Promise.allSettled([
@@ -120,12 +124,15 @@ export function ConverterTab({
 
 		if (statusRes.status === "fulfilled") {
 			setRuntimeStatus(statusRes.value);
+		} else {
+			setStatusError(cleanErrorMessage(statusRes.reason));
 		}
 		if (enginesRes.status === "fulfilled") {
 			setEngines(enginesRes.value);
 		} else {
 			setEnginesError(cleanErrorMessage(enginesRes.reason));
 		}
+		setStatusChecking(false);
 		setEnginesLoading(false);
 	}, []);
 
@@ -200,19 +207,25 @@ export function ConverterTab({
 		}
 	};
 
-	const handleEnsureCore = async (): Promise<boolean> => {
-		if (coreActionRunning || runtimeStatus?.installing) return false;
+	const handleEnsureCore = async (): Promise<{ ok: boolean; error?: string }> => {
+		if (coreActionRunning || runtimeStatus?.installing) {
+			return { ok: false, error: c.runtime.installingTitle };
+		}
 		setCoreActionRunning(true);
 		setCoreError(null);
+		setStatusError(null);
 		setCoreProgress(null);
 		try {
 			const status = await invoke<ConverterRuntimeStatus>("converter_ensure_core");
 			setRuntimeStatus(status);
 			await refreshStatusAndPacks();
-			return status.core_installed;
+			return status.core_installed
+				? { ok: true }
+				: { ok: false, error: c.runtime.missingTitle };
 		} catch (e) {
-			setCoreError(cleanErrorMessage(e));
-			return false;
+			const msg = cleanErrorMessage(e);
+			setCoreError(msg);
+			return { ok: false, error: msg };
 		} finally {
 			setCoreActionRunning(false);
 		}
@@ -229,8 +242,11 @@ export function ConverterTab({
 
 		try {
 			if (!runtimeStatus?.core_installed) {
-				const ok = await handleEnsureCore();
-				if (!ok) {
+				const coreResult = await handleEnsureCore();
+				if (!coreResult.ok) {
+					if (coreResult.error) {
+						setPackErrors((prev) => ({ ...prev, [id]: coreResult.error! }));
+					}
 					return;
 				}
 			}
@@ -331,7 +347,7 @@ export function ConverterTab({
 			);
 		}
 
-		if (runtimeStatus === null) {
+		if (statusChecking && runtimeStatus === null) {
 			return (
 				<div className="zn-core-banner">
 					<div className="zn-core-banner-top">
@@ -343,6 +359,35 @@ export function ConverterTab({
 								<div className="zn-core-title">{c.runtime.checking}</div>
 							</div>
 						</div>
+					</div>
+				</div>
+			);
+		}
+
+		if (statusError && runtimeStatus === null) {
+			return (
+				<div className="zn-core-banner missing">
+					<div className="zn-core-banner-top">
+						<div className="zn-core-banner-info">
+							<div className="zn-core-status-icon missing">
+								<AlertCircle size={15} />
+							</div>
+							<div className="zn-core-text">
+								<div className="zn-core-title">{c.runtime.statusCheckFailedTitle}</div>
+							</div>
+						</div>
+						<button
+							type="button"
+							className="settings-btn zn-converter-primary-btn"
+							onClick={refreshStatusAndPacks}
+						>
+							<RefreshCw size={13} />
+							<span>{c.runtime.retryCheckButton}</span>
+						</button>
+					</div>
+					<div className="zn-converter-error-banner" role="alert">
+						<AlertCircle size={13} />
+						<span>{statusError}</span>
 					</div>
 				</div>
 			);

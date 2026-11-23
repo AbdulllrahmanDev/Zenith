@@ -1307,7 +1307,9 @@ export const ar: TranslationDict = {
 			installingTitle: "جارٍ إعداد نواة المحوّل...",
 			setupButton: "إعداد النواة الآن",
 			retryButton: "إعادة المحاولة",
+			retryCheckButton: "إعادة المحاولة",
 			checking: "جارٍ التحقق...",
+			statusCheckFailedTitle: "تعذّر التحقق من حالة النواة",
 			stages: {
 				checking: "جارٍ التحقق من أحدث إصدار...",
 				copying: "جارٍ نسخ النواة المضمّنة...",
