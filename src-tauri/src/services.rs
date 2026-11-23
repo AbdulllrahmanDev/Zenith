@@ -2475,7 +2475,6 @@ static LAST_RADIAL_EMIT_CURSOR: AtomicI64 = AtomicI64::new(-1);
 
 static CONVERTER_DRAG_ARMED: AtomicBool = AtomicBool::new(false);
 static CONVERTER_DRAG_TRIGGERED: AtomicBool = AtomicBool::new(false);
-static CONVERTER_DRAG_TRIGGER_AT_DOWN: AtomicBool = AtomicBool::new(false);
 static CONVERTER_DRAG_BUTTON: AtomicU32 = AtomicU32::new(0);
 static CONVERTER_DRAG_DOWN_POINT: AtomicI64 = AtomicI64::new(0);
 static CONVERTER_DRAG_DOWN_TIME: AtomicI64 = AtomicI64::new(0);
@@ -2510,9 +2509,10 @@ pub(crate) fn is_point_over_notch_window(pt: windows::Win32::Foundation::POINT) 
         GetAncestor, GetWindowRect, IsWindowVisible, WindowFromPoint, GA_ROOT,
     };
 
-    let Ok(notch_hwnds) = crate::state::NOTCH_HWNDS.lock().map(|g| g.clone()) else {
-        return false;
-    };
+    let notch_hwnds = crate::state::NOTCH_HWNDS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
 
     unsafe {
         let pt_hwnd = WindowFromPoint(pt);
@@ -2525,8 +2525,13 @@ pub(crate) fn is_point_over_notch_window(pt: windows::Win32::Foundation::POINT) 
         }
     }
 
-    let notch_rects = crate::state::NOTCH_RECTS.lock().ok().map(|g| g.clone());
-    let fallback_rect = crate::state::NOTCH_RECT.lock().ok().and_then(|g| *g);
+    let notch_rects = crate::state::NOTCH_RECTS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    let fallback_rect = *crate::state::NOTCH_RECT
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
 
     for (label, hwnd_val) in notch_hwnds {
         let hwnd = HWND(hwnd_val as *mut _);
@@ -2539,10 +2544,7 @@ pub(crate) fn is_point_over_notch_window(pt: windows::Win32::Foundation::POINT) 
         }
         let dpi = unsafe { GetDpiForWindow(hwnd) };
         let scale = if dpi == 0 { 1.0 } else { dpi as f64 / 96.0 };
-        let nr_opt = notch_rects
-            .as_ref()
-            .and_then(|m| m.get(&label).copied())
-            .or(fallback_rect);
+        let nr_opt = notch_rects.get(&label).copied().or(fallback_rect);
 
         if let Some(r) = nr_opt {
             if r.width <= 0 || r.height <= 0 {
@@ -2682,11 +2684,9 @@ fn arm_converter_drag_if_eligible(message: u32, pt: windows::Win32::Foundation::
         return;
     }
 
-    let trigger_at_down = is_converter_trigger_held(cfg.trigger_key, btn_num);
     CONVERTER_DRAG_DOWN_POINT.store(pack_cursor(pt), Ordering::Relaxed);
     CONVERTER_DRAG_DOWN_TIME.store(hook_tick_ms(), Ordering::Relaxed);
     CONVERTER_DRAG_BUTTON.store(btn_num, Ordering::Relaxed);
-    CONVERTER_DRAG_TRIGGER_AT_DOWN.store(trigger_at_down, Ordering::Relaxed);
     CONVERTER_DRAG_TRIGGERED.store(false, Ordering::Relaxed);
     CONVERTER_DRAG_ARMED.store(true, Ordering::Release);
 }
@@ -2711,14 +2711,6 @@ fn maybe_trigger_converter_drag(cursor: windows::Win32::Foundation::POINT) {
     if !cfg.enabled {
         return;
     }
-    let drag_btn = CONVERTER_DRAG_BUTTON.load(Ordering::Relaxed);
-    let trigger_held = is_converter_trigger_held(cfg.trigger_key, drag_btn);
-    if !trigger_held && !CONVERTER_DRAG_TRIGGER_AT_DOWN.load(Ordering::Relaxed) {
-        return;
-    }
-    if !trigger_held {
-        return;
-    }
 
     let down_pt = unpack_cursor(CONVERTER_DRAG_DOWN_POINT.load(Ordering::Relaxed));
     let dx = cursor.x - down_pt.x;
@@ -2732,6 +2724,21 @@ fn maybe_trigger_converter_drag(cursor: windows::Win32::Foundation::POINT) {
     .max(4);
     let min_dist = threshold_px as i64;
     if (drag_distance_sq as i64) < min_dist * min_dist {
+        return;
+    }
+
+    let drag_btn = CONVERTER_DRAG_BUTTON.load(Ordering::Relaxed);
+    let trigger_held = is_converter_trigger_held(cfg.trigger_key, drag_btn);
+    if crate::converter::should_disarm_normal_drag(
+        cfg.trigger_key,
+        trigger_held,
+        drag_distance_sq,
+        threshold_px,
+    ) {
+        CONVERTER_DRAG_ARMED.store(false, Ordering::Release);
+        return;
+    }
+    if !trigger_held {
         return;
     }
 
@@ -2790,13 +2797,12 @@ fn maybe_trigger_converter_drag(cursor: windows::Win32::Foundation::POINT) {
             crate::converter::close_converter_overlay_for_session(&app_clone, session_id);
             return;
         }
-        crate::commands::show_overlay_for_converter(&app_clone, cursor.x, cursor.y);
+        crate::commands::show_overlay_for_converter(&app_clone, cursor.x, cursor.y, session_id);
     });
 }
 
 fn handle_converter_drag_release(app: &AppHandle) {
     CONVERTER_DRAG_ARMED.store(false, Ordering::Release);
-    CONVERTER_DRAG_TRIGGER_AT_DOWN.store(false, Ordering::Relaxed);
     CONVERTER_DRAG_ATTEMPT_ID.fetch_add(1, Ordering::AcqRel);
     let was_triggered = CONVERTER_DRAG_TRIGGERED.swap(false, Ordering::AcqRel);
     if !was_triggered || !crate::converter::CONVERTER_OVERLAY_OPEN.load(Ordering::Acquire) {
@@ -2834,7 +2840,6 @@ fn release_converter_drag_if_armed(message: u32) {
     } else {
         CONVERTER_DRAG_ARMED.store(false, Ordering::Release);
         CONVERTER_DRAG_TRIGGERED.store(false, Ordering::Release);
-        CONVERTER_DRAG_TRIGGER_AT_DOWN.store(false, Ordering::Relaxed);
         CONVERTER_DRAG_ATTEMPT_ID.fetch_add(1, Ordering::AcqRel);
     }
 }

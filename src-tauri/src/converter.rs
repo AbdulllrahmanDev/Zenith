@@ -2081,6 +2081,7 @@ pub static CONVERTER_OLE_DROP_DONE: AtomicBool = AtomicBool::new(false);
 pub static CONVERTER_DRAG_IS_BROWSER: AtomicBool = AtomicBool::new(false);
 pub static CONVERTER_DRAG_SESSION_ID: AtomicU64 = AtomicU64::new(0);
 static CONVERTER_CLOSE_DISPATCHED_SESSION: AtomicU64 = AtomicU64::new(0);
+static CONVERTER_SESSION_LOCK: Mutex<()> = Mutex::new(());
 static MAIN_THREAD_ID: OnceLock<ThreadId> = OnceLock::new();
 
 pub fn set_main_thread_id(id: ThreadId) {
@@ -2129,11 +2130,40 @@ pub fn converter_update_trigger_config(enabled: bool, trigger_key: String, brows
     });
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConverterShowAction {
+    Proceed,
+    BailAlreadyInactive,
+    CancelAndBail,
+}
+
+/// Pure session-guard decision for `show_overlay_for_converter`.
+/// Never resurrects a cancelled or superseded `expected_session_id`, and signals
+/// `CancelAndBail` when Compass or Splash owns the overlay.
+pub fn evaluate_converter_show_session(
+    expected_session_id: u64,
+    current_session_id: u64,
+    overlay_open: bool,
+    radial_open: bool,
+    in_splash: bool,
+) -> ConverterShowAction {
+    if expected_session_id == 0 || current_session_id != expected_session_id || !overlay_open {
+        return ConverterShowAction::BailAlreadyInactive;
+    }
+    if radial_open || in_splash {
+        return ConverterShowAction::CancelAndBail;
+    }
+    ConverterShowAction::Proceed
+}
+
+#[cfg(test)]
 pub fn set_converter_overlay_open(open: bool) {
+    let _guard = CONVERTER_SESSION_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     CONVERTER_OVERLAY_OPEN.store(open, Ordering::SeqCst);
 }
 
 pub fn prepare_converter_overlay_open() -> u64 {
+    let _guard = CONVERTER_SESSION_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let session_id = CONVERTER_DRAG_SESSION_ID.fetch_add(1, Ordering::SeqCst) + 1;
     CONVERTER_OLE_DRAG_ENTERED.store(false, Ordering::SeqCst);
     CONVERTER_OLE_DROP_DONE.store(false, Ordering::SeqCst);
@@ -2142,23 +2172,78 @@ pub fn prepare_converter_overlay_open() -> u64 {
     session_id
 }
 
+pub fn check_converter_show_session(
+    expected_session_id: u64,
+    radial_open: bool,
+    in_splash: bool,
+) -> ConverterShowAction {
+    let _guard = CONVERTER_SESSION_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let action = evaluate_converter_show_session(
+        expected_session_id,
+        CONVERTER_DRAG_SESSION_ID.load(Ordering::SeqCst),
+        CONVERTER_OVERLAY_OPEN.load(Ordering::SeqCst),
+        radial_open,
+        in_splash,
+    );
+    if action == ConverterShowAction::CancelAndBail {
+        CONVERTER_OVERLAY_OPEN.store(false, Ordering::SeqCst);
+        CONVERTER_OLE_DRAG_ENTERED.store(false, Ordering::SeqCst);
+    }
+    action
+}
+
+pub fn is_converter_session_current(expected_session_id: u64) -> bool {
+    expected_session_id != 0 && CONVERTER_DRAG_SESSION_ID.load(Ordering::Acquire) == expected_session_id
+}
+
+pub fn reset_converter_state_for_radial(app: &AppHandle) {
+    {
+        let _guard = CONVERTER_SESSION_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        CONVERTER_DRAG_SESSION_ID.fetch_add(1, Ordering::SeqCst);
+        CONVERTER_OVERLAY_OPEN.store(false, Ordering::SeqCst);
+        CONVERTER_OLE_DRAG_ENTERED.store(false, Ordering::SeqCst);
+        CONVERTER_OLE_DROP_DONE.store(false, Ordering::SeqCst);
+    }
+    let _ = app.emit_to("overlay", "converter-donut-close", serde_json::json!({}));
+}
+
 pub fn close_converter_overlay(app: &AppHandle) {
-    let was_open = CONVERTER_OVERLAY_OPEN.swap(false, Ordering::SeqCst);
-    CONVERTER_OLE_DRAG_ENTERED.store(false, Ordering::SeqCst);
+    let was_open = {
+        let _guard = CONVERTER_SESSION_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        CONVERTER_OLE_DRAG_ENTERED.store(false, Ordering::SeqCst);
+        CONVERTER_OVERLAY_OPEN.swap(false, Ordering::SeqCst)
+    };
     if was_open {
         let _ = app.emit_to("overlay", "converter-donut-close", serde_json::json!({}));
     }
-    if !crate::services::MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed) {
+    if !crate::services::MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed)
+        && !crate::state::OVERLAY_IN_SPLASH.load(Ordering::Relaxed)
+    {
         crate::commands::restore_overlay_click_through(app);
     }
 }
 
 pub fn close_converter_overlay_for_session(app: &AppHandle, session_id: u64) {
-    if CONVERTER_DRAG_SESSION_ID.load(Ordering::SeqCst) == session_id
-        && CONVERTER_OVERLAY_OPEN.load(Ordering::SeqCst)
-        && !CONVERTER_OLE_DROP_DONE.load(Ordering::SeqCst)
-    {
-        close_converter_overlay(app);
+    let should_close = {
+        let _guard = CONVERTER_SESSION_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        if CONVERTER_DRAG_SESSION_ID.load(Ordering::SeqCst) == session_id
+            && CONVERTER_OVERLAY_OPEN.load(Ordering::SeqCst)
+            && !CONVERTER_OLE_DROP_DONE.load(Ordering::SeqCst)
+        {
+            CONVERTER_OVERLAY_OPEN.store(false, Ordering::SeqCst);
+            CONVERTER_OLE_DRAG_ENTERED.store(false, Ordering::SeqCst);
+            true
+        } else {
+            false
+        }
+    };
+    if should_close {
+        let _ = app.emit_to("overlay", "converter-donut-close", serde_json::json!({}));
+        if !crate::services::MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed)
+            && !crate::state::OVERLAY_IN_SPLASH.load(Ordering::Relaxed)
+        {
+            crate::commands::restore_overlay_click_through(app);
+        }
     }
 }
 
@@ -2177,12 +2262,18 @@ pub fn request_close_converter_overlay_once(app: &AppHandle) {
 
 #[tauri::command]
 pub fn converter_set_overlay_open(app: AppHandle, open: bool) {
-    set_converter_overlay_open(open);
-    if !open {
-        CONVERTER_OLE_DRAG_ENTERED.store(false, Ordering::SeqCst);
-        if !crate::services::MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed) {
-            crate::commands::restore_overlay_click_through(&app);
+    {
+        let _guard = CONVERTER_SESSION_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        CONVERTER_OVERLAY_OPEN.store(open, Ordering::SeqCst);
+        if !open {
+            CONVERTER_OLE_DRAG_ENTERED.store(false, Ordering::SeqCst);
         }
+    }
+    if !open
+        && !crate::services::MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed)
+        && !crate::state::OVERLAY_IN_SPLASH.load(Ordering::Relaxed)
+    {
+        crate::commands::restore_overlay_click_through(&app);
     }
 }
 
@@ -2196,6 +2287,26 @@ pub fn should_open_converter_drag(
     threshold_px: i32,
 ) -> bool {
     if !converter_enabled || radial_open || over_notch_window || !trigger_held {
+        return false;
+    }
+    if drag_distance_sq < 0 {
+        return false;
+    }
+    let min_dist = threshold_px.max(0) as i64;
+    (drag_distance_sq as i64) >= min_dist * min_dist
+}
+
+/// Disarms an armed modifier-key drag once cursor travel reaches `threshold_px`
+/// without the modifier held, preventing mid-drag Ctrl/Alt/Shift presses in normal
+/// Explorer Move/Copy operations from activating Converter mid-flight.
+/// `RightDrag` uses the mouse button itself rather than a keyboard modifier.
+pub fn should_disarm_normal_drag(
+    trigger_key: ConverterTriggerKey,
+    trigger_held: bool,
+    drag_distance_sq: i32,
+    threshold_px: i32,
+) -> bool {
+    if matches!(trigger_key, ConverterTriggerKey::RightDrag) || trigger_held {
         return false;
     }
     if drag_distance_sq < 0 {
@@ -2273,7 +2384,7 @@ pub fn is_converter_drag_source(
     let is_explorer_proc = proc_stem.as_deref() == Some("explorer");
 
     if is_converter_explorer_or_desktop_class(window_class)
-        && (proc_stem.is_none() || is_explorer_proc)
+        && (process_name.is_none() || is_explorer_proc)
     {
         return true;
     }
@@ -2374,15 +2485,34 @@ impl ConverterDropTarget {
         let Ok(mut medium) = data.GetData(&format) else {
             return Vec::new();
         };
+        if medium.tymed != TYMED_HGLOBAL.0 as u32 {
+            ReleaseStgMedium(&mut medium);
+            return Vec::new();
+        }
         let hdrop = HDROP(medium.u.hGlobal.0 as _);
+        if hdrop.0.is_null() {
+            ReleaseStgMedium(&mut medium);
+            return Vec::new();
+        }
         let count = DragQueryFileW(hdrop, 0xFFFFFFFF, None);
-        let mut paths = Vec::with_capacity(count as usize);
-        for i in 0..count {
-            let len = DragQueryFileW(hdrop, i, None) as usize;
-            if len > 0 {
-                let mut buf = vec![0u16; len + 1];
-                DragQueryFileW(hdrop, i, Some(&mut buf));
-                let path = String::from_utf16_lossy(&buf[..len]);
+        if count == 0 || count == u32::MAX {
+            ReleaseStgMedium(&mut medium);
+            return Vec::new();
+        }
+        const MAX_DROP_FILES: usize = 4096;
+        const MAX_PATH_UNITS: usize = 32768;
+        let capped_count = (count as usize).min(MAX_DROP_FILES);
+        let mut paths = Vec::with_capacity(capped_count);
+        for i in 0..capped_count as u32 {
+            let expected = DragQueryFileW(hdrop, i, None);
+            if expected == 0 || expected == u32::MAX {
+                continue;
+            }
+            let buf_chars = (expected as usize).min(MAX_PATH_UNITS);
+            let mut buf = vec![0u16; buf_chars + 1];
+            let copied = (DragQueryFileW(hdrop, i, Some(&mut buf)) as usize).min(buf.len());
+            if copied > 0 {
+                let path = String::from_utf16_lossy(&buf[..copied]);
                 if !path.trim().is_empty() {
                     paths.push(path);
                 }
@@ -2409,6 +2539,10 @@ impl ConverterDropTarget {
             tymed: TYMED_HGLOBAL.0 as u32,
         };
         let mut medium = data.GetData(&format).ok()?;
+        if medium.tymed != TYMED_HGLOBAL.0 as u32 || medium.u.hGlobal.0.is_null() {
+            ReleaseStgMedium(&mut medium);
+            return None;
+        }
         let ptr = GlobalLock(medium.u.hGlobal) as *const u8;
         if ptr.is_null() {
             ReleaseStgMedium(&mut medium);
@@ -2641,49 +2775,84 @@ impl windows::Win32::System::Ole::IDropTarget_Impl for ConverterDropTarget_Impl 
         pt: &windows::Win32::Foundation::POINTL,
         effect: *mut windows::Win32::System::Ole::DROPEFFECT,
     ) -> windows::core::Result<()> {
-        if unsafe { *self.enter_valid.get() } {
+        use windows::Win32::Foundation::POINT;
+        use windows::Win32::System::Ole::DROPEFFECT_NONE;
+
+        let over_notch = crate::services::is_point_over_notch_window(POINT { x: pt.x, y: pt.y });
+        let enter_valid = unsafe { *self.enter_valid.get() };
+        if over_notch || !enter_valid {
             unsafe {
                 *self.enter_valid.get() = false;
+                *self.cursor_effect.get() = DROPEFFECT_NONE;
                 *self.last_css_pos.get() = None;
+                *self.cached_payload.get() = None;
                 if !effect.is_null() {
-                    *effect = *self.cursor_effect.get();
+                    *effect = DROPEFFECT_NONE;
                 }
             }
-            let cached = unsafe { (*self.cached_payload.get()).take() };
-            let (mut paths, mut urls) = pdata
-                .as_ref()
-                .map(|data| unsafe { ConverterDropTarget::extract_payload(data) })
-                .unwrap_or_default();
+            CONVERTER_OLE_DRAG_ENTERED.store(false, Ordering::SeqCst);
+            if over_notch {
+                close_converter_overlay(&self.app);
+            }
+            return Ok(());
+        }
 
-            let is_browser_drag = if paths.is_empty() && urls.is_empty() {
-                if let Some(cached_payload) = cached {
-                    paths = cached_payload.paths;
-                    urls = cached_payload.urls;
-                    cached_payload.is_browser_drag
-                } else {
-                    CONVERTER_DRAG_IS_BROWSER.load(Ordering::Relaxed)
-                }
+        unsafe {
+            *self.enter_valid.get() = false;
+            *self.last_css_pos.get() = None;
+        }
+        let cached = unsafe { (*self.cached_payload.get()).take() };
+        let (mut paths, mut urls) = pdata
+            .as_ref()
+            .map(|data| unsafe { ConverterDropTarget::extract_payload(data) })
+            .unwrap_or_default();
+
+        let is_browser_drag = if paths.is_empty() && urls.is_empty() {
+            if let Some(cached_payload) = cached {
+                paths = cached_payload.paths;
+                urls = cached_payload.urls;
+                cached_payload.is_browser_drag
             } else {
                 CONVERTER_DRAG_IS_BROWSER.load(Ordering::Relaxed)
-                    || (paths.is_empty() && !urls.is_empty())
-            };
+            }
+        } else {
+            CONVERTER_DRAG_IS_BROWSER.load(Ordering::Relaxed)
+                || (paths.is_empty() && !urls.is_empty())
+        };
 
-            let (x, y) = crate::services::screen_to_radial_css(pt.x, pt.y);
+        if paths.is_empty() && urls.is_empty() {
+            unsafe {
+                *self.cursor_effect.get() = DROPEFFECT_NONE;
+                if !effect.is_null() {
+                    *effect = DROPEFFECT_NONE;
+                }
+            }
             CONVERTER_OLE_DRAG_ENTERED.store(false, Ordering::SeqCst);
-            CONVERTER_OLE_DROP_DONE.store(true, Ordering::SeqCst);
-
-            let _ = self.app.emit_to(
-                "overlay",
-                "converter-donut-drop",
-                serde_json::json!({
-                    "x": x,
-                    "y": y,
-                    "paths": paths,
-                    "urls": urls,
-                    "isBrowserDrag": is_browser_drag,
-                }),
-            );
+            close_converter_overlay(&self.app);
+            return Ok(());
         }
+
+        unsafe {
+            if !effect.is_null() {
+                *effect = *self.cursor_effect.get();
+            }
+        }
+
+        let (x, y) = crate::services::screen_to_radial_css(pt.x, pt.y);
+        CONVERTER_OLE_DRAG_ENTERED.store(false, Ordering::SeqCst);
+        CONVERTER_OLE_DROP_DONE.store(true, Ordering::SeqCst);
+
+        let _ = self.app.emit_to(
+            "overlay",
+            "converter-donut-drop",
+            serde_json::json!({
+                "x": x,
+                "y": y,
+                "paths": paths,
+                "urls": urls,
+                "isBrowserDrag": is_browser_drag,
+            }),
+        );
         Ok(())
     }
 }
@@ -3536,6 +3705,126 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  Filee-2.5.0-wi
             Some("explorer"),
             true
         ));
+        assert!(!is_converter_drag_source(
+            Some("WorkerW"),
+            Some("customapp"),
+            true
+        ));
+        assert!(!is_converter_drag_source(
+            Some("WorkerW"),
+            Some("customapp.exe"),
+            true
+        ));
+        assert!(!is_converter_drag_source(Some("WorkerW"), Some(""), true));
+        assert!(!is_converter_drag_source(
+            Some("CabinetWClass"),
+            Some("customapp"),
+            true
+        ));
+        assert!(!is_converter_drag_source(
+            Some("SHELLDLL_DefView"),
+            Some("customapp"),
+            true
+        ));
+    }
+
+    #[test]
+    fn should_disarm_normal_drag_prevents_mid_drag_modifier_hijack() {
+        for trigger in [
+            ConverterTriggerKey::Ctrl,
+            ConverterTriggerKey::Alt,
+            ConverterTriggerKey::Shift,
+        ] {
+            // Below threshold: do not disarm yet
+            assert!(!should_disarm_normal_drag(trigger, false, 15, 4));
+            assert!(!should_disarm_normal_drag(trigger, false, -1, 4));
+            // At/past threshold without modifier held: disarm normal OS drag
+            assert!(should_disarm_normal_drag(trigger, false, 16, 4));
+            assert!(should_disarm_normal_drag(trigger, false, 64, 4));
+            // With modifier held: stay armed
+            assert!(!should_disarm_normal_drag(trigger, true, 16, 4));
+        }
+        // RightDrag relies on mouse button rather than keyboard modifier
+        assert!(!should_disarm_normal_drag(
+            ConverterTriggerKey::RightDrag,
+            false,
+            100,
+            4
+        ));
+        assert!(!should_disarm_normal_drag(
+            ConverterTriggerKey::RightDrag,
+            true,
+            100,
+            4
+        ));
+    }
+
+    #[test]
+    fn cancelled_converter_session_is_never_resurrected() {
+        assert_eq!(
+            evaluate_converter_show_session(0, 1, true, false, false),
+            ConverterShowAction::BailAlreadyInactive
+        );
+        assert_eq!(
+            evaluate_converter_show_session(1, 2, true, false, false),
+            ConverterShowAction::BailAlreadyInactive
+        );
+        assert_eq!(
+            evaluate_converter_show_session(1, 1, false, false, false),
+            ConverterShowAction::BailAlreadyInactive
+        );
+        assert_eq!(
+            evaluate_converter_show_session(1, 1, true, true, false),
+            ConverterShowAction::CancelAndBail
+        );
+        assert_eq!(
+            evaluate_converter_show_session(1, 1, true, false, true),
+            ConverterShowAction::CancelAndBail
+        );
+        assert_eq!(
+            evaluate_converter_show_session(1, 1, true, false, false),
+            ConverterShowAction::Proceed
+        );
+
+        let s1 = prepare_converter_overlay_open();
+        assert!(CONVERTER_OVERLAY_OPEN.load(Ordering::SeqCst));
+        assert_eq!(CONVERTER_DRAG_SESSION_ID.load(Ordering::SeqCst), s1);
+
+        // Simulate Esc / button release cancelling s1 before show_overlay_for_converter runs
+        set_converter_overlay_open(false);
+        assert_eq!(
+            check_converter_show_session(s1, false, false),
+            ConverterShowAction::BailAlreadyInactive
+        );
+        assert!(!CONVERTER_OVERLAY_OPEN.load(Ordering::SeqCst));
+        assert_eq!(CONVERTER_DRAG_SESSION_ID.load(Ordering::SeqCst), s1);
+
+        // Blocking on radial menu or splash clears CONVERTER_OVERLAY_OPEN for the current session
+        let s2 = prepare_converter_overlay_open();
+        assert!(CONVERTER_OVERLAY_OPEN.load(Ordering::SeqCst));
+        assert_eq!(
+            check_converter_show_session(s2, true, false),
+            ConverterShowAction::CancelAndBail
+        );
+        assert!(!CONVERTER_OVERLAY_OPEN.load(Ordering::SeqCst));
+        assert_eq!(CONVERTER_DRAG_SESSION_ID.load(Ordering::SeqCst), s2);
+
+        let s3 = prepare_converter_overlay_open();
+        assert_eq!(
+            check_converter_show_session(s3, false, true),
+            ConverterShowAction::CancelAndBail
+        );
+        assert!(!CONVERTER_OVERLAY_OPEN.load(Ordering::SeqCst));
+
+        // Older session check must never deactivate a newer active session
+        let s4 = prepare_converter_overlay_open();
+        assert_eq!(
+            check_converter_show_session(s3, true, false),
+            ConverterShowAction::BailAlreadyInactive
+        );
+        assert!(CONVERTER_OVERLAY_OPEN.load(Ordering::SeqCst));
+        assert_eq!(CONVERTER_DRAG_SESSION_ID.load(Ordering::SeqCst), s4);
+        set_converter_overlay_open(false);
     }
 
     #[test]

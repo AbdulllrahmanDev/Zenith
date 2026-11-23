@@ -2820,10 +2820,7 @@ pub fn keep_notch_above_overlay() {
 }
 
 pub fn show_overlay_for_radial(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
-    crate::converter::set_converter_overlay_open(false);
-    crate::converter::CONVERTER_OLE_DRAG_ENTERED.store(false, Ordering::SeqCst);
-    crate::converter::CONVERTER_OLE_DROP_DONE.store(false, Ordering::SeqCst);
-    let _ = app.emit_to("overlay", "converter-donut-close", serde_json::json!({}));
+    crate::converter::reset_converter_state_for_radial(app);
     crate::services::set_radial_menu_open(true);
     let monitor_choice =
         crate::utils::get_setting_str(app, "zenith-mouse-monitor").unwrap_or_else(|| "cursor".into());
@@ -2840,30 +2837,49 @@ pub fn show_overlay_for_radial(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
     }
 }
 
-pub fn show_overlay_for_converter(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
-    if crate::services::MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed)
-        || crate::state::OVERLAY_IN_SPLASH.load(Ordering::Relaxed)
+pub fn show_overlay_for_converter(app: &AppHandle, cursor_x: i32, cursor_y: i32, session_id: u64) {
+    if crate::converter::check_converter_show_session(
+        session_id,
+        crate::services::MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed),
+        crate::state::OVERLAY_IN_SPLASH.load(Ordering::Relaxed),
+    ) != crate::converter::ConverterShowAction::Proceed
     {
-        crate::converter::set_converter_overlay_open(false);
         return;
     }
-    let session_id = if crate::converter::CONVERTER_OVERLAY_OPEN.load(Ordering::Acquire) {
-        crate::converter::CONVERTER_DRAG_SESSION_ID.load(Ordering::Acquire)
-    } else {
-        crate::converter::prepare_converter_overlay_open()
-    };
+
     crate::converter::ensure_converter_drop_synced(app);
-    // Re-check in case the user cancelled or released before drop target sync finished.
-    if !crate::converter::CONVERTER_OVERLAY_OPEN.load(Ordering::Acquire)
-        || crate::converter::CONVERTER_DRAG_SESSION_ID.load(Ordering::Acquire) != session_id
-        || crate::services::MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed)
+
+    if crate::converter::check_converter_show_session(
+        session_id,
+        crate::services::MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed),
+        crate::state::OVERLAY_IN_SPLASH.load(Ordering::Relaxed),
+    ) != crate::converter::ConverterShowAction::Proceed
     {
         return;
     }
+
     if position_and_activate_overlay(app, cursor_x, cursor_y, "cursor").is_none() {
         crate::converter::close_converter_overlay_for_session(app, session_id);
         return;
     }
+
+    // Final post-activation check: if Esc/release cancelled this session concurrently
+    // while position_and_activate_overlay was running, ensure overlay does not remain clickable.
+    if crate::converter::check_converter_show_session(
+        session_id,
+        crate::services::MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed),
+        crate::state::OVERLAY_IN_SPLASH.load(Ordering::Relaxed),
+    ) != crate::converter::ConverterShowAction::Proceed
+    {
+        if crate::converter::is_converter_session_current(session_id)
+            && !crate::services::MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed)
+            && !crate::state::OVERLAY_IN_SPLASH.load(Ordering::Relaxed)
+        {
+            restore_overlay_click_through(app);
+        }
+        return;
+    }
+
     keep_notch_above_overlay();
 }
 
