@@ -39,6 +39,8 @@ export const en = {
 			dock: "Dock",
 			overlays: "Overlays",
 			mouse: "Mouse",
+			mouseCompass: "Compass",
+			mouseConverter: "Converter",
 			translator: "Translator",
 			about: "About"
 		}
@@ -1260,6 +1262,47 @@ export const en = {
 		attachmentFailed: "Failed",
 		removeAttachment: "Remove attachment",
 		thinking: "Thinking..."
+	},
+	converter: {
+		headerTitle: "File Converter",
+		headerSub: "Drag files with a modifier key to convert offline across 270+ formats",
+		subtabs: {
+			general: "General",
+			donut: "Donut & Presets",
+			packs: "Packs",
+			history: "Watch & History"
+		},
+		triggerGroup: "Drag & Trigger",
+		enableConverter: "Enable File Converter",
+		enableConverterDesc: "Open the converter donut when dragging files with the trigger key held",
+		triggerKey: "Drag Trigger Key",
+		triggerKeyDesc: "Modifier or drag gesture that opens the converter donut while dragging files",
+		triggerCtrl: "Ctrl + Drag",
+		triggerAlt: "Alt + Drag",
+		triggerShift: "Shift + Drag",
+		triggerRightDrag: "Right-Click Drag",
+		browserDrag: "Browser Drag-to-Convert",
+		browserDragDesc: "Allow dragging images or file links directly from Chrome, Edge, or Firefox",
+		outputGroup: "Output & Shell",
+		outputMode: "Output Destination",
+		outputModeDesc: "Where converted files are saved by default",
+		outputNextToSource: "Next to source file",
+		outputFolder: "Custom folder",
+		outputFolderPath: "Custom Output Folder",
+		outputFolderPathDesc: "Destination directory used when Custom folder is selected",
+		outputFolderPlaceholder: "Choose or paste a folder path...",
+		browseFolderTitle: "Select output folder",
+		explorerMenu: "Windows Explorer Context Menu",
+		explorerMenuDesc: "Add a “Convert with Zenith” entry to the right-click menu in File Explorer",
+		comingSoonBadge: "Coming next",
+		placeholders: {
+			donutTitle: "Donut & Presets",
+			donutDesc: "Customize donut slices per file category and default format presets (quality, DPI, resize, PDF & media options).",
+			packsTitle: "Optional Engine Packs",
+			packsDesc: "Manage the core converter runtime and install optional format packs (FFmpeg, LibreOffice, Calibre, Ghostscript, and more).",
+			historyTitle: "Watch Folders & History",
+			historyDesc: "Configure auto-converting watch folders, drop files directly in Settings, and view recent conversions."
+		}
 	}
 };
 

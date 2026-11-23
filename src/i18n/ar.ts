@@ -38,7 +38,9 @@ export const ar: TranslationDict = {
 			ai: "الذكاء الاصطناعي",
 			dock: "شريط Dock",
 			overlays: "الأشرطة الجانبية",
-			mouse: "عجلة الفأرة",
+			mouse: "الماوس",
+			mouseCompass: "البوصلة",
+			mouseConverter: "المُحوّل",
 			translator: "المترجم",
 			about: "حول"
 		}
@@ -1260,5 +1262,46 @@ export const ar: TranslationDict = {
 		attachmentFailed: "فشل",
 		removeAttachment: "إزالة المرفق",
 		thinking: "يفكّر..."
+	},
+	converter: {
+		headerTitle: "محوّل الملفات",
+		headerSub: "اسحب الملفات مع مفتاح التشغيل لتحويلها محلياً عبر أكثر من 270 صيغة",
+		subtabs: {
+			general: "عام",
+			donut: "الدائرة والإعدادات",
+			packs: "الحزم",
+			history: "المراقبة والسجل"
+		},
+		triggerGroup: "السحب والتشغيل",
+		enableConverter: "تفعيل محوّل الملفات",
+		enableConverterDesc: "فتح دائرة التحويل عند سحب الملفات مع الضغط على مفتاح التشغيل",
+		triggerKey: "مفتاح تشغيل السحب",
+		triggerKeyDesc: "المفتاح أو الإيماءة التي تفتح دائرة التحويل أثناء سحب الملفات",
+		triggerCtrl: "Ctrl + سحب",
+		triggerAlt: "Alt + سحب",
+		triggerShift: "Shift + سحب",
+		triggerRightDrag: "سحب بالزر الأيمن",
+		browserDrag: "التحويل بالسحب من المتصفح",
+		browserDragDesc: "السماح بسحب الصور أو روابط الملفات مباشرة من Chrome أو Edge أو Firefox",
+		outputGroup: "الحفظ والنظام",
+		outputMode: "وجهة حفظ الملفات",
+		outputModeDesc: "المكان الافتراضي لحفظ الملفات المحوّلة",
+		outputNextToSource: "بجانب الملف الأصلي",
+		outputFolder: "مجلد مخصّص",
+		outputFolderPath: "مسار المجلد المخصّص",
+		outputFolderPathDesc: "مجلد الحفظ المستخدم عند اختيار «مجلد مخصّص»",
+		outputFolderPlaceholder: "اختر أو الصق مسار المجلد...",
+		browseFolderTitle: "اختيار مجلد الحفظ",
+		explorerMenu: "قائمة النقر الأيمن في المستكشف",
+		explorerMenuDesc: "إضافة خيار «التحويل عبر Zenith» إلى قائمة السياق في مستكشف الملفات",
+		comingSoonBadge: "قريباً",
+		placeholders: {
+			donutTitle: "الدائرة والإعدادات المسبقة",
+			donutDesc: "تخصيص شرائح الدائرة لكل فئة ملفات وضبط خيارات الجودة وDPI وتغيير الحجم وخيارات PDF والوسائط.",
+			packsTitle: "حزم المحركات الاختيارية",
+			packsDesc: "إدارة نواة المحوّل وتثبيت الحزم الاختيارية (FFmpeg وLibreOffice وCalibre وGhostscript وغيرها).",
+			historyTitle: "المجلدات المراقَبة والسجل",
+			historyDesc: "إعداد المجلدات المراقَبة للتحويل التلقائي وإسقاط الملفات هنا وعرض آخر التحويلات."
+		}
 	}
 };

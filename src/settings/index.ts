@@ -8,6 +8,7 @@ export { AiTab } from "./AiTab";
 export { DockTab } from "./DockTab";
 export { OverlaysTab } from "./OverlaysTab";
 export { MouseTab } from "./MouseTab";
+export { ConverterTab } from "./ConverterTab";
 export { TranslatorTab } from "./TranslatorTab";
 export { AboutTab } from "./AboutTab";
 export type { WidgetConfig, SettingsTab, SettingRowProps } from "./types";

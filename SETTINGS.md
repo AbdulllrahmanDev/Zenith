@@ -150,6 +150,17 @@ Edit `settings.json` with any text editor while Zenith is running. Changes are a
 | `zenith-mouse-active-workspace`       | workspace id                                    | `"main"`      | Currently selected radial workspace ID.                                                                                                                     |
 | `zenith-mouse-workspaces`             | JSON string array                               | (default)     | Custom radial workspaces and items (`[{"id":"main","name":"Main","items":[...]}]`).                                                                         |
 
+### Mouse File Converter
+
+| Key                                | Type                                       | Default            | Description                                                                                                                   |
+| ---------------------------------- | ------------------------------------------ | ------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `zenith-converter-enabled`         | `"true"` / `"false"`                       | `"true"`           | Enable or disable the drag-and-drop File Converter trigger.                                                                   |
+| `zenith-converter-trigger-key`     | `"ctrl"` / `"alt"` / `"shift"` / `"right-drag"` | `"ctrl"`      | Modifier key or drag gesture held while dragging files to open the converter donut.                                           |
+| `zenith-converter-browser-drag`    | `"true"` / `"false"`                       | `"true"`           | Allow dragging images or file links directly out of web browsers (Chrome, Edge, Firefox) into the converter donut.            |
+| `zenith-converter-output-mode`     | `"next-to-source"` / `"folder"`            | `"next-to-source"` | Default destination for converted files: **next-to-source** = save alongside input file; **folder** = save to custom folder.  |
+| `zenith-converter-output-folder`   | string                                     | `""`               | Custom output directory path used when `zenith-converter-output-mode` is `"folder"`.                                          |
+| `zenith-converter-explorer-menu`   | `"true"` / `"false"`                       | `"false"`          | Register the optional `"Convert with Zenith"` Windows File Explorer right-click context menu entry.                           |
+
 ### Appearance
 
 | Key                      | Type                                             | Default     | Description                                                                                                                                                 |
