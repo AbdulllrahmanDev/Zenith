@@ -1405,6 +1405,67 @@ export const ar: TranslationDict = {
 			packsDesc: "إدارة نواة المحوّل وتثبيت الحزم الاختيارية (FFmpeg وLibreOffice وCalibre وGhostscript وغيرها).",
 			historyTitle: "المجلدات المراقَبة والسجل",
 			historyDesc: "إعداد المجلدات المراقَبة للتحويل التلقائي وإسقاط الملفات هنا وعرض آخر التحويلات."
+		},
+		donut: {
+			sideIndicator: (current: number, total: number) => `${current} / ${total}`,
+			flipHint: "Tab / العجلة",
+			flipAction: "تبديل الوجه",
+			dropPrompt: "أفلت على صيغة للتحويل",
+			fileCount: (n: number) =>
+				n === 1 ? "ملف واحد" : n === 2 ? "ملفان" : n <= 10 ? `${n} ملفات` : `${n} ملفاً`,
+			urlCount: (n: number) =>
+				n === 1 ? "رابط واحد" : n === 2 ? "رابطان" : n <= 10 ? `${n} روابط` : `${n} رابطاً`,
+			categories: {
+				image: "الصور",
+				vector: "الرسوم المتجهة",
+				pdf: "PDF",
+				document: "المستندات",
+				spreadsheet: "الجداول",
+				presentation: "العروض التقديمية",
+				hwp: "HWP",
+				text: "النصوص والترميز",
+				ebook: "الكتب الإلكترونية",
+				video: "الفيديو",
+				audio: "الصوت",
+				subtitle: "الترجمة النصية",
+				archive: "الأرشيف",
+				cad: "CAD",
+				font: "الخطوط",
+				data: "البيانات",
+				model3d: "نماذج 3D",
+				geospatial: "البيانات الجغرافية",
+				folder: "المجلدات",
+				mixed: "ملفات متنوّعة"
+			},
+			packRequiredTitle: "حزمة محرّك مطلوبة",
+			coreRequiredTitle: "نواة المحوّل مطلوبة",
+			coreAndPackRequiredDesc: (pack: string, target: string) =>
+				`يتطلب التحويل إلى ${target} تثبيت نواة المحوّل وحزمة ${pack}.`,
+			packRequiredDesc: (pack: string, target: string) =>
+				`يتطلب التحويل إلى ${target} تثبيت حزمة ${pack} الاختيارية.`,
+			coreRequiredDesc: (target: string) =>
+				`يتطلب التحويل إلى ${target} تثبيت نواة المحوّل المعزولة (Filee CLI).`,
+			installCoreNote: "سيتم إعداد نواة المحوّل أولاً ثم تثبيت الحزمة.",
+			packSizeBadge: (size: string) => `تنزيل ~${size}`,
+			installAndConvert: "تثبيت وتحويل",
+			retryInstallAndConvert: "إعادة التثبيت والتحويل",
+			installingCore: "جارٍ إعداد نواة المحوّل...",
+			installingPack: (pack: string) => `جارٍ تثبيت ${pack}...`,
+			unavailablePack: "هذه الحزمة غير متوفرة للتنزيل على هذا الجهاز.",
+			checkingRuntime: "جارٍ التحقق من محرّك التحويل...",
+			convertingTo: (target: string) => `جارٍ التحويل إلى ${target}`,
+			convertingTitle: "جارٍ التحويل...",
+			doneTitle: "تم التحويل",
+			doneOutputsCount: (n: number) =>
+				n === 1 ? "ملف واحد جاهز" : n === 2 ? "ملفان جاهزان" : n <= 10 ? `${n} ملفات جاهزة` : `${n} ملفاً جاهزاً`,
+			failedTitle: "فشل التحويل",
+			cancelledTitle: "تم الإلغاء",
+			cancelJob: "إلغاء التحويل",
+			openFolder: "فتح المجلد",
+			clickToReveal: "انقر للعرض في مستكشف الملفات",
+			dismiss: "إغلاق",
+			escToCancel: "Esc للإغلاق",
+			noTargets: "لا توجد صيغ متوافقة"
 		}
 	}
 };

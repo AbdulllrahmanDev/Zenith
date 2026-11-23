@@ -9,12 +9,13 @@ import { getVersion } from "@tauri-apps/api/app";
 import { reloadIfMirrorWasStale } from "./hooks/settingsMirror";
 import { MixerIcon, SpeakerIcon } from "./icons";
 import "./Overlay.css";
+import { ConverterDonut, type ConverterPhase } from "./components/ConverterDonut";
 import { EdgeSurface } from "./components/EdgeSurface";
 import { RadialMenu } from "./components/RadialMenu";
 import { LanguageProvider, useI18n } from "./i18n";
 import { DEFAULT_WHEEL_CONFIG, DEFAULT_WORKSPACES, type RadialWheelConfig } from "./radial/types";
 import { initTheme } from "./theme";
-import { createRegionSender, measureElements, type RegionRect } from "./windowRegion";
+import { clipToWindow, createRegionSender, measureElements, type RegionRect } from "./windowRegion";
 
 // ─── App Volume Mixer ───────────────────────────────────────────────────────
 
@@ -605,7 +606,7 @@ function OverlayApp() {
 		return initTheme();
 	}, []);
 
-	type Mode = "idle" | "volume" | "brightness" | "splash" | "updating" | "radial";
+	type Mode = "idle" | "volume" | "brightness" | "splash" | "updating" | "radial" | "converter";
 	const [mode, setMode] = useState<Mode>("idle");
 	const [updateStatus, setUpdateStatus] = useState<string>("checking");
 	const [updateProgress, setUpdateProgress] = useState(0);
@@ -735,13 +736,31 @@ function OverlayApp() {
 	const splashActiveRef = useRef(false);
 	const mixerExpandedRef = useRef(false);
 
+	// Converter overlay state (donut + install card lock HUDs until dismissed/started)
+	const [converterEnabled, setConverterEnabled] = useState(
+		() => localStorage.getItem("zenith-converter-enabled") !== "false"
+	);
+	const [converterOutputMode, setConverterOutputMode] = useState<"next-to-source" | "folder">(() =>
+		localStorage.getItem("zenith-converter-output-mode") === "folder"
+			? "folder"
+			: "next-to-source"
+	);
+	const [converterOutputFolder, setConverterOutputFolder] = useState(
+		() => localStorage.getItem("zenith-converter-output-folder") || ""
+	);
+	const [converterPhase, setConverterPhase] = useState<ConverterPhase>("idle");
+	const converterLockRef = useRef(false);
+	const prevConverterPhaseRef = useRef<ConverterPhase>("idle");
+
 	const resetHideTimeout = useCallback(() => {
 		// Keep the notch pinned while the mixer panel is open; it closes on
 		// mouse leave via the edge-hover timeout instead.
 		if (mixerExpandedRef.current) return;
 		if (timeoutRef.current) clearTimeout(timeoutRef.current);
 		timeoutRef.current = setTimeout(() => {
-			if (!splashActiveRef.current) setMode("idle");
+			if (!splashActiveRef.current) {
+				setMode((prev) => (prev === "volume" || prev === "brightness" ? "idle" : prev));
+			}
 		}, 2000);
 	}, []);
 
@@ -852,6 +871,17 @@ function OverlayApp() {
 						? { hoverSoundId: settings["zenith-mouse-hover-sound"] }
 						: null)
 				}));
+				if (settings["zenith-converter-enabled"] !== undefined) {
+					setConverterEnabled(settings["zenith-converter-enabled"] !== "false");
+				}
+				if (settings["zenith-converter-output-mode"] !== undefined) {
+					setConverterOutputMode(
+						settings["zenith-converter-output-mode"] === "folder" ? "folder" : "next-to-source"
+					);
+				}
+				if (typeof settings["zenith-converter-output-folder"] === "string") {
+					setConverterOutputFolder(settings["zenith-converter-output-folder"]);
+				}
 			})
 			.catch(console.error);
 	}, []);
@@ -920,7 +950,7 @@ function OverlayApp() {
 		document.addEventListener("contextmenu", preventContext);
 
 		const volPromise = listen("volume-change", (event: any) => {
-			if (splashActiveRef.current || !volumeOverlayEnabled) return;
+			if (splashActiveRef.current || converterLockRef.current || !volumeOverlayEnabled) return;
 			invoke("hide_native_osd");
 			const { volume: newVolume, is_muted } = event.payload;
 			setVolume(newVolume);
@@ -930,21 +960,21 @@ function OverlayApp() {
 		});
 
 		const volEdgePromise = listen<boolean>("volume-edge-hover", (event) => {
-			if (splashActiveRef.current || !volumeOverlayEnabled || !volumeEdgeEnabled) return;
+			if (splashActiveRef.current || converterLockRef.current || !volumeOverlayEnabled || !volumeEdgeEnabled) return;
 			if (event.payload) {
 				setMode("volume");
 				if (timeoutRef.current) clearTimeout(timeoutRef.current);
 			} else {
 				if (timeoutRef.current) clearTimeout(timeoutRef.current);
 				timeoutRef.current = setTimeout(
-					() => setMode("idle"),
+					() => setMode((prev) => (prev === "volume" ? "idle" : prev)),
 					mixerExpandedRef.current ? 700 : 1500
 				);
 			}
 		});
 
 		const brightPromise = listen("brightness-change", (event: any) => {
-			if (splashActiveRef.current || !brightnessOverlayEnabled) return;
+			if (splashActiveRef.current || converterLockRef.current || !brightnessOverlayEnabled) return;
 			invoke("hide_native_osd");
 			const { brightness: newBrightness } = event.payload;
 			setBrightness(newBrightness);
@@ -953,13 +983,16 @@ function OverlayApp() {
 		});
 
 		const brightEdgePromise = listen<boolean>("brightness-edge-hover", (event) => {
-			if (splashActiveRef.current || !brightnessOverlayEnabled || !brightnessEdgeEnabled) return;
+			if (splashActiveRef.current || converterLockRef.current || !brightnessOverlayEnabled || !brightnessEdgeEnabled) return;
 			if (event.payload) {
 				setMode("brightness");
 				if (timeoutRef.current) clearTimeout(timeoutRef.current);
 			} else {
 				if (timeoutRef.current) clearTimeout(timeoutRef.current);
-				timeoutRef.current = setTimeout(() => setMode("idle"), 1500);
+				timeoutRef.current = setTimeout(
+					() => setMode((prev) => (prev === "brightness" ? "idle" : prev)),
+					1500
+				);
 			}
 		});
 
@@ -989,7 +1022,7 @@ function OverlayApp() {
 		const radialOpenPromise = listen<{ x: number; y: number; width?: number; height?: number }>(
 			"radial-open",
 			(event) => {
-				if (splashActiveRef.current || !mouseRadialEnabled) return;
+				if (splashActiveRef.current || converterLockRef.current || !mouseRadialEnabled) return;
 				setRadialPosition({
 					x: event.payload.x,
 					y: event.payload.y,
@@ -1001,7 +1034,7 @@ function OverlayApp() {
 		);
 
 		const radialClosePromise = listen("radial-close", () => {
-			setMode("idle");
+			setMode((prev) => (prev === "radial" ? "idle" : prev));
 			if (hideWindowTimeoutRef.current) {
 				clearTimeout(hideWindowTimeoutRef.current);
 				hideWindowTimeoutRef.current = null;
@@ -1089,7 +1122,12 @@ function OverlayApp() {
 			setMouseWheelConfig((prev) => ({
 				...prev,
 				hoverSoundId: String(v || prev.hoverSoundId) as RadialWheelConfig["hoverSoundId"]
-			}))
+			})),
+		"zenith-converter-enabled": setConverterEnabled,
+		"zenith-converter-output-mode": (v: unknown) =>
+			setConverterOutputMode(v === "folder" ? "folder" : "next-to-source"),
+		"zenith-converter-output-folder": (v: unknown) =>
+			setConverterOutputFolder(typeof v === "string" ? v : "")
 	});
 
 	// Side effects: reset overlay mode to idle when overlay is disabled
@@ -1115,9 +1153,9 @@ function OverlayApp() {
 				if (mode === "idle") {
 					// Window is clipped to empty region via sendOverlayRegion([])
 					// Keeping it shown at OS level prevents Windows 11 titlebar flicker
-				} else if (mode === "radial") {
-					// Rust `show_overlay_for_radial` already positioned the window on the
-					// target monitor and cleared WS_EX_TRANSPARENT.
+				} else if (mode === "radial" || mode === "converter") {
+					// Rust `show_overlay_for_radial` / `show_overlay_for_converter` already
+					// positioned the window on the target monitor and cleared WS_EX_TRANSPARENT.
 				} else {
 					// Position the window first
 					await invoke("sync_overlay_position");
@@ -1214,12 +1252,16 @@ function OverlayApp() {
 	// edge, the full card size, so a card scaling in from the edge is never
 	// clipped; with the mixer open the left zone spans the widest mixer. The
 	// HUDs and the mixer panel are measured on top, padded for their shadows.
-	useEffect(() => {
+	const computeOverlayRegionRects = useCallback((): RegionRect[] => {
 		const width = window.innerWidth;
 		const height = window.innerHeight;
-		if (mode === "splash" || mode === "updating" || mode === "radial") {
-			sendOverlayRegion([{ x: 0, y: 0, width, height }]);
-			return;
+		if (
+			mode === "splash" ||
+			mode === "updating" ||
+			mode === "radial" ||
+			converterPhase === "donut"
+		) {
+			return [{ x: 0, y: 0, width, height }];
 		}
 		const pad = 24 * scale;
 		const cardWidth = HUD_CARD_WIDTH * scale;
@@ -1232,15 +1274,62 @@ function OverlayApp() {
 			width: w,
 			height: cardHeight + pad * 2
 		});
-		sendOverlayRegion([
+		return [
 			zone(0, leftWidth + pad),
 			zone(width - cardWidth - pad, cardWidth + pad),
 			...measureElements([
 				[".volume-notch-wrapper", 24],
 				[".volume-mixer-panel", 24],
-				[".brightness-notch-wrapper", 24]
+				[".brightness-notch-wrapper", 24],
+				[".converter-progress-ring", 24],
+				[".converter-install-card", 24]
 			])
-		]);
+		];
+	}, [mode, converterPhase, scale, mixerExpanded]);
+
+	const handleConverterPhaseChange = useCallback((nextPhase: ConverterPhase) => {
+		setConverterPhase(nextPhase);
+		const isLocked =
+			nextPhase === "donut" || nextPhase === "checking" || nextPhase === "install";
+		converterLockRef.current = isLocked;
+		if (isLocked) {
+			if (timeoutRef.current) {
+				clearTimeout(timeoutRef.current);
+				timeoutRef.current = null;
+			}
+			setMode((prev) => (prev === "splash" || prev === "updating" ? prev : "converter"));
+		} else {
+			setMode((prev) => (prev === "converter" ? "idle" : prev));
+		}
+	}, []);
+
+	const clipOverlayRects = useCallback(
+		(rects: RegionRect[]): RegionRect[] =>
+			rects
+				.map((r) => clipToWindow(r, window.innerWidth, window.innerHeight))
+				.filter((r): r is RegionRect => r !== null),
+		[]
+	);
+
+	const handleConverterRegionInvalidate = useCallback(() => {
+		const rects = computeOverlayRegionRects();
+		sendOverlayRegion(rects);
+		// Push clipped rects directly too in case Rust's `restore_overlay_click_through`
+		// called `clear_window_region` while `sendOverlayRegion`'s cache key stayed unchanged.
+		invoke("set_window_region", { rects: clipOverlayRects(rects) }).catch(() => {});
+	}, [clipOverlayRects, computeOverlayRegionRects, sendOverlayRegion]);
+
+	useEffect(() => {
+		const rects = computeOverlayRegionRects();
+		sendOverlayRegion(rects);
+		const prev = prevConverterPhaseRef.current;
+		prevConverterPhaseRef.current = converterPhase;
+		if (
+			(prev === "donut" || prev === "checking" || prev === "install") &&
+			(converterPhase === "progress" || converterPhase === "idle")
+		) {
+			invoke("set_window_region", { rects: clipOverlayRects(rects) }).catch(() => {});
+		}
 	});
 
 	return (
@@ -1338,8 +1427,18 @@ function OverlayApp() {
 				/>
 			)}
 
+			{/* Drag-to-Donut File Converter Overlay */}
+			<ConverterDonut
+				enabled={converterEnabled}
+				outputMode={converterOutputMode}
+				outputFolder={converterOutputFolder}
+				suppressed={mode === "splash" || mode === "updating" || mode === "radial"}
+				onPhaseChange={handleConverterPhaseChange}
+				onRegionInvalidate={handleConverterRegionInvalidate}
+			/>
+
 			{/* Volume / Brightness Overlay */}
-			{mode !== "splash" && mode !== "updating" && mode !== "radial" && (
+			{mode !== "splash" && mode !== "updating" && mode !== "radial" && mode !== "converter" && (
 				<div
 					style={{
 						zoom: scale,
