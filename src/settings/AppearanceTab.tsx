@@ -1,4 +1,4 @@
-import { Palette, Droplet, Contrast, Droplets, Sun, Square, Maximize2 } from "lucide-react";
+import { Palette, Droplet, Contrast, Droplets, Sun, Square, Maximize2, PanelTop } from "lucide-react";
 import { SettingRow } from "./SettingRow";
 import { ZenithSelect } from "../components/ZenithSelect";
 import { useI18n } from "../i18n";
@@ -16,6 +16,8 @@ interface AppearanceTabProps {
 	handleBrightnessChange: (val: number) => void;
 	cornersEnabled: boolean;
 	toggleCorners: () => void;
+	notchFloating: boolean;
+	toggleNotchFloating: () => void;
 	scale: number;
 	handleScaleChange: (val: number) => void;
 }
@@ -33,6 +35,8 @@ export function AppearanceTab({
 	handleBrightnessChange,
 	cornersEnabled,
 	toggleCorners,
+	notchFloating,
+	toggleNotchFloating,
 	scale,
 	handleScaleChange
 }: AppearanceTabProps) {
@@ -136,6 +140,13 @@ export function AppearanceTab({
 				<SettingRow icon={Square} label={a.screenCorners} desc={a.screenCornersDesc}>
 					<label className="toggle-switch">
 						<input type="checkbox" checked={cornersEnabled} onChange={toggleCorners} />
+						<span className="slider"></span>
+					</label>
+				</SettingRow>
+
+				<SettingRow icon={PanelTop} label={a.floatingNotch} desc={a.floatingNotchDesc}>
+					<label className="toggle-switch">
+						<input type="checkbox" checked={notchFloating} onChange={toggleNotchFloating} />
 						<span className="slider"></span>
 					</label>
 				</SettingRow>

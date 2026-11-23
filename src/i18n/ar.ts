@@ -92,6 +92,8 @@ export const ar: TranslationDict = {
 		displayGroup: "العرض",
 		screenCorners: "زوايا الشاشة الدائرية",
 		screenCornersDesc: "تدوير الحواف العلوية للشاشة",
+		floatingNotch: "نوتش عائم",
+		floatingNotchDesc: "فصل النوتش عن حافة الشاشة العلوية ليظهر كجزيرة عائمة",
 		uiScale: "حجم الواجهة والخط",
 		uiScaleDesc: (pct: number) => `ضبط حجم العناصر على الشاشة (${pct}%)`,
 		decreaseScale: "تصغير الحجم",

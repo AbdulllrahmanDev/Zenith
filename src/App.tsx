@@ -84,6 +84,8 @@ const asNotchPanel = (value: unknown): NotchPanel | null =>
 
 // Pomodoro timer limit.
 const MAX_TIMER_SECONDS = 180 * 60;
+/** Gap (CSS px) between the top screen edge and a floating notch. */
+const NOTCH_FLOAT_GAP = 8;
 
 // Inline timer editing: digits fill from the right and the colon is inserted
 // automatically ("130" -> 1:30, "2500" -> 25:00, "45" -> 0:45).
@@ -1129,6 +1131,11 @@ function App() {
 	const [settingsCornersEnabled, setSettingsCornersEnabled] = useState(
 		() => localStorage.getItem("zenith-corners-enabled") === "true"
 	);
+	// Floating notch: an island detached from the top edge (like the
+	// iPhone's Dynamic Island) instead of hanging from it with flares.
+	const [notchFloating, setNotchFloating] = useState(
+		() => localStorage.getItem("zenith-notch-floating") !== "false"
+	);
 	const [mediaLayout, setMediaLayout] = useState<"classic" | "compact">(
 		() => (localStorage.getItem("zenith-media-layout") as "classic" | "compact") || "classic"
 	);
@@ -1229,6 +1236,7 @@ function App() {
 					getVal("zenith-media-compact-glow-enabled", "true") !== "false"
 				);
 				setSettingsCornersEnabled(getVal("zenith-corners-enabled", "false") === "true");
+				setNotchFloating(getVal("zenith-notch-floating", "true") !== "false");
 				setTimeFormat24h(getVal("zenith-time-format-24h") === "true");
 
 				const thresholdStr = getVal("zenith-low-battery-threshold", "20");
@@ -1374,6 +1382,7 @@ function App() {
 			"zenith-media-compact-glow-enabled": setSettingsCompactGlowEnabled,
 			"zenith-media-layout": setMediaLayout,
 			"zenith-corners-enabled": setSettingsCornersEnabled,
+			"zenith-notch-floating": setNotchFloating,
 			"zenith-scale": setScale,
 			"zenith-low-battery-threshold": setLowBatteryThreshold,
 			"zenith-dock-enabled": setDockEnabled,
@@ -3323,7 +3332,15 @@ function App() {
 	// The pill's target geometry: the animation springs toward it, and the
 	// window region below is cut from it, so the region is already at the
 	// final size while the pill animates.
-	const pillTargetY = !isReady ? 250 : isVisible ? (isHidden ? -100 : 0) : -150;
+	const pillTargetY = !isReady
+		? 250
+		: isVisible
+			? isHidden
+				? -100
+				: notchFloating && isImpacted
+					? NOTCH_FLOAT_GAP
+					: 0
+			: -150;
 	const pillTargetWidth = !isReady
 		? 34
 		: (isExpanded && isVisible && !isHidden) || showAthanBanner
@@ -3332,6 +3349,15 @@ function App() {
 				? 39.1
 				: 30.6;
 	const pillTargetHeight = !isReady ? 34 : getDynamicHeight();
+	const pillBottomRadius =
+		isCalendarMode ||
+		notchPanelMode === "prayer" ||
+		notchPanelMode === "tasks" ||
+		notchPanelMode === "ai-chat" ||
+		notchPanelMode === "translator" ||
+		(showAthanBanner && isOpen)
+			? 26
+			: 18;
 	targetBoxRef.current = {
 		width: pillTargetWidth,
 		height: pillTargetHeight,
@@ -3434,10 +3460,10 @@ function App() {
 						opacity: isVisible ? 1 : 0,
 						scaleX: 1,
 						scaleY: 1,
-						borderTopLeftRadius: isImpacted ? 0 : 18,
-						borderTopRightRadius: isImpacted ? 0 : 18,
-						borderBottomLeftRadius: (isCalendarMode || notchPanelMode === "prayer" || notchPanelMode === "tasks" || notchPanelMode === "ai-chat" || notchPanelMode === "translator" || (showAthanBanner && isOpen)) ? 26 : 18,
-						borderBottomRightRadius: (isCalendarMode || notchPanelMode === "prayer" || notchPanelMode === "tasks" || notchPanelMode === "ai-chat" || notchPanelMode === "translator" || (showAthanBanner && isOpen)) ? 26 : 18,
+						borderTopLeftRadius: isImpacted && !notchFloating ? 0 : pillBottomRadius,
+						borderTopRightRadius: isImpacted && !notchFloating ? 0 : pillBottomRadius,
+						borderBottomLeftRadius: pillBottomRadius,
+						borderBottomRightRadius: pillBottomRadius,
 						filter: isVisible ? "blur(0px)" : "blur(8px)",
 						pointerEvents: isVisible ? "auto" : "none"
 					}}
@@ -3471,7 +3497,7 @@ function App() {
 						default: { type: "spring", stiffness: 500, damping: 30, mass: 1 }
 					}}
 				>
-					<EdgeSurface edge="top" flares={isImpacted} />
+					<EdgeSurface edge="top" flares={isImpacted && !notchFloating} />
 					<AnimatePresence>
 						{isMusicMode && settingsAmbienceEnabled && albumArtUrl && isOpen && !isCalendarMode && (
 							<motion.div

@@ -119,6 +119,9 @@ export function useSettings() {
 	const [cornersEnabled, setCornersEnabled] = useState(
 		() => localStorage.getItem("zenith-corners-enabled") === "true"
 	);
+	const [notchFloating, setNotchFloating] = useState(
+		() => localStorage.getItem("zenith-notch-floating") !== "false"
+	);
 	const [showUpdateIndicator, setShowUpdateIndicator] = useState(
 		() => localStorage.getItem("zenith-show-update-indicator") !== "false"
 	);
@@ -527,6 +530,7 @@ export function useSettings() {
 			apply(getVal("zenith-media-ambience-enabled"), setMediaAmbienceEnabled, readBool);
 			apply(getVal("zenith-media-compact-glow-enabled"), setMediaCompactGlowEnabled, readBool);
 			apply(getVal("zenith-corners-enabled"), setCornersEnabled, readBool);
+			apply(getVal("zenith-notch-floating"), setNotchFloating, readBool);
 			apply(getVal("zenith-time-format-24h"), setTimeFormat24h, readBool);
 			apply(getVal("zenith-show-update-indicator"), setShowUpdateIndicator, readBool);
 			apply(getVal("zenith-auto-update"), setAutoUpdate, readBool);
@@ -862,6 +866,7 @@ export function useSettings() {
 		"zenith-media-compact-glow-enabled": setMediaCompactGlowEnabled,
 		"zenith-media-layout": setMediaLayout,
 		"zenith-corners-enabled": setCornersEnabled,
+		"zenith-notch-floating": setNotchFloating,
 		"zenith-show-update-indicator": setShowUpdateIndicator,
 		"zenith-time-format-24h": setTimeFormat24h,
 		"zenith-low-battery-threshold": setLowBatteryThreshold,
@@ -1450,6 +1455,12 @@ export function useSettings() {
 		saveSetting("zenith-corners-enabled", String(next));
 	};
 
+	const toggleNotchFloating = () => {
+		const next = !notchFloating;
+		setNotchFloating(next);
+		saveSetting("zenith-notch-floating", String(next));
+	};
+
 	const toggleUpdateIndicator = () => {
 		const next = !showUpdateIndicator;
 		setShowUpdateIndicator(next);
@@ -1978,6 +1989,8 @@ export function useSettings() {
 		handleScaleChange,
 		cornersEnabled,
 		toggleCorners,
+		notchFloating,
+		toggleNotchFloating,
 
 		// Theme
 		themeMode,

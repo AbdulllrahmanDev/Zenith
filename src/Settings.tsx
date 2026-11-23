@@ -269,6 +269,8 @@ function SettingsApp() {
 							handleBrightnessChange={settings.handleBrightnessChange}
 							cornersEnabled={settings.cornersEnabled}
 							toggleCorners={settings.toggleCorners}
+							notchFloating={settings.notchFloating}
+							toggleNotchFloating={settings.toggleNotchFloating}
 							scale={settings.scale}
 							handleScaleChange={settings.handleScaleChange}
 						/>

@@ -47,6 +47,7 @@ Edit `settings.json` with any text editor while Zenith is running. Changes are a
 | `zenith-notch-display`    | `"primary"` / `"all"` / display id | `"primary"` | Which display to show the notch on: `"primary"` (always primary display regardless of name/resolution), `"all"` (all displays), or specific display id. Locked to `"primary"` when only one display is connected. |
 | `zenith-notch-mode`       | `"fixed"` / `"smart"` / `"peek"` | `"fixed"` | Notch (top bar) visibility behavior. Same modes as dock. **peek** shows the notch briefly on media events and notifications.   |
 | `zenith-notch-edge-delay` | milliseconds `"0"`–`"2000"`      | `"200"`   | In smart/peek mode, how long the cursor must rest against the top screen edge before the notch peeks. `"0"` reveals instantly. |
+| `zenith-notch-floating`   | `"true"` / `"false"`             | `"true"`  | Float the notch a few pixels below the top screen edge as a fully rounded island (no edge flares). `"false"` attaches it to the edge. |
 
 ### Weather
 

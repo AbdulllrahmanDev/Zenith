@@ -92,6 +92,8 @@ export const en = {
 		displayGroup: "Display",
 		screenCorners: "Screen Corners",
 		screenCornersDesc: "Rounded top edges",
+		floatingNotch: "Floating Notch",
+		floatingNotchDesc: "Detach the notch from the top edge, like an island",
 		uiScale: "UI & Font Scale",
 		uiScaleDesc: (pct: number) => `Adjust desktop size (${pct}%)`,
 		decreaseScale: "Decrease Scale",
