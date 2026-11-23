@@ -584,6 +584,8 @@ export function ConverterDonut({
 	const sessionGenRef = useRef(0);
 	const jobSeqRef = useRef(0);
 	const activeJobIdRef = useRef<string | null>(null);
+	const cancelledJobIdsRef = useRef<Set<string>>(new Set());
+	const emittedJobIdsRef = useRef<Set<string>>(new Set());
 	const fileProgressRef = useRef<Map<string, number>>(new Map());
 	const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
 	const lastWheelFlipRef = useRef(0);
@@ -605,14 +607,11 @@ export function ConverterDonut({
 		setThemeSnap(readZenithAccentHex());
 	}, []);
 
-	const releaseOverlayLock = useCallback(() => {
-		invoke("converter_set_overlay_open", { open: false })
-			.catch(() => {})
-			.finally(() => {
-				requestAnimationFrame(() => {
-					onRegionInvalidateRef.current?.();
-				});
-			});
+	const releaseOverlayLock = useCallback(async () => {
+		await invoke("converter_set_overlay_open", { open: false }).catch(() => {});
+		requestAnimationFrame(() => {
+			onRegionInvalidateRef.current?.();
+		});
 	}, []);
 
 	// Track current high-level overlay phase for Overlay.tsx region & mode coordination.
@@ -674,7 +673,7 @@ export function ConverterDonut({
 		return () => observer.disconnect();
 	}, [installPrompt, jobState, checkingVisible, checkingJob]);
 
-	// If suppressed by RadialMenu / Splash / Updating, dismiss open donut or install card cleanly.
+	// If suppressed by RadialMenu / Splash / Updating, dismiss open donut, preflight, or install card cleanly.
 	useEffect(() => {
 		if (!suppressed) return;
 		if (wheelSession || checkingJob || installPrompt) {
@@ -684,8 +683,9 @@ export function ConverterDonut({
 			setInstallPrompt(null);
 			setActiveIndex(null);
 			setIsCenterActive(false);
+			void releaseOverlayLock();
 		}
-	}, [suppressed, wheelSession, checkingJob, installPrompt, clearCheckingState]);
+	}, [suppressed, wheelSession, checkingJob, installPrompt, clearCheckingState, releaseOverlayLock]);
 
 	const currentSlices = useMemo(() => {
 		if (!wheelSession) return [];
@@ -743,6 +743,7 @@ export function ConverterDonut({
 
 	const stateRef = useRef({
 		wheelSession,
+		checkingJob,
 		installPrompt,
 		currentSlices,
 		centerPos,
@@ -753,6 +754,7 @@ export function ConverterDonut({
 	useLayoutEffect(() => {
 		stateRef.current = {
 			wheelSession,
+			checkingJob,
 			installPrompt,
 			currentSlices,
 			centerPos,
@@ -899,6 +901,12 @@ export function ConverterDonut({
 			outputs: string[],
 			error?: string | null
 		) => {
+			if (emittedJobIdsRef.current.has(jobId)) return;
+			emittedJobIdsRef.current.add(jobId);
+			if (emittedJobIdsRef.current.size > 64) {
+				const oldest = emittedJobIdsRef.current.values().next().value;
+				if (oldest !== undefined) emittedJobIdsRef.current.delete(oldest);
+			}
 			emit("converter-job-finished", {
 				jobId,
 				status,
@@ -951,7 +959,7 @@ export function ConverterDonut({
 
 			try {
 				const result = await invoke<ConvertJobResult>("converter_convert", { req });
-				if (activeJobIdRef.current !== jobId) return;
+				if (activeJobIdRef.current !== jobId || cancelledJobIdsRef.current.has(jobId)) return;
 
 				const outputs = result.files.flatMap((f) => f.outputs ?? []);
 				const missingEngine =
@@ -983,7 +991,7 @@ export function ConverterDonut({
 				);
 				emitJobFinished(jobId, "done", option, inputs, outputs);
 			} catch (err) {
-				if (activeJobIdRef.current !== jobId) return;
+				if (activeJobIdRef.current !== jobId || cancelledJobIdsRef.current.has(jobId)) return;
 				const raw = err instanceof Error ? err.message : String(err);
 
 				if (raw === "CANCELLED" || raw.startsWith("CANCELLED")) {
@@ -1089,7 +1097,7 @@ export function ConverterDonut({
 				return;
 			}
 
-			releaseOverlayLock();
+			await releaseOverlayLock();
 			await runConversionJob(option, inputs, dropPoint, myGen);
 		},
 		[clearCheckingState, dismissWheelOrInstall, releaseOverlayLock, runConversionJob]
@@ -1137,7 +1145,7 @@ export function ConverterDonut({
 			}
 
 			setInstallPrompt(null);
-			releaseOverlayLock();
+			await releaseOverlayLock();
 			await runConversionJob(prompt.option, prompt.inputs, prompt.dropPoint, myGen);
 		} catch (err) {
 			if (sessionGenRef.current !== myGen) return;
@@ -1229,7 +1237,11 @@ export function ConverterDonut({
 		});
 
 		const unClose = listen("converter-donut-close", () => {
-			if (stateRef.current.wheelSession || stateRef.current.installPrompt || checkingTimerRef.current !== null) {
+			if (
+				stateRef.current.wheelSession ||
+				stateRef.current.checkingJob ||
+				stateRef.current.installPrompt
+			) {
 				sessionGenRef.current += 1;
 				clearCheckingState();
 				setWheelSession(null);
@@ -1406,8 +1418,15 @@ export function ConverterDonut({
 		if (!jobState) return;
 		const id = jobState.jobId;
 		if (jobState.status === "converting") {
+			cancelledJobIdsRef.current.add(id);
+			if (cancelledJobIdsRef.current.size > 64) {
+				const oldest = cancelledJobIdsRef.current.values().next().value;
+				if (oldest !== undefined) cancelledJobIdsRef.current.delete(oldest);
+			}
 			invoke("converter_cancel", { jobId: id }).catch(() => {});
-			setJobState((prev) => (prev && prev.jobId === id ? { ...prev, status: "cancelled" } : prev));
+			setJobState((prev) =>
+				prev && prev.jobId === id ? { ...prev, status: "cancelled", error: null } : prev
+			);
 			emitJobFinished(id, "cancelled", jobState.option, jobState.inputs, []);
 		} else {
 			setJobState(null);
@@ -1500,6 +1519,37 @@ export function ConverterDonut({
 		);
 	}, [activeRingJob, viewportSize]);
 
+	const progressRingShown = Boolean(activeRingJob && !suppressed);
+
+	const reportProgressBounds = useCallback(() => {
+		const el = progressRingRef.current;
+		if (!el) return;
+		const rect = el.getBoundingClientRect();
+		if (rect.width > 0 && rect.height > 0) {
+			invoke("converter_set_progress_rect", {
+				x: rect.left,
+				y: rect.top,
+				width: rect.width,
+				height: rect.height
+			}).catch(() => {});
+		}
+	}, []);
+
+	useLayoutEffect(() => {
+		if (!progressRingShown) return;
+		reportProgressBounds();
+		const el = progressRingRef.current;
+		const observer =
+			el && typeof ResizeObserver !== "undefined"
+				? new ResizeObserver(reportProgressBounds)
+				: null;
+		if (el && observer) observer.observe(el);
+		return () => {
+			observer?.disconnect();
+			invoke("converter_clear_progress_rect").catch(() => {});
+		};
+	}, [progressRingShown, progressRingPos.left, progressRingPos.top, reportProgressBounds]);
+
 	const installPackMeta = useMemo(() => {
 		if (!installPrompt) return null;
 		const engineId = installPrompt.engineId;
@@ -1560,10 +1610,6 @@ export function ConverterDonut({
 			progressLabel
 		};
 	}, [installPrompt, c.donut, c.packs]);
-
-	if (!wheelSession && !installPrompt && !activeRingJob) {
-		return null;
-	}
 
 	return (
 		<div className="zn-conv-root" dir={dir}>
@@ -1766,7 +1812,7 @@ export function ConverterDonut({
 			)}
 
 			{/* ── Inline Missing Core / Optional Engine Pack Card ── */}
-			<AnimatePresence>
+			<AnimatePresence onExitComplete={() => onRegionInvalidateRef.current?.()}>
 				{installPrompt && installPackMeta && !suppressed && (
 					<motion.div
 						ref={installCardRef}
@@ -1838,6 +1884,15 @@ export function ConverterDonut({
 							</div>
 						)}
 
+						{installPrompt.enginePack && !installPrompt.enginePack.downloadable && !installPrompt.error && (
+							<div className="zn-conv-card-error" role="status">
+								<AlertCircle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
+								<span>
+									{installPrompt.enginePack.unavailable_reason || c.donut.unavailablePack}
+								</span>
+							</div>
+						)}
+
 						{installPrompt.error && (
 							<div className="zn-conv-card-error" role="alert">
 								<AlertCircle size={13} style={{ flexShrink: 0, marginTop: 1 }} />
@@ -1886,7 +1941,7 @@ export function ConverterDonut({
 			</AnimatePresence>
 
 			{/* ── Compact Floating Progress Ring ── */}
-			<AnimatePresence>
+			<AnimatePresence onExitComplete={() => onRegionInvalidateRef.current?.()}>
 				{activeRingJob && !suppressed && (
 					<motion.div
 						ref={progressRingRef}
@@ -1897,6 +1952,9 @@ export function ConverterDonut({
 						animate={{ opacity: 1, scale: 1 }}
 						exit={{ opacity: 0, scale: 0.9 }}
 						transition={{ type: "spring", stiffness: 440, damping: 32 }}
+						onAnimationComplete={() => {
+							if (progressRingShown) reportProgressBounds();
+						}}
 						onMouseEnter={() => setRingHovered(true)}
 						onMouseLeave={() => setRingHovered(false)}
 						onClick={activeRingJob.status === "done" ? handleRevealOutput : undefined}

@@ -15,7 +15,7 @@ import { RadialMenu } from "./components/RadialMenu";
 import { LanguageProvider, useI18n } from "./i18n";
 import { DEFAULT_WHEEL_CONFIG, DEFAULT_WORKSPACES, type RadialWheelConfig } from "./radial/types";
 import { initTheme } from "./theme";
-import { clipToWindow, createRegionSender, measureElements, type RegionRect } from "./windowRegion";
+import { createRegionSender, measureElements, type RegionRect } from "./windowRegion";
 
 // ─── App Volume Mixer ───────────────────────────────────────────────────────
 
@@ -750,7 +750,6 @@ function OverlayApp() {
 	);
 	const [converterPhase, setConverterPhase] = useState<ConverterPhase>("idle");
 	const converterLockRef = useRef(false);
-	const prevConverterPhaseRef = useRef<ConverterPhase>("idle");
 
 	const resetHideTimeout = useCallback(() => {
 		// Keep the notch pinned while the mixer panel is open; it closes on
@@ -1022,7 +1021,12 @@ function OverlayApp() {
 		const radialOpenPromise = listen<{ x: number; y: number; width?: number; height?: number }>(
 			"radial-open",
 			(event) => {
-				if (splashActiveRef.current || converterLockRef.current || !mouseRadialEnabled) return;
+				if (splashActiveRef.current || !mouseRadialEnabled) return;
+				converterLockRef.current = false;
+				if (timeoutRef.current) {
+					clearTimeout(timeoutRef.current);
+					timeoutRef.current = null;
+				}
 				setRadialPosition({
 					x: event.payload.x,
 					y: event.payload.y,
@@ -1303,33 +1307,12 @@ function OverlayApp() {
 		}
 	}, []);
 
-	const clipOverlayRects = useCallback(
-		(rects: RegionRect[]): RegionRect[] =>
-			rects
-				.map((r) => clipToWindow(r, window.innerWidth, window.innerHeight))
-				.filter((r): r is RegionRect => r !== null),
-		[]
-	);
-
 	const handleConverterRegionInvalidate = useCallback(() => {
-		const rects = computeOverlayRegionRects();
-		sendOverlayRegion(rects);
-		// Push clipped rects directly too in case Rust's `restore_overlay_click_through`
-		// called `clear_window_region` while `sendOverlayRegion`'s cache key stayed unchanged.
-		invoke("set_window_region", { rects: clipOverlayRects(rects) }).catch(() => {});
-	}, [clipOverlayRects, computeOverlayRegionRects, sendOverlayRegion]);
+		sendOverlayRegion(computeOverlayRegionRects());
+	}, [computeOverlayRegionRects, sendOverlayRegion]);
 
 	useEffect(() => {
-		const rects = computeOverlayRegionRects();
-		sendOverlayRegion(rects);
-		const prev = prevConverterPhaseRef.current;
-		prevConverterPhaseRef.current = converterPhase;
-		if (
-			(prev === "donut" || prev === "checking" || prev === "install") &&
-			(converterPhase === "progress" || converterPhase === "idle")
-		) {
-			invoke("set_window_region", { rects: clipOverlayRects(rects) }).catch(() => {});
-		}
+		sendOverlayRegion(computeOverlayRegionRects());
 	});
 
 	return (

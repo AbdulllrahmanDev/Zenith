@@ -4069,6 +4069,26 @@ unsafe fn dock_takes_press(point: windows::Win32::Foundation::POINT) -> bool {
     inside
 }
 
+fn cursor_over_converter_ring(ov_win: &tauri::WebviewWindow, cursor: windows::Win32::Foundation::POINT) -> bool {
+    if !crate::converter::has_converter_progress_rect() {
+        return false;
+    }
+    if let Ok(hwnd) = ov_win.hwnd() {
+        let mut ov_rect = windows::Win32::Foundation::RECT::default();
+        if unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowRect(hwnd, &mut ov_rect) }
+            .is_ok()
+        {
+            let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd) };
+            let scale = if dpi > 0 { (dpi as f64 / 96.0).max(0.25) } else { 1.0 };
+            let rel_x = (cursor.x - ov_rect.left) as f64 / scale;
+            let rel_y = (cursor.y - ov_rect.top) as f64 / scale;
+            return crate::converter::is_point_in_converter_progress_rect(rel_x, rel_y);
+        }
+    }
+    let (rx, ry) = screen_to_radial_css(cursor.x, cursor.y);
+    crate::converter::is_point_in_converter_progress_rect(rx as f64, ry as f64)
+}
+
 fn process_mouse_position(app_handle: &AppHandle, cursor: windows::Win32::Foundation::POINT) {
     if SHUTTING_DOWN.load(Ordering::Relaxed) {
         return;
@@ -4290,7 +4310,8 @@ fn process_mouse_position(app_handle: &AppHandle, cursor: windows::Win32::Founda
                     false
                 };
 
-                let should_ignore = !(over_left || over_right);
+                let over_converter_ring = cursor_over_converter_ring(&ov_win, cursor);
+                let should_ignore = !(over_left || over_right || over_converter_ring);
                 let prev = MH_LAST_OV_IGNORE.load(Ordering::Relaxed);
                 let new_val = if should_ignore { 1 } else { 0 };
                 if prev != new_val {

@@ -288,6 +288,8 @@ fn main() {
             converter::converter_install_engine,
             converter::converter_remove_engine,
             converter::converter_set_overlay_open,
+            converter::converter_set_progress_rect,
+            converter::converter_clear_progress_rect,
             converter::converter_update_trigger_config
         ])
         .setup(|app| {

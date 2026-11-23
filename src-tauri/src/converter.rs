@@ -2260,6 +2260,73 @@ pub fn request_close_converter_overlay_once(app: &AppHandle) {
     }
 }
 
+static CONVERTER_PROGRESS_RECT: Mutex<Option<(f64, f64, f64, f64)>> = Mutex::new(None);
+
+pub fn has_converter_progress_rect() -> bool {
+    CONVERTER_PROGRESS_RECT
+        .lock()
+        .ok()
+        .and_then(|guard| *guard)
+        .is_some_and(|(x, y, width, height)| {
+            x.is_finite()
+                && y.is_finite()
+                && width.is_finite()
+                && height.is_finite()
+                && width > 0.0
+                && height > 0.0
+        })
+}
+
+pub fn rect_contains_point(rect: Option<(f64, f64, f64, f64)>, rel_x: f64, rel_y: f64) -> bool {
+    if !rel_x.is_finite() || !rel_y.is_finite() {
+        return false;
+    }
+    let Some((x, y, width, height)) = rect else {
+        return false;
+    };
+    if !x.is_finite()
+        || !y.is_finite()
+        || !width.is_finite()
+        || !height.is_finite()
+        || width <= 0.0
+        || height <= 0.0
+    {
+        return false;
+    }
+    rel_x >= x && rel_x <= x + width && rel_y >= y && rel_y <= y + height
+}
+
+pub fn is_point_in_converter_progress_rect(rel_x: f64, rel_y: f64) -> bool {
+    let Ok(guard) = CONVERTER_PROGRESS_RECT.lock() else {
+        return false;
+    };
+    rect_contains_point(*guard, rel_x, rel_y)
+}
+
+#[tauri::command]
+pub fn converter_set_progress_rect(x: f64, y: f64, width: f64, height: f64) {
+    if let Ok(mut guard) = CONVERTER_PROGRESS_RECT.lock() {
+        if x.is_finite()
+            && y.is_finite()
+            && width.is_finite()
+            && height.is_finite()
+            && width > 0.0
+            && height > 0.0
+        {
+            *guard = Some((x, y, width, height));
+        } else {
+            *guard = None;
+        }
+    }
+}
+
+#[tauri::command]
+pub fn converter_clear_progress_rect() {
+    if let Ok(mut guard) = CONVERTER_PROGRESS_RECT.lock() {
+        *guard = None;
+    }
+}
+
 #[tauri::command]
 pub fn converter_set_overlay_open(app: AppHandle, open: bool) {
     {
@@ -3848,5 +3915,31 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  Filee-2.5.0-wi
         assert!(parse_url_lines("plain selected text").is_empty());
         assert!(is_supported_drag_url("file:///C:/Temp/photo.png"));
         assert!(!is_supported_drag_url("https://"));
+    }
+
+    #[test]
+    fn converter_progress_rect_hit_tests_bounds() {
+        assert!(!rect_contains_point(None, 50.0, 50.0));
+        assert!(!rect_contains_point(Some((10.0, 20.0, 0.0, 40.0)), 10.0, 25.0));
+        assert!(!rect_contains_point(Some((10.0, 20.0, 100.0, -5.0)), 20.0, 18.0));
+
+        let rect = Some((100.0, 200.0, 276.0, 64.0));
+        assert!(rect_contains_point(rect, 100.0, 200.0));
+        assert!(rect_contains_point(rect, 376.0, 264.0));
+        assert!(rect_contains_point(rect, 240.0, 232.0));
+        assert!(!rect_contains_point(rect, 99.9, 232.0));
+        assert!(!rect_contains_point(rect, 376.1, 232.0));
+        assert!(!rect_contains_point(rect, 240.0, 199.9));
+        assert!(!rect_contains_point(rect, 240.0, 264.1));
+        assert!(!rect_contains_point(rect, f64::NAN, 232.0));
+
+        converter_set_progress_rect(120.0, 340.0, 260.0, 60.0);
+        assert!(has_converter_progress_rect());
+        assert!(is_point_in_converter_progress_rect(150.0, 360.0));
+        assert!(!is_point_in_converter_progress_rect(10.0, 10.0));
+
+        converter_clear_progress_rect();
+        assert!(!has_converter_progress_rect());
+        assert!(!is_point_in_converter_progress_rect(150.0, 360.0));
     }
 }
