@@ -1,12 +1,14 @@
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::cell::UnsafeCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::sync::{Mutex, OnceLock};
+use std::thread::ThreadId;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
@@ -1965,6 +1967,772 @@ pub async fn converter_remove_engine(
     run_engine_subcommand(app, &id, EngineAction::Remove).await
 }
 
+// ─── Drag Trigger Config, Arbitration & Overlay IDropTarget Bridge ───────────
+
+const EXPLORER_AND_DESKTOP_CLASSES: &[&str] = &[
+    "CabinetWClass",
+    "ExploreWClass",
+    "Progman",
+    "WorkerW",
+];
+
+const FILE_MANAGER_PROCESSES: &[&str] = &[
+    "files",
+    "dopus",
+    "totalcmd64",
+    "totalcmd",
+    "xyplorer",
+    "onecommander",
+    "q-dir",
+    "freecommander",
+    "fpilot",
+    "xplorer2_64",
+    "rustyfiles",
+];
+
+const BROWSER_PROCESSES: &[&str] = &[
+    "chrome",
+    "msedge",
+    "firefox",
+    "brave",
+    "opera",
+    "vivaldi",
+    "arc",
+];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConverterTriggerKey {
+    Ctrl,
+    Alt,
+    Shift,
+    RightDrag,
+}
+
+impl ConverterTriggerKey {
+    pub fn parse(raw: &str) -> Self {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "alt" => Self::Alt,
+            "shift" => Self::Shift,
+            "right-drag" | "right_drag" | "rightdrag" => Self::RightDrag,
+            _ => Self::Ctrl,
+        }
+    }
+
+    fn to_u8(self) -> u8 {
+        match self {
+            Self::Ctrl => 0,
+            Self::Alt => 1,
+            Self::Shift => 2,
+            Self::RightDrag => 3,
+        }
+    }
+
+    fn from_u8(val: u8) -> Self {
+        match val {
+            1 => Self::Alt,
+            2 => Self::Shift,
+            3 => Self::RightDrag,
+            _ => Self::Ctrl,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ConverterDragConfig {
+    pub enabled: bool,
+    pub trigger_key: ConverterTriggerKey,
+    pub browser_drag: bool,
+}
+
+impl Default for ConverterDragConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            trigger_key: ConverterTriggerKey::Ctrl,
+            browser_drag: true,
+        }
+    }
+}
+
+static CONVERTER_CFG_ENABLED: AtomicBool = AtomicBool::new(true);
+static CONVERTER_CFG_TRIGGER_KEY: AtomicU8 = AtomicU8::new(0);
+static CONVERTER_CFG_BROWSER_DRAG: AtomicBool = AtomicBool::new(true);
+
+pub static CONVERTER_OVERLAY_OPEN: AtomicBool = AtomicBool::new(false);
+pub static CONVERTER_OLE_DRAG_ENTERED: AtomicBool = AtomicBool::new(false);
+pub static CONVERTER_OLE_DROP_DONE: AtomicBool = AtomicBool::new(false);
+pub static CONVERTER_DRAG_IS_BROWSER: AtomicBool = AtomicBool::new(false);
+pub static CONVERTER_DRAG_SESSION_ID: AtomicU64 = AtomicU64::new(0);
+static CONVERTER_CLOSE_DISPATCHED_SESSION: AtomicU64 = AtomicU64::new(0);
+static MAIN_THREAD_ID: OnceLock<ThreadId> = OnceLock::new();
+
+pub fn set_main_thread_id(id: ThreadId) {
+    let _ = MAIN_THREAD_ID.set(id);
+}
+
+pub fn get_converter_drag_config() -> ConverterDragConfig {
+    ConverterDragConfig {
+        enabled: CONVERTER_CFG_ENABLED.load(Ordering::Relaxed),
+        trigger_key: ConverterTriggerKey::from_u8(
+            CONVERTER_CFG_TRIGGER_KEY.load(Ordering::Relaxed),
+        ),
+        browser_drag: CONVERTER_CFG_BROWSER_DRAG.load(Ordering::Relaxed),
+    }
+}
+
+pub fn set_converter_drag_config(cfg: ConverterDragConfig) {
+    CONVERTER_CFG_ENABLED.store(cfg.enabled, Ordering::Relaxed);
+    CONVERTER_CFG_TRIGGER_KEY.store(cfg.trigger_key.to_u8(), Ordering::Relaxed);
+    CONVERTER_CFG_BROWSER_DRAG.store(cfg.browser_drag, Ordering::Relaxed);
+}
+
+pub fn sync_trigger_config_from_settings(app: &AppHandle) {
+    let enabled = crate::utils::get_setting_str(app, "zenith-converter-enabled")
+        .as_deref()
+        != Some("false");
+    let trigger_raw = crate::utils::get_setting_str(app, "zenith-converter-trigger-key")
+        .unwrap_or_else(|| "ctrl".to_string());
+    let browser_drag = crate::utils::get_setting_str(app, "zenith-converter-browser-drag")
+        .as_deref()
+        != Some("false");
+
+    set_converter_drag_config(ConverterDragConfig {
+        enabled,
+        trigger_key: ConverterTriggerKey::parse(&trigger_raw),
+        browser_drag,
+    });
+}
+
+#[tauri::command]
+pub fn converter_update_trigger_config(enabled: bool, trigger_key: String, browser_drag: bool) {
+    set_converter_drag_config(ConverterDragConfig {
+        enabled,
+        trigger_key: ConverterTriggerKey::parse(&trigger_key),
+        browser_drag,
+    });
+}
+
+pub fn set_converter_overlay_open(open: bool) {
+    CONVERTER_OVERLAY_OPEN.store(open, Ordering::SeqCst);
+}
+
+pub fn prepare_converter_overlay_open() -> u64 {
+    let session_id = CONVERTER_DRAG_SESSION_ID.fetch_add(1, Ordering::SeqCst) + 1;
+    CONVERTER_OLE_DRAG_ENTERED.store(false, Ordering::SeqCst);
+    CONVERTER_OLE_DROP_DONE.store(false, Ordering::SeqCst);
+    CONVERTER_CLOSE_DISPATCHED_SESSION.store(0, Ordering::SeqCst);
+    CONVERTER_OVERLAY_OPEN.store(true, Ordering::SeqCst);
+    session_id
+}
+
+pub fn close_converter_overlay(app: &AppHandle) {
+    let was_open = CONVERTER_OVERLAY_OPEN.swap(false, Ordering::SeqCst);
+    CONVERTER_OLE_DRAG_ENTERED.store(false, Ordering::SeqCst);
+    if was_open {
+        let _ = app.emit_to("overlay", "converter-donut-close", serde_json::json!({}));
+    }
+    if !crate::services::MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed) {
+        crate::commands::restore_overlay_click_through(app);
+    }
+}
+
+pub fn close_converter_overlay_for_session(app: &AppHandle, session_id: u64) {
+    if CONVERTER_DRAG_SESSION_ID.load(Ordering::SeqCst) == session_id
+        && CONVERTER_OVERLAY_OPEN.load(Ordering::SeqCst)
+        && !CONVERTER_OLE_DROP_DONE.load(Ordering::SeqCst)
+    {
+        close_converter_overlay(app);
+    }
+}
+
+pub fn request_close_converter_overlay_once(app: &AppHandle) {
+    if !CONVERTER_OVERLAY_OPEN.load(Ordering::SeqCst) {
+        return;
+    }
+    let session = CONVERTER_DRAG_SESSION_ID.load(Ordering::SeqCst);
+    if CONVERTER_CLOSE_DISPATCHED_SESSION.swap(session, Ordering::SeqCst) != session {
+        let app_clone = app.clone();
+        std::thread::spawn(move || {
+            close_converter_overlay(&app_clone);
+        });
+    }
+}
+
+#[tauri::command]
+pub fn converter_set_overlay_open(app: AppHandle, open: bool) {
+    set_converter_overlay_open(open);
+    if !open {
+        CONVERTER_OLE_DRAG_ENTERED.store(false, Ordering::SeqCst);
+        if !crate::services::MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed) {
+            crate::commands::restore_overlay_click_through(&app);
+        }
+    }
+}
+
+/// Pure arbitration guard determining whether a drag should activate the converter overlay.
+pub fn should_open_converter_drag(
+    converter_enabled: bool,
+    radial_open: bool,
+    over_notch_window: bool,
+    trigger_held: bool,
+    drag_distance_sq: i32,
+    threshold_px: i32,
+) -> bool {
+    if !converter_enabled || radial_open || over_notch_window || !trigger_held {
+        return false;
+    }
+    if drag_distance_sq < 0 {
+        return false;
+    }
+    let min_dist = threshold_px.max(0) as i64;
+    (drag_distance_sq as i64) >= min_dist * min_dist
+}
+
+fn normalize_process_stem(process_name: Option<&str>) -> Option<String> {
+    let raw = process_name?.trim();
+    if raw.is_empty() {
+        return None;
+    }
+    let base = raw.rsplit(['\\', '/']).next().unwrap_or(raw).trim();
+    if base.is_empty() {
+        return None;
+    }
+    let lower = base.to_ascii_lowercase();
+    let stem = lower.strip_suffix(".exe").unwrap_or(&lower).trim();
+    if stem.is_empty() {
+        None
+    } else {
+        Some(stem.to_string())
+    }
+}
+
+pub fn is_converter_browser_process(process_name: Option<&str>) -> bool {
+    let Some(stem) = normalize_process_stem(process_name) else {
+        return false;
+    };
+    BROWSER_PROCESSES.contains(&stem.as_str())
+}
+
+pub fn is_converter_explorer_or_desktop_class(window_class: Option<&str>) -> bool {
+    let Some(cls) = window_class.map(str::trim).filter(|s| !s.is_empty()) else {
+        return false;
+    };
+    EXPLORER_AND_DESKTOP_CLASSES
+        .iter()
+        .any(|known| known.eq_ignore_ascii_case(cls))
+}
+
+/// Returns true if the drag originated from Explorer, Desktop, a supported file manager,
+/// or a supported browser (only when `browser_drag_enabled` is true).
+pub fn is_converter_drag_source(
+    window_class: Option<&str>,
+    process_name: Option<&str>,
+    browser_drag_enabled: bool,
+) -> bool {
+    if is_converter_explorer_or_desktop_class(window_class) {
+        return true;
+    }
+    if let Some(stem) = normalize_process_stem(process_name) {
+        if FILE_MANAGER_PROCESSES.contains(&stem.as_str()) {
+            return true;
+        }
+        if browser_drag_enabled && BROWSER_PROCESSES.contains(&stem.as_str()) {
+            return true;
+        }
+    }
+    false
+}
+
+fn is_supported_drag_url(candidate: &str) -> bool {
+    let trimmed = candidate.trim();
+    if trimmed.is_empty() || trimmed.chars().any(char::is_whitespace) {
+        return false;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    (lower.starts_with("http://") && trimmed.len() > "http://".len())
+        || (lower.starts_with("https://") && trimmed.len() > "https://".len())
+        || (lower.starts_with("file://") && trimmed.len() > "file://".len())
+        || (lower.starts_with("ftp://") && trimmed.len() > "ftp://".len())
+}
+
+fn parse_url_lines(raw: &str) -> Vec<String> {
+    let mut urls = Vec::new();
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if is_supported_drag_url(trimmed) && !urls.iter().any(|u| u == trimmed) {
+            urls.push(trimmed.to_string());
+        }
+    }
+    urls
+}
+
+const MAX_URL_UNITS: usize = 1 << 15;
+
+struct ConverterTargetStore(
+    #[allow(dead_code)] Vec<isize>,
+    #[allow(dead_code)] Vec<windows::Win32::System::Ole::IDropTarget>,
+);
+unsafe impl Send for ConverterTargetStore {}
+
+static CONVERTER_DROP_TARGETS: Mutex<Option<ConverterTargetStore>> = Mutex::new(None);
+static CF_INETURL_W: OnceLock<u16> = OnceLock::new();
+static CF_INETURL_A: OnceLock<u16> = OnceLock::new();
+
+fn cf_ineturl_w() -> u16 {
+    *CF_INETURL_W.get_or_init(|| unsafe {
+        windows::Win32::System::DataExchange::RegisterClipboardFormatW(windows::core::w!(
+            "UniformResourceLocatorW"
+        )) as u16
+    })
+}
+
+fn cf_ineturl_a() -> u16 {
+    *CF_INETURL_A.get_or_init(|| unsafe {
+        windows::Win32::System::DataExchange::RegisterClipboardFormatW(windows::core::w!(
+            "UniformResourceLocator"
+        )) as u16
+    })
+}
+
+struct ConverterDragPayload {
+    paths: Vec<String>,
+    urls: Vec<String>,
+    is_browser_drag: bool,
+}
+
+#[windows::core::implement(windows::Win32::System::Ole::IDropTarget)]
+struct ConverterDropTarget {
+    app: AppHandle,
+    enter_valid: UnsafeCell<bool>,
+    cursor_effect: UnsafeCell<windows::Win32::System::Ole::DROPEFFECT>,
+    last_css_pos: UnsafeCell<Option<(i32, i32)>>,
+    cached_payload: UnsafeCell<Option<ConverterDragPayload>>,
+}
+
+impl ConverterDropTarget {
+    unsafe fn extract_files(data: &windows::Win32::System::Com::IDataObject) -> Vec<String> {
+        use windows::Win32::System::Com::{DVASPECT_CONTENT, FORMATETC, TYMED_HGLOBAL};
+        use windows::Win32::System::Ole::{ReleaseStgMedium, CF_HDROP};
+        use windows::Win32::UI::Shell::{DragQueryFileW, HDROP};
+
+        let format = FORMATETC {
+            cfFormat: CF_HDROP.0,
+            ptd: std::ptr::null_mut(),
+            dwAspect: DVASPECT_CONTENT.0,
+            lindex: -1,
+            tymed: TYMED_HGLOBAL.0 as u32,
+        };
+        let Ok(mut medium) = data.GetData(&format) else {
+            return Vec::new();
+        };
+        let hdrop = HDROP(medium.u.hGlobal.0 as _);
+        let count = DragQueryFileW(hdrop, 0xFFFFFFFF, None);
+        let mut paths = Vec::with_capacity(count as usize);
+        for i in 0..count {
+            let len = DragQueryFileW(hdrop, i, None) as usize;
+            if len > 0 {
+                let mut buf = vec![0u16; len + 1];
+                DragQueryFileW(hdrop, i, Some(&mut buf));
+                let path = String::from_utf16_lossy(&buf[..len]);
+                if !path.trim().is_empty() {
+                    paths.push(path);
+                }
+            }
+        }
+        ReleaseStgMedium(&mut medium);
+        paths
+    }
+
+    unsafe fn read_hglobal_bytes(
+        data: &windows::Win32::System::Com::IDataObject,
+        cf: u16,
+        max_bytes: usize,
+    ) -> Option<Vec<u8>> {
+        use windows::Win32::System::Com::{DVASPECT_CONTENT, FORMATETC, TYMED_HGLOBAL};
+        use windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+        use windows::Win32::System::Ole::ReleaseStgMedium;
+
+        let format = FORMATETC {
+            cfFormat: cf,
+            ptd: std::ptr::null_mut(),
+            dwAspect: DVASPECT_CONTENT.0,
+            lindex: -1,
+            tymed: TYMED_HGLOBAL.0 as u32,
+        };
+        let mut medium = data.GetData(&format).ok()?;
+        let ptr = GlobalLock(medium.u.hGlobal) as *const u8;
+        if ptr.is_null() {
+            ReleaseStgMedium(&mut medium);
+            return None;
+        }
+        let alloc_bytes = GlobalSize(medium.u.hGlobal);
+        let capped = alloc_bytes.min(max_bytes);
+        let bytes = if capped == 0 {
+            None
+        } else {
+            Some(std::slice::from_raw_parts(ptr, capped).to_vec())
+        };
+        let _ = GlobalUnlock(medium.u.hGlobal);
+        ReleaseStgMedium(&mut medium);
+        bytes
+    }
+
+    unsafe fn extract_hglobal_utf16(
+        data: &windows::Win32::System::Com::IDataObject,
+        cf: u16,
+    ) -> Option<String> {
+        let bytes = Self::read_hglobal_bytes(data, cf, MAX_URL_UNITS * 2)?;
+        let mut units = Vec::with_capacity(bytes.len() / 2);
+        for &pair in bytes.as_chunks::<2>().0 {
+            let unit = u16::from_le_bytes(pair);
+            if unit == 0 {
+                break;
+            }
+            units.push(unit);
+        }
+        (!units.is_empty()).then(|| String::from_utf16_lossy(&units))
+    }
+
+    unsafe fn extract_hglobal_ansi(
+        data: &windows::Win32::System::Com::IDataObject,
+        cf: u16,
+    ) -> Option<String> {
+        let bytes = Self::read_hglobal_bytes(data, cf, MAX_URL_UNITS)?;
+        let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+        (end > 0).then(|| String::from_utf8_lossy(&bytes[..end]).into_owned())
+    }
+
+    unsafe fn extract_urls(data: &windows::Win32::System::Com::IDataObject) -> Vec<String> {
+        use windows::Win32::System::Ole::CF_UNICODETEXT;
+
+        let mut urls = Vec::new();
+        let cf_w = cf_ineturl_w();
+        if cf_w != 0 {
+            if let Some(raw) = Self::extract_hglobal_utf16(data, cf_w) {
+                for url in parse_url_lines(&raw) {
+                    if !urls.contains(&url) {
+                        urls.push(url);
+                    }
+                }
+            }
+        }
+        if urls.is_empty() {
+            let cf_a = cf_ineturl_a();
+            if cf_a != 0 {
+                if let Some(raw) = Self::extract_hglobal_ansi(data, cf_a) {
+                    for url in parse_url_lines(&raw) {
+                        if !urls.contains(&url) {
+                            urls.push(url);
+                        }
+                    }
+                }
+            }
+        }
+        if urls.is_empty() {
+            if let Some(raw) = Self::extract_hglobal_utf16(data, CF_UNICODETEXT.0) {
+                let all_lines_urls = raw
+                    .lines()
+                    .map(str::trim)
+                    .filter(|l| !l.is_empty())
+                    .all(is_supported_drag_url);
+                if all_lines_urls {
+                    urls = parse_url_lines(&raw);
+                }
+            }
+        }
+        urls
+    }
+
+    unsafe fn extract_payload(
+        data: &windows::Win32::System::Com::IDataObject,
+    ) -> (Vec<String>, Vec<String>) {
+        let paths = Self::extract_files(data);
+        let urls = Self::extract_urls(data);
+        (paths, urls)
+    }
+}
+
+#[allow(non_snake_case)]
+impl windows::Win32::System::Ole::IDropTarget_Impl for ConverterDropTarget_Impl {
+    fn DragEnter(
+        &self,
+        pdata: windows::core::Ref<'_, windows::Win32::System::Com::IDataObject>,
+        _keys: windows::Win32::System::SystemServices::MODIFIERKEYS_FLAGS,
+        pt: &windows::Win32::Foundation::POINTL,
+        effect: *mut windows::Win32::System::Ole::DROPEFFECT,
+    ) -> windows::core::Result<()> {
+        use windows::Win32::System::Ole::{DROPEFFECT_COPY, DROPEFFECT_NONE};
+
+        let (paths, urls) = pdata
+            .as_ref()
+            .map(|data| unsafe { ConverterDropTarget::extract_payload(data) })
+            .unwrap_or_default();
+
+        if paths.is_empty() && urls.is_empty() {
+            unsafe {
+                *self.enter_valid.get() = false;
+                *self.cursor_effect.get() = DROPEFFECT_NONE;
+                *self.last_css_pos.get() = None;
+                *self.cached_payload.get() = None;
+                if !effect.is_null() {
+                    *effect = DROPEFFECT_NONE;
+                }
+            }
+            close_converter_overlay(&self.app);
+            return Ok(());
+        }
+
+        let (x, y) = crate::services::screen_to_radial_css(pt.x, pt.y);
+        let is_browser_drag = CONVERTER_DRAG_IS_BROWSER.load(Ordering::Relaxed)
+            || (paths.is_empty() && !urls.is_empty());
+
+        unsafe {
+            *self.enter_valid.get() = true;
+            *self.cursor_effect.get() = DROPEFFECT_COPY;
+            *self.last_css_pos.get() = Some((x, y));
+            *self.cached_payload.get() = Some(ConverterDragPayload {
+                paths: paths.clone(),
+                urls: urls.clone(),
+                is_browser_drag,
+            });
+            if !effect.is_null() {
+                *effect = DROPEFFECT_COPY;
+            }
+        }
+        CONVERTER_OLE_DRAG_ENTERED.store(true, Ordering::SeqCst);
+
+        let _ = self.app.emit_to(
+            "overlay",
+            "converter-donut-open",
+            serde_json::json!({
+                "x": x,
+                "y": y,
+                "paths": paths,
+                "urls": urls,
+                "isBrowserDrag": is_browser_drag,
+            }),
+        );
+        Ok(())
+    }
+
+    fn DragOver(
+        &self,
+        _keys: windows::Win32::System::SystemServices::MODIFIERKEYS_FLAGS,
+        pt: &windows::Win32::Foundation::POINTL,
+        effect: *mut windows::Win32::System::Ole::DROPEFFECT,
+    ) -> windows::core::Result<()> {
+        unsafe {
+            if !effect.is_null() {
+                *effect = *self.cursor_effect.get();
+            }
+            if *self.enter_valid.get() {
+                let (x, y) = crate::services::screen_to_radial_css(pt.x, pt.y);
+                let last = &mut *self.last_css_pos.get();
+                if *last != Some((x, y)) {
+                    *last = Some((x, y));
+                    let _ = self.app.emit_to(
+                        "overlay",
+                        "converter-donut-drag-move",
+                        serde_json::json!({ "x": x, "y": y }),
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn DragLeave(&self) -> windows::core::Result<()> {
+        if unsafe { *self.enter_valid.get() } {
+            unsafe {
+                *self.enter_valid.get() = false;
+                *self.last_css_pos.get() = None;
+                *self.cached_payload.get() = None;
+            }
+            CONVERTER_OLE_DRAG_ENTERED.store(false, Ordering::SeqCst);
+            close_converter_overlay(&self.app);
+        }
+        Ok(())
+    }
+
+    fn Drop(
+        &self,
+        pdata: windows::core::Ref<'_, windows::Win32::System::Com::IDataObject>,
+        _keys: windows::Win32::System::SystemServices::MODIFIERKEYS_FLAGS,
+        pt: &windows::Win32::Foundation::POINTL,
+        effect: *mut windows::Win32::System::Ole::DROPEFFECT,
+    ) -> windows::core::Result<()> {
+        if unsafe { *self.enter_valid.get() } {
+            unsafe {
+                *self.enter_valid.get() = false;
+                *self.last_css_pos.get() = None;
+                if !effect.is_null() {
+                    *effect = *self.cursor_effect.get();
+                }
+            }
+            let cached = unsafe { (*self.cached_payload.get()).take() };
+            let (mut paths, mut urls) = pdata
+                .as_ref()
+                .map(|data| unsafe { ConverterDropTarget::extract_payload(data) })
+                .unwrap_or_default();
+
+            let is_browser_drag = if paths.is_empty() && urls.is_empty() {
+                if let Some(cached_payload) = cached {
+                    paths = cached_payload.paths;
+                    urls = cached_payload.urls;
+                    cached_payload.is_browser_drag
+                } else {
+                    CONVERTER_DRAG_IS_BROWSER.load(Ordering::Relaxed)
+                }
+            } else {
+                CONVERTER_DRAG_IS_BROWSER.load(Ordering::Relaxed)
+                    || (paths.is_empty() && !urls.is_empty())
+            };
+
+            let (x, y) = crate::services::screen_to_radial_css(pt.x, pt.y);
+            CONVERTER_OLE_DRAG_ENTERED.store(false, Ordering::SeqCst);
+            CONVERTER_OLE_DROP_DONE.store(true, Ordering::SeqCst);
+
+            let _ = self.app.emit_to(
+                "overlay",
+                "converter-donut-drop",
+                serde_json::json!({
+                    "x": x,
+                    "y": y,
+                    "paths": paths,
+                    "urls": urls,
+                    "isBrowserDrag": is_browser_drag,
+                }),
+            );
+        }
+        Ok(())
+    }
+}
+
+fn collect_overlay_hwnds(top: windows::Win32::Foundation::HWND) -> Vec<isize> {
+    use windows::core::BOOL;
+    use windows::Win32::Foundation::{HWND, LPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::EnumChildWindows;
+
+    unsafe extern "system" fn child_proc(child: HWND, lparam: LPARAM) -> BOOL {
+        let out = &mut *(lparam.0 as *mut Vec<isize>);
+        out.push(child.0 as isize);
+        BOOL(1)
+    }
+
+    let mut hwnds = vec![top.0 as isize];
+    unsafe {
+        let _ = EnumChildWindows(
+            Some(top),
+            Some(child_proc),
+            LPARAM(&mut hwnds as *mut Vec<isize> as isize),
+        );
+    }
+    hwnds.sort_unstable();
+    hwnds.dedup();
+    hwnds
+}
+
+unsafe fn inject_converter_target(
+    hwnd: windows::Win32::Foundation::HWND,
+    app: &AppHandle,
+    out: &mut Vec<windows::Win32::System::Ole::IDropTarget>,
+) {
+    use windows::Win32::System::Ole::{
+        IDropTarget, RegisterDragDrop, RevokeDragDrop, DROPEFFECT_NONE,
+    };
+
+    let target: IDropTarget = ConverterDropTarget {
+        app: app.clone(),
+        enter_valid: UnsafeCell::new(false),
+        cursor_effect: UnsafeCell::new(DROPEFFECT_NONE),
+        last_css_pos: UnsafeCell::new(None),
+        cached_payload: UnsafeCell::new(None),
+    }
+    .into();
+    let _ = RevokeDragDrop(hwnd);
+    if RegisterDragDrop(hwnd, &target).is_ok() {
+        out.push(target);
+    }
+}
+
+/// (Re)registers the converter OLE IDropTarget on `"overlay"` and all its current
+/// descendant child windows. Must run on the main thread that owns `"overlay"`.
+pub fn setup_converter_drop(app: &AppHandle) {
+    if CONVERTER_OLE_DRAG_ENTERED.load(Ordering::Acquire) {
+        return;
+    }
+    let Some(win) = app.get_webview_window("overlay") else {
+        return;
+    };
+    let Ok(hwnd) = win.hwnd() else {
+        return;
+    };
+
+    let hwnds = collect_overlay_hwnds(hwnd);
+    unsafe {
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
+        let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        let mut targets = Vec::with_capacity(hwnds.len());
+        let mut registered_hwnds = Vec::with_capacity(hwnds.len());
+        for raw in hwnds {
+            let child_hwnd = HWND(raw as *mut _);
+            let before = targets.len();
+            inject_converter_target(child_hwnd, app, &mut targets);
+            if targets.len() > before {
+                registered_hwnds.push(raw);
+            }
+        }
+        if let Ok(mut guard) = CONVERTER_DROP_TARGETS.lock() {
+            *guard = Some(ConverterTargetStore(registered_hwnds, targets));
+        }
+    }
+}
+
+/// Ensures `"overlay"` and all its current child windows have `ConverterDropTarget` registered,
+/// only re-registering if child HWNDs changed (e.g. WebView2 recreated its render child).
+pub fn ensure_converter_drop(app: &AppHandle) {
+    let Some(win) = app.get_webview_window("overlay") else {
+        return;
+    };
+    let Ok(hwnd) = win.hwnd() else {
+        return;
+    };
+    let current = collect_overlay_hwnds(hwnd);
+    let already_matches = CONVERTER_DROP_TARGETS
+        .lock()
+        .ok()
+        .is_some_and(|guard| {
+            guard
+                .as_ref()
+                .is_some_and(|store| !store.0.is_empty() && store.0 == current)
+        });
+    if !already_matches {
+        setup_converter_drop(app);
+    }
+}
+
+pub fn ensure_converter_drop_synced(app: &AppHandle) {
+    if MAIN_THREAD_ID
+        .get()
+        .is_some_and(|&id| id == std::thread::current().id())
+    {
+        ensure_converter_drop(app);
+        return;
+    }
+    let (tx, rx) = std::sync::mpsc::sync_channel::<()>(1);
+    let app_clone = app.clone();
+    if app
+        .run_on_main_thread(move || {
+            ensure_converter_drop(&app_clone);
+            let _ = tx.send(());
+        })
+        .is_ok()
+    {
+        let _ = rx.recv_timeout(Duration::from_millis(80));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2562,5 +3330,114 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  Filee-2.5.0-wi
             resolve_expected_sha256(None, Some(sha_a.clone()), "Filee-2.5.0-win-Portable.zip"),
             Ok(sha_a)
         );
+    }
+
+    #[test]
+    fn should_open_converter_drag_arbitrates_all_guards() {
+        assert!(!should_open_converter_drag(false, false, false, true, 100, 4));
+        assert!(!should_open_converter_drag(true, true, false, true, 100, 4));
+        assert!(!should_open_converter_drag(true, false, true, true, 100, 4));
+        assert!(!should_open_converter_drag(true, false, false, false, 100, 4));
+        assert!(!should_open_converter_drag(true, false, false, true, 15, 4));
+        assert!(!should_open_converter_drag(true, false, false, true, -1, 4));
+
+        assert!(should_open_converter_drag(true, false, false, true, 16, 4));
+        assert!(should_open_converter_drag(true, false, false, true, 100, 4));
+    }
+
+    #[test]
+    fn is_converter_drag_source_matches_file_managers_and_optional_browsers() {
+        for class in ["CabinetWClass", "ExploreWClass", "Progman", "WorkerW"] {
+            assert!(
+                is_converter_drag_source(Some(class), Some("explorer.exe"), false),
+                "expected class {class} to match"
+            );
+            assert!(is_converter_drag_source(Some(class), None, false));
+        }
+
+        for proc_name in [
+            "Files",
+            "Files.exe",
+            "dopus",
+            "dopus.exe",
+            "TOTALCMD64",
+            "TOTALCMD64.EXE",
+            "TOTALCMD",
+            "XYplorer",
+            "OneCommander",
+            "Q-Dir",
+            "FreeCommander",
+            "FPilot",
+            "xplorer2_64",
+            "rustyfiles",
+        ] {
+            assert!(
+                is_converter_drag_source(None, Some(proc_name), false),
+                "expected file manager {proc_name} to match"
+            );
+        }
+
+        for browser in [
+            "chrome",
+            "chrome.exe",
+            "msedge",
+            "msedge.exe",
+            "firefox",
+            "firefox.exe",
+            "brave",
+            "brave.exe",
+            "opera",
+            "vivaldi",
+            "arc",
+        ] {
+            assert!(
+                !is_converter_drag_source(Some("Chrome_WidgetWin_1"), Some(browser), false),
+                "expected browser {browser} to be rejected when disabled"
+            );
+            assert!(
+                is_converter_drag_source(Some("Chrome_WidgetWin_1"), Some(browser), true),
+                "expected browser {browser} to match when enabled"
+            );
+        }
+
+        assert!(!is_converter_drag_source(None, None, true));
+        assert!(!is_converter_drag_source(
+            Some("Notepad"),
+            Some("notepad.exe"),
+            true
+        ));
+        assert!(!is_converter_drag_source(
+            Some("Chrome_WidgetWin_1"),
+            Some("Code.exe"),
+            true
+        ));
+        assert!(!is_converter_drag_source(
+            Some("Shell_TrayWnd"),
+            Some("explorer.exe"),
+            true
+        ));
+    }
+
+    #[test]
+    fn converter_trigger_key_and_url_helpers_parse_cleanly() {
+        assert_eq!(ConverterTriggerKey::parse("ctrl"), ConverterTriggerKey::Ctrl);
+        assert_eq!(ConverterTriggerKey::parse("ALT"), ConverterTriggerKey::Alt);
+        assert_eq!(ConverterTriggerKey::parse("Shift"), ConverterTriggerKey::Shift);
+        assert_eq!(
+            ConverterTriggerKey::parse("right-drag"),
+            ConverterTriggerKey::RightDrag
+        );
+        assert_eq!(ConverterTriggerKey::parse("unknown"), ConverterTriggerKey::Ctrl);
+
+        assert_eq!(
+            parse_url_lines("https://example.com/a.png\r\nhttp://localhost:8080/f.pdf\nnot a url\nhttps://example.com/a.png"),
+            vec![
+                "https://example.com/a.png".to_string(),
+                "http://localhost:8080/f.pdf".to_string(),
+            ]
+        );
+        assert!(parse_url_lines("plain selected text").is_empty());
+        assert!(is_supported_drag_url("file:///C:/Temp/photo.png"));
+        assert!(!is_supported_drag_url("https://"));
     }
 }

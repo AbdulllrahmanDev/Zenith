@@ -286,14 +286,18 @@ fn main() {
             converter::converter_ensure_core,
             converter::converter_list_engines,
             converter::converter_install_engine,
-            converter::converter_remove_engine
+            converter::converter_remove_engine,
+            converter::converter_set_overlay_open,
+            converter::converter_update_trigger_config
         ])
         .setup(|app| {
+            crate::converter::set_main_thread_id(std::thread::current().id());
             init_taskbar_marker(app.handle());
             // Populate the settings cache before anything else: a webview can
             // invoke save_setting as soon as it loads, which happens before the
             // rest of this hook runs.
             crate::utils::init_settings_cache(app.handle());
+            crate::converter::sync_trigger_config_from_settings(app.handle());
 
             // Register system tray icon immediately on startup with a persistent ID
             {
@@ -619,6 +623,15 @@ fn main() {
                         api.prevent_close();
                         restore_taskbar_and_exit(&overlay_handle);
                     }
+                });
+                crate::converter::setup_converter_drop(app.handle());
+                let converter_drop_app = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                    let ah = converter_drop_app.clone();
+                    let _ = converter_drop_app.run_on_main_thread(move || {
+                        crate::converter::setup_converter_drop(&ah);
+                    });
                 });
             }
 

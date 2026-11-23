@@ -181,6 +181,17 @@ unsafe extern "system" fn keyboard_hook_proc(
         // Only physical presses drive the Win+Number replacement; injected
         // events (our own Start taps and mask key) must not re-enter it.
         if (kb.flags.0 & LLKHF_INJECTED.0) == 0 {
+            if is_down
+                && vk_code == windows::Win32::UI::Input::KeyboardAndMouse::VK_ESCAPE
+                && crate::converter::CONVERTER_OVERLAY_OPEN.load(Ordering::Relaxed)
+            {
+                if let Some(app) = KEYBOARD_HOOK_APP_HANDLE
+                    .get()
+                    .or_else(|| MOUSE_HOOK_APP_HANDLE.get())
+                {
+                    crate::converter::request_close_converter_overlay_once(app);
+                }
+            }
             if vk_code == VK_LWIN || vk_code == VK_RWIN {
                 if is_down {
                     WIN_KEY_DOWN.store(true, Ordering::Relaxed);
@@ -2403,6 +2414,9 @@ fn apply_capture_ui_state(app: &AppHandle, active: bool) {
     if SHUTTING_DOWN.load(Ordering::Relaxed) {
         return;
     }
+    if active && crate::converter::CONVERTER_OVERLAY_OPEN.load(Ordering::Relaxed) {
+        crate::converter::close_converter_overlay(app);
+    }
     if let Some(main_win) = app.get_webview_window("main") {
         if active {
             if let Ok(hwnd) = main_win.hwnd() {
@@ -2458,6 +2472,324 @@ static RADIAL_MON_ORIGIN_X: AtomicI32 = AtomicI32::new(0);
 static RADIAL_MON_ORIGIN_Y: AtomicI32 = AtomicI32::new(0);
 static RADIAL_MON_SCALE_MILLI: AtomicI32 = AtomicI32::new(1000);
 static LAST_RADIAL_EMIT_CURSOR: AtomicI64 = AtomicI64::new(-1);
+
+static CONVERTER_DRAG_ARMED: AtomicBool = AtomicBool::new(false);
+static CONVERTER_DRAG_TRIGGERED: AtomicBool = AtomicBool::new(false);
+static CONVERTER_DRAG_SOURCE_VALID: AtomicBool = AtomicBool::new(false);
+static CONVERTER_DRAG_BUTTON: AtomicU32 = AtomicU32::new(0);
+static CONVERTER_DRAG_DOWN_POINT: AtomicI64 = AtomicI64::new(0);
+static CONVERTER_DRAG_DOWN_TIME: AtomicI64 = AtomicI64::new(0);
+
+fn is_vk_down(vk: windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY) -> bool {
+    unsafe {
+        (windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState(vk.0 as i32) as u16
+            & 0x8000)
+            != 0
+    }
+}
+
+fn is_converter_trigger_held(
+    trigger: crate::converter::ConverterTriggerKey,
+    drag_btn: u32,
+) -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{VK_CONTROL, VK_MENU, VK_SHIFT};
+    match trigger {
+        crate::converter::ConverterTriggerKey::Ctrl => drag_btn == 1 && is_vk_down(VK_CONTROL),
+        crate::converter::ConverterTriggerKey::Alt => drag_btn == 1 && is_vk_down(VK_MENU),
+        crate::converter::ConverterTriggerKey::Shift => drag_btn == 1 && is_vk_down(VK_SHIFT),
+        crate::converter::ConverterTriggerKey::RightDrag => drag_btn == 2,
+    }
+}
+
+fn is_point_over_notch_window(pt: windows::Win32::Foundation::POINT) -> bool {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::UI::HiDpi::GetDpiForWindow;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetAncestor, GetWindowRect, IsWindowVisible, WindowFromPoint, GA_ROOT,
+    };
+
+    let Ok(notch_hwnds) = crate::state::NOTCH_HWNDS.try_lock().map(|g| g.clone()) else {
+        return false;
+    };
+
+    unsafe {
+        let pt_hwnd = WindowFromPoint(pt);
+        if !pt_hwnd.0.is_null() {
+            let root = GetAncestor(pt_hwnd, GA_ROOT);
+            let check = if !root.0.is_null() { root } else { pt_hwnd };
+            if notch_hwnds.iter().any(|(_, h)| *h == check.0 as isize) {
+                return true;
+            }
+        }
+    }
+
+    let notch_rects = crate::state::NOTCH_RECTS.try_lock().ok().map(|g| g.clone());
+    let fallback_rect = crate::state::NOTCH_RECT.try_lock().ok().and_then(|g| *g);
+
+    for (label, hwnd_val) in notch_hwnds {
+        let hwnd = HWND(hwnd_val as *mut _);
+        if !unsafe { IsWindowVisible(hwnd) }.as_bool() {
+            continue;
+        }
+        let mut win_rect = RECT::default();
+        if unsafe { GetWindowRect(hwnd, &mut win_rect) }.is_err() {
+            continue;
+        }
+        let dpi = unsafe { GetDpiForWindow(hwnd) };
+        let scale = if dpi == 0 { 1.0 } else { dpi as f64 / 96.0 };
+        let nr_opt = notch_rects
+            .as_ref()
+            .and_then(|m| m.get(&label).copied())
+            .or(fallback_rect);
+
+        if let Some(r) = nr_opt {
+            if r.width <= 0 || r.height <= 0 {
+                continue;
+            }
+            let pad_x = (50.0 * scale) as i32;
+            let pad_y_bottom = (8.0 * scale) as i32;
+            let hyst = (15.0 * scale) as i32;
+            let rx = win_rect.left + (r.x as f64 * scale) as i32 - pad_x - hyst;
+            let rw = (r.width as f64 * scale) as i32 + (pad_x * 2) + (hyst * 2);
+            let ry_top = win_rect.top;
+            let ry_bottom = win_rect.top
+                + (r.y.max(0) as f64 * scale) as i32
+                + (r.height as f64 * scale) as i32
+                + pad_y_bottom
+                + hyst;
+
+            if pt.x >= rx && pt.x <= (rx + rw) && pt.y >= ry_top && pt.y <= ry_bottom {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn process_name_for_pid(pid: u32) -> Option<String> {
+    if pid == 0 {
+        return None;
+    }
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+        let mut buf = [0u16; 1024];
+        let mut len = buf.len() as u32;
+        let res = QueryFullProcessImageNameW(
+            handle,
+            PROCESS_NAME_WIN32,
+            windows::core::PWSTR(buf.as_mut_ptr()),
+            &mut len,
+        );
+        let _ = CloseHandle(handle);
+        if res.is_ok() {
+            let path = String::from_utf16_lossy(&buf[..len as usize]);
+            Path::new(&path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|s| s.to_string())
+        } else {
+            None
+        }
+    }
+}
+
+fn inspect_converter_source_at_point(
+    pt: windows::Win32::Foundation::POINT,
+    browser_drag_enabled: bool,
+) -> (bool, bool) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetAncestor, GetClassNameA, GetForegroundWindow, WindowFromPoint, GA_ROOT,
+    };
+
+    if is_point_over_notch_window(pt) {
+        return (false, false);
+    }
+
+    unsafe {
+        let raw_hwnd = WindowFromPoint(pt);
+        let target_hwnd = if !raw_hwnd.0.is_null() {
+            let root = GetAncestor(raw_hwnd, GA_ROOT);
+            if !root.0.is_null() { root } else { raw_hwnd }
+        } else {
+            GetForegroundWindow()
+        };
+        if target_hwnd.0.is_null() {
+            return (false, false);
+        }
+
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(target_hwnd, Some(&mut pid));
+        if pid == 0 || pid == std::process::id() {
+            return (false, false);
+        }
+
+        let mut class_buf = [0u8; 128];
+        let class_len = GetClassNameA(target_hwnd, &mut class_buf);
+        let class_str = if class_len > 0 {
+            std::str::from_utf8(&class_buf[..class_len as usize]).ok()
+        } else {
+            None
+        };
+
+        if crate::converter::is_converter_explorer_or_desktop_class(class_str) {
+            return (true, false);
+        }
+
+        let proc_name = process_name_for_pid(pid);
+        let valid = crate::converter::is_converter_drag_source(
+            class_str,
+            proc_name.as_deref(),
+            browser_drag_enabled,
+        );
+        let is_browser = browser_drag_enabled
+            && crate::converter::is_converter_browser_process(proc_name.as_deref());
+        (valid, is_browser)
+    }
+}
+
+fn arm_converter_drag_if_eligible(message: u32, pt: windows::Win32::Foundation::POINT) {
+    const WM_LBUTTONDBLCLK: u32 = 0x0203;
+    const WM_RBUTTONDBLCLK: u32 = 0x0206;
+
+    let btn_num = if message == WM_LBUTTONDOWN || message == WM_LBUTTONDBLCLK {
+        1u32
+    } else if message == WM_RBUTTONDOWN || message == WM_RBUTTONDBLCLK {
+        2u32
+    } else {
+        return;
+    };
+
+    if SHUTTING_DOWN.load(Ordering::Relaxed)
+        || MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed)
+        || MOUSE_RADIAL_RECORDING.load(Ordering::Relaxed)
+        || CAPTURE_UI_ACTIVE.load(Ordering::Relaxed)
+        || OVERLAY_IN_SPLASH.load(Ordering::Relaxed)
+        || crate::converter::CONVERTER_OVERLAY_OPEN.load(Ordering::Relaxed)
+    {
+        return;
+    }
+
+    let cfg = crate::converter::get_converter_drag_config();
+    if !cfg.enabled {
+        return;
+    }
+    let matches_btn = match cfg.trigger_key {
+        crate::converter::ConverterTriggerKey::RightDrag => btn_num == 2,
+        _ => btn_num == 1,
+    };
+    if !matches_btn {
+        return;
+    }
+
+    let (source_valid, is_browser) = inspect_converter_source_at_point(pt, cfg.browser_drag);
+    CONVERTER_DRAG_DOWN_POINT.store(pack_cursor(pt), Ordering::Relaxed);
+    CONVERTER_DRAG_DOWN_TIME.store(hook_tick_ms(), Ordering::Relaxed);
+    CONVERTER_DRAG_BUTTON.store(btn_num, Ordering::Relaxed);
+    CONVERTER_DRAG_SOURCE_VALID.store(source_valid, Ordering::Relaxed);
+    crate::converter::CONVERTER_DRAG_IS_BROWSER.store(is_browser, Ordering::Relaxed);
+    CONVERTER_DRAG_TRIGGERED.store(false, Ordering::Relaxed);
+    CONVERTER_DRAG_ARMED.store(source_valid, Ordering::Release);
+}
+
+fn maybe_trigger_converter_drag(cursor: windows::Win32::Foundation::POINT) {
+    if !CONVERTER_DRAG_ARMED.load(Ordering::Acquire)
+        || CONVERTER_DRAG_TRIGGERED.load(Ordering::Relaxed)
+        || !CONVERTER_DRAG_SOURCE_VALID.load(Ordering::Relaxed)
+    {
+        return;
+    }
+    if MOUSE_RADIAL_HOLD_ARMED.load(Ordering::Relaxed)
+        || MOUSE_RADIAL_CLICK_ARMED.load(Ordering::Relaxed)
+        || MOUSE_RADIAL_RECORDING.load(Ordering::Relaxed)
+        || CAPTURE_UI_ACTIVE.load(Ordering::Relaxed)
+        || OVERLAY_IN_SPLASH.load(Ordering::Relaxed)
+    {
+        return;
+    }
+
+    let cfg = crate::converter::get_converter_drag_config();
+    let drag_btn = CONVERTER_DRAG_BUTTON.load(Ordering::Relaxed);
+    let trigger_held = is_converter_trigger_held(cfg.trigger_key, drag_btn);
+    let down_pt = unpack_cursor(CONVERTER_DRAG_DOWN_POINT.load(Ordering::Relaxed));
+    let dx = cursor.x - down_pt.x;
+    let dy = cursor.y - down_pt.y;
+    let drag_distance_sq = dx.saturating_mul(dx).saturating_add(dy.saturating_mul(dy));
+    let threshold_px = unsafe {
+        windows::Win32::UI::WindowsAndMessaging::GetSystemMetrics(
+            windows::Win32::UI::WindowsAndMessaging::SM_CXDRAG,
+        )
+    }
+    .max(4);
+    let radial_open = MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed);
+    let over_notch_window =
+        is_point_over_notch_window(down_pt) || is_point_over_notch_window(cursor);
+
+    if crate::converter::should_open_converter_drag(
+        cfg.enabled,
+        radial_open,
+        over_notch_window,
+        trigger_held,
+        drag_distance_sq,
+        threshold_px,
+    ) && !CONVERTER_DRAG_TRIGGERED.swap(true, Ordering::AcqRel)
+    {
+        let Some(app) = MOUSE_HOOK_APP_HANDLE
+            .get()
+            .or_else(|| WINDOW_CHANGE_APP_HANDLE.get())
+        else {
+            CONVERTER_DRAG_TRIGGERED.store(false, Ordering::Release);
+            return;
+        };
+        let _session_id = crate::converter::prepare_converter_overlay_open();
+        let app_clone = app.clone();
+        std::thread::spawn(move || {
+            crate::commands::show_overlay_for_converter(&app_clone, cursor.x, cursor.y);
+        });
+    }
+}
+
+fn handle_converter_drag_release(app: &AppHandle) {
+    CONVERTER_DRAG_ARMED.store(false, Ordering::Release);
+    CONVERTER_DRAG_SOURCE_VALID.store(false, Ordering::Relaxed);
+    let was_triggered = CONVERTER_DRAG_TRIGGERED.swap(false, Ordering::AcqRel);
+    if !was_triggered {
+        return;
+    }
+
+    let session_id = crate::converter::CONVERTER_DRAG_SESSION_ID.load(Ordering::Acquire);
+    let app_clone = app.clone();
+    std::thread::spawn(move || {
+        // Give Windows OLE DoDragDrop a brief window to dispatch IDropTarget::Drop
+        // after WM_LBUTTONUP/WM_RBUTTONUP arrives in the low-level mouse hook.
+        std::thread::sleep(Duration::from_millis(120));
+        crate::converter::close_converter_overlay_for_session(&app_clone, session_id);
+    });
+}
+
+fn release_converter_drag_if_armed(message: u32) {
+    const WM_LBUTTONUP: u32 = 0x0202;
+    const WM_RBUTTONUP: u32 = 0x0205;
+
+    if !CONVERTER_DRAG_ARMED.load(Ordering::Acquire) {
+        return;
+    }
+    let expected_btn = CONVERTER_DRAG_BUTTON.load(Ordering::Relaxed);
+    let matches_up = (expected_btn == 1 && message == WM_LBUTTONUP)
+        || (expected_btn == 2 && message == WM_RBUTTONUP);
+    if !matches_up {
+        return;
+    }
+    if let Some(app) = MOUSE_HOOK_APP_HANDLE
+        .get()
+        .or_else(|| WINDOW_CHANGE_APP_HANDLE.get())
+    {
+        handle_converter_drag_release(app);
+    } else {
+        CONVERTER_DRAG_ARMED.store(false, Ordering::Release);
+        CONVERTER_DRAG_TRIGGERED.store(false, Ordering::Release);
+        CONVERTER_DRAG_SOURCE_VALID.store(false, Ordering::Relaxed);
+    }
+}
 
 pub fn set_radial_monitor_metrics(origin_x: i32, origin_y: i32, scale_factor: f64) {
     RADIAL_MON_ORIGIN_X.store(origin_x, Ordering::Relaxed);
@@ -2680,6 +3012,36 @@ fn run_mouse_hook_thread() {
                         if btn_ordinal != 0 {
                             MOUSE_RADIAL_CLICK_INJECTED.store(btn_ordinal, Ordering::Release);
                             inject_synthetic_mouse(btn_ordinal, true, false);
+                        }
+                    }
+                }
+
+                // Converter overlay Esc cancellation and stale drag-release watchdog
+                if crate::converter::CONVERTER_OVERLAY_OPEN.load(Ordering::Relaxed)
+                    && is_vk_down(windows::Win32::UI::Input::KeyboardAndMouse::VK_ESCAPE)
+                {
+                    if let Some(app) = MOUSE_HOOK_APP_HANDLE
+                        .get()
+                        .or_else(|| WINDOW_CHANGE_APP_HANDLE.get())
+                    {
+                        crate::converter::request_close_converter_overlay_once(app);
+                    }
+                }
+                if CONVERTER_DRAG_ARMED.load(Ordering::Acquire) {
+                    let btn = CONVERTER_DRAG_BUTTON.load(Ordering::Relaxed);
+                    let btn_still_down = match btn {
+                        1 => is_vk_down(windows::Win32::UI::Input::KeyboardAndMouse::VK_LBUTTON),
+                        2 => is_vk_down(windows::Win32::UI::Input::KeyboardAndMouse::VK_RBUTTON),
+                        _ => false,
+                    };
+                    if !btn_still_down
+                        && hook_tick_ms() - CONVERTER_DRAG_DOWN_TIME.load(Ordering::Relaxed) > 60
+                    {
+                        if let Some(app) = MOUSE_HOOK_APP_HANDLE
+                            .get()
+                            .or_else(|| WINDOW_CHANGE_APP_HANDLE.get())
+                        {
+                            handle_converter_drag_release(app);
                         }
                     }
                 }
@@ -3363,30 +3725,7 @@ fn get_foreground_process_name() -> Option<String> {
         }
         let mut pid = 0u32;
         GetWindowThreadProcessId(hwnd, Some(&mut pid));
-        if pid == 0 {
-            return None;
-        }
-        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
-        let mut buf = [0u16; 1024];
-        let mut len = buf.len() as u32;
-        let res = QueryFullProcessImageNameW(
-            handle,
-            PROCESS_NAME_WIN32,
-            windows::core::PWSTR(buf.as_mut_ptr()),
-            &mut len,
-        );
-        let _ = CloseHandle(handle);
-        if res.is_ok() {
-            let path = String::from_utf16_lossy(&buf[..len as usize]);
-            let name = Path::new(&path)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("")
-                .to_string();
-            Some(name)
-        } else {
-            None
-        }
+        process_name_for_pid(pid)
     }
 }
 
@@ -3433,6 +3772,7 @@ unsafe extern "system" fn mouse_hook_proc(
                 }
             }
         }
+        maybe_trigger_converter_drag(cursor);
     }
 
     // 1. Mouse Button Recording (when user clicks Record in Settings)
@@ -3613,6 +3953,10 @@ unsafe extern "system" fn mouse_hook_proc(
         }
     }
 
+    // 3. Converter Ctrl+Drag / Right-Drag detection (never consumes underlying events)
+    arm_converter_drag_if_eligible(message, data.pt);
+    release_converter_drag_if_armed(message);
+
     // Start closes itself on the press of a click outside it, the dock's
     // Start button included, before that click reaches Zenith. The hook sees
     // the press first, so it records whether Start was open for the click to
@@ -3747,9 +4091,10 @@ fn process_mouse_position(app_handle: &AppHandle, cursor: windows::Win32::Founda
         });
 
         let radial_menu_open = MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed);
+        let converter_open = crate::converter::CONVERTER_OVERLAY_OPEN.load(Ordering::Relaxed);
 
         // --- Left Edge (Volume) ---
-        if !fg_fs && !radial_menu_open {
+        if !fg_fs && !radial_menu_open && !converter_open {
             let at_left_edge =
                 cursor.x <= (mon_x + 8) && cursor.y >= mon_y && cursor.y <= (mon_y + mon_h);
 
@@ -3799,7 +4144,7 @@ fn process_mouse_position(app_handle: &AppHandle, cursor: windows::Win32::Founda
         }
 
         // --- Right Edge (Brightness) ---
-        if !fg_fs && !radial_menu_open {
+        if !fg_fs && !radial_menu_open && !converter_open {
             let at_right_edge =
                 cursor.x >= (mon_x + mon_w - 8) && cursor.y >= mon_y && cursor.y <= (mon_y + mon_h);
 
@@ -3825,8 +4170,8 @@ fn process_mouse_position(app_handle: &AppHandle, cursor: windows::Win32::Founda
         // --- Overlay cursor passthrough ---
         if let Some(ov_win) = app_handle.get_webview_window("overlay") {
             let radial_open = MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed);
-            if radial_open {
-                // When Radial Menu is open, overlay must capture clicks and hovers (NEVER click-through!)
+            if radial_open || converter_open {
+                // When Radial Menu or Converter Donut is open, overlay must capture clicks/hovers/OLE drops (NEVER click-through!)
                 let prev = MH_LAST_OV_IGNORE.load(Ordering::Relaxed);
                 if prev != 0 {
                     if let Ok(hwnd) = ov_win.hwnd() {
@@ -3835,14 +4180,16 @@ fn process_mouse_position(app_handle: &AppHandle, cursor: windows::Win32::Founda
                     }
                     MH_LAST_OV_IGNORE.store(0, Ordering::Relaxed);
                 }
-                // Forward live OS cursor coordinates to RadialMenu (crucial for Hold mode where OS mouse capture is on the background window)
-                let packed = pack_cursor(cursor);
-                if LAST_RADIAL_EMIT_CURSOR.swap(packed, Ordering::Relaxed) != packed {
-                    let (rel_x, rel_y) = screen_to_radial_css(cursor.x, cursor.y);
-                    let _ = app_handle.emit(
-                        "radial-move",
-                        serde_json::json!({ "x": rel_x, "y": rel_y }),
-                    );
+                if radial_open {
+                    // Forward live OS cursor coordinates to RadialMenu (crucial for Hold mode where OS mouse capture is on the background window)
+                    let packed = pack_cursor(cursor);
+                    if LAST_RADIAL_EMIT_CURSOR.swap(packed, Ordering::Relaxed) != packed {
+                        let (rel_x, rel_y) = screen_to_radial_css(cursor.x, cursor.y);
+                        let _ = app_handle.emit(
+                            "radial-move",
+                            serde_json::json!({ "x": rel_x, "y": rel_y }),
+                        );
+                    }
                 }
             } else if fg_fs {
                 let prev = MH_LAST_OV_IGNORE.load(Ordering::Relaxed);
