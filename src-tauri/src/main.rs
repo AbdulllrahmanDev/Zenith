@@ -281,7 +281,12 @@ fn main() {
             ai_chat_cancel,
             ai_chat_open_settings,
             converter::converter_convert,
-            converter::converter_cancel
+            converter::converter_cancel,
+            converter::converter_status,
+            converter::converter_ensure_core,
+            converter::converter_list_engines,
+            converter::converter_install_engine,
+            converter::converter_remove_engine
         ])
         .setup(|app| {
             init_taskbar_marker(app.handle());

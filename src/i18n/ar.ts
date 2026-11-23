@@ -1295,6 +1295,107 @@ export const ar: TranslationDict = {
 		explorerMenu: "قائمة النقر الأيمن في المستكشف",
 		explorerMenuDesc: "إضافة خيار «التحويل عبر Zenith» إلى قائمة السياق في مستكشف الملفات",
 		comingSoonBadge: "قريباً",
+		runtime: {
+			readyTitle: "نواة المحوّل جاهزة",
+			missingTitle: "نواة المحوّل مطلوبة للتشغيل",
+			readyDesc: (version: string | null) =>
+				version
+					? `تم تثبيت Filee CLI v${version} في مجلد Zenith المعزول · الصيغ الأساسية تعمل دون إنترنت`
+					: "تم تثبيت Filee CLI في مجلد Zenith المعزول · الصيغ الأساسية تعمل دون إنترنت",
+			missingDesc:
+				"ينزّل Filee CLI داخل مجلد Zenith المعزول لتفعيل التحويل دون إنترنت للصور وPDF والنصوص والبيانات والأرشيف.",
+			installingTitle: "جارٍ إعداد نواة المحوّل...",
+			setupButton: "إعداد النواة الآن",
+			retryButton: "إعادة المحاولة",
+			checking: "جارٍ التحقق...",
+			stages: {
+				checking: "جارٍ التحقق من أحدث إصدار...",
+				copying: "جارٍ نسخ النواة المضمّنة...",
+				downloading: "جارٍ تنزيل أرشيف النواة...",
+				verifying: "جارٍ التحقق من بصمة SHA-256...",
+				extracting: "جارٍ فك ضغط ملفات النواة...",
+				ready: "جاهز",
+				error: "فشل الإعداد"
+			}
+		},
+		packs: {
+			groupLabel: "حزم المحركات الاختيارية",
+			intro:
+				"تعالج النواة الصور وPDF والنصوص والبيانات والأرشيف تلقائياً. الحزم الثقيلة أدناه لا تُحمَّل في الخلفية أبداً — ثبّت فقط ما تحتاجه.",
+			refresh: "تحديث",
+			refreshing: "جارٍ الفحص...",
+			coreRequiredHint: "سيتم إعداد نواة المحوّل تلقائياً أولاً عند تثبيت أي حزمة.",
+			install: "تثبيت",
+			update: "تحديث",
+			remove: "إزالة",
+			installing: "جارٍ التثبيت...",
+			removing: "جارٍ الإزالة...",
+			unavailable: "غير متاح",
+			statusInstalled: "مثبّتة",
+			statusOutdated: "يتوفر تحديث",
+			statusNotInstalled: "غير مثبّتة",
+			statusSystemCopy: "نسخة النظام",
+			statusCustomCopy: "نسخة مخصّصة",
+			downloadSize: (size: string) => `تنزيل ${size}`,
+			installedSize: (size: string) => `${size} على القرص`,
+			stageDownloading: "جارٍ التنزيل",
+			stageCopying: "جارٍ النسخ",
+			stageUnpacking: "جارٍ فك الضغط",
+			stageWorking: "جارٍ التنفيذ",
+			loadError: "تعذّر تحميل قائمة الحزم الاختيارية.",
+			catalog: {
+				libreoffice: {
+					name: "LibreOffice",
+					formats: "DOC · XLS · PPT · ODT · ODS · ODP · RTF",
+					desc: "تحويل مستندات Office القديمة وملفات OpenDocument إلى PDF وDOCX وصور"
+				},
+				ffmpeg: {
+					name: "FFmpeg",
+					formats: "MP4 · MKV · WEBM · GIF · MP3 · WAV · FLAC · HEIC",
+					desc: "تحويل الفيديو والصوت وإنشاء GIF واستخراج الإطارات وضغط HEIC"
+				},
+				pandoc: {
+					name: "Pandoc",
+					formats: "MD · TEX · RST · ORG · ADOC · TYP · EPUB",
+					desc: "محوّل شامل لصيغ المستندات بين Markdown وLaTeX وWord والكتب الإلكترونية"
+				},
+				calibre: {
+					name: "Calibre",
+					formats: "EPUB · MOBI · AZW3 · FB2 · LIT · PDB · PDF",
+					desc: "تحويل الكتب الإلكترونية بكامل صيغها بما في ذلك صيغ Kindle وMOBI وAZW3"
+				},
+				tesseract: {
+					name: "Tesseract OCR",
+					formats: "PDF ممسوح ضوئياً · PNG · JPG · TIFF ← نص قابل للبحث",
+					desc: "التعرف الضوئي على النصوص دون إنترنت لتحويل المستندات والصور الممسوحة ضوئياً"
+				},
+				ghostscript: {
+					name: "Ghostscript",
+					formats: "EPS · PS · PDF (ضغط وتصيير)",
+					desc: "تحويل ملفات PostScript وEPS وضغط ملفات PDF بكفاءة عالية"
+				},
+				weasyprint: {
+					name: "WeasyPrint",
+					formats: "HTML · MD · EML ← PDF للطباعة",
+					desc: "تحويل صفحات الويب وMarkdown ورسائل البريد بدقة CSS إلى PDF جاهز للطباعة"
+				},
+				whisper: {
+					name: "Whisper",
+					formats: "MP3 · WAV · MP4 ← SRT · VTT · TXT",
+					desc: "تفريغ الصوت والفيديو محلياً إلى نصوص وملفات ترجمة SRT وVTT"
+				},
+				"upscayl-bin": {
+					name: "Upscayl AI",
+					formats: "PNG · JPG · WEBP (تكبير بالذكاء الاصطناعي)",
+					desc: "رفع دقة الصور المنخفضة وتحسين تفاصيلها محلياً بالذكاء الاصطناعي"
+				},
+				exiftool: {
+					name: "ExifTool",
+					formats: "EXIF · XMP · IPTC · ICC",
+					desc: "قراءة البيانات الوصفية للصور والوسائط أو تعديلها وإزالتها لحماية الخصوصية"
+				}
+			}
+		},
 		placeholders: {
 			donutTitle: "الدائرة والإعدادات المسبقة",
 			donutDesc: "تخصيص شرائح الدائرة لكل فئة ملفات وضبط خيارات الجودة وDPI وتغيير الحجم وخيارات PDF والوسائط.",

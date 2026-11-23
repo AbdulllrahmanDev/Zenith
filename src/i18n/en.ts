@@ -1295,6 +1295,107 @@ export const en = {
 		explorerMenu: "Windows Explorer Context Menu",
 		explorerMenuDesc: "Add a “Convert with Zenith” entry to the right-click menu in File Explorer",
 		comingSoonBadge: "Coming next",
+		runtime: {
+			readyTitle: "Core Runtime Ready",
+			missingTitle: "Core Converter Runtime Required",
+			readyDesc: (version: string | null) =>
+				version
+					? `Filee CLI v${version} installed in Zenith's isolated storage · Core formats work offline`
+					: "Filee CLI installed in Zenith's isolated storage · Core formats work offline",
+			missingDesc:
+				"Downloads Filee CLI into Zenith's isolated folder to enable offline conversions across images, PDFs, markup, data, and archives.",
+			installingTitle: "Setting Up Core Runtime...",
+			setupButton: "Set Up Core Runtime",
+			retryButton: "Retry Setup",
+			checking: "Checking...",
+			stages: {
+				checking: "Checking latest release...",
+				copying: "Installing bundled runtime...",
+				downloading: "Downloading runtime archive...",
+				verifying: "Verifying SHA-256 checksum...",
+				extracting: "Extracting runtime files...",
+				ready: "Ready",
+				error: "Setup failed"
+			} as Record<string, string>
+		},
+		packs: {
+			groupLabel: "Optional Engine Packs",
+			intro:
+				"Core handles everyday images, PDFs, text, data, and archives out of the box. Heavy packs below never download automatically — install only what you need.",
+			refresh: "Refresh",
+			refreshing: "Checking...",
+			coreRequiredHint: "Installing a pack sets up the Core Runtime automatically first.",
+			install: "Install",
+			update: "Update",
+			remove: "Remove",
+			installing: "Installing...",
+			removing: "Removing...",
+			unavailable: "Unavailable",
+			statusInstalled: "Installed",
+			statusOutdated: "Update available",
+			statusNotInstalled: "Not installed",
+			statusSystemCopy: "System copy",
+			statusCustomCopy: "Custom copy",
+			downloadSize: (size: string) => `${size} download`,
+			installedSize: (size: string) => `${size} on disk`,
+			stageDownloading: "Downloading",
+			stageCopying: "Copying",
+			stageUnpacking: "Unpacking",
+			stageWorking: "Working",
+			loadError: "Could not load optional packs list.",
+			catalog: {
+				libreoffice: {
+					name: "LibreOffice",
+					formats: "DOC · XLS · PPT · ODT · ODS · ODP · RTF",
+					desc: "Legacy Microsoft Office & OpenDocument files to PDF, DOCX, and images"
+				},
+				ffmpeg: {
+					name: "FFmpeg",
+					formats: "MP4 · MKV · WEBM · GIF · MP3 · WAV · FLAC · HEIC",
+					desc: "Video & audio transcoding, GIF creation, frame extraction, and HEIC encoding"
+				},
+				pandoc: {
+					name: "Pandoc",
+					formats: "MD · TEX · RST · ORG · ADOC · TYP · EPUB",
+					desc: "Universal markup converter between Markdown, LaTeX, Word, and e-books"
+				},
+				calibre: {
+					name: "Calibre",
+					formats: "EPUB · MOBI · AZW3 · FB2 · LIT · PDB · PDF",
+					desc: "Full e-book conversions including Kindle AZW3 and MOBI formats"
+				},
+				tesseract: {
+					name: "Tesseract OCR",
+					formats: "Scanned PDF · PNG · JPG · TIFF → Searchable PDF / TXT",
+					desc: "Offline optical character recognition for scanned PDFs and images"
+				},
+				ghostscript: {
+					name: "Ghostscript",
+					formats: "EPS · PS · PDF (Compress / Render)",
+					desc: "PostScript / EPS conversion and high-efficiency PDF compression"
+				},
+				weasyprint: {
+					name: "WeasyPrint",
+					formats: "HTML · MD · EML → Print PDF",
+					desc: "CSS-accurate web page, Markdown, and email rendering to print-ready PDFs"
+				},
+				whisper: {
+					name: "Whisper",
+					formats: "MP3 · WAV · MP4 → SRT · VTT · TXT",
+					desc: "Offline speech recognition to transcribe audio/video into subtitles and text"
+				},
+				"upscayl-bin": {
+					name: "Upscayl AI",
+					formats: "PNG · JPG · WEBP (AI Upscale)",
+					desc: "Offline AI super-resolution for sharpening low-resolution images"
+				},
+				exiftool: {
+					name: "ExifTool",
+					formats: "EXIF · XMP · IPTC · ICC",
+					desc: "Inspect, preserve, or strip camera and media metadata across files"
+				}
+			} as Record<string, { name: string; formats: string; desc: string }>
+		},
 		placeholders: {
 			donutTitle: "Donut & Presets",
 			donutDesc: "Customize donut slices per file category and default format presets (quality, DPI, resize, PDF & media options).",
