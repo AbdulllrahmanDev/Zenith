@@ -11,12 +11,10 @@ echo.
 set "ZENITH_BASE=%APPDATA%\io.github.abdulllrahmandev.zenith"
 set "TARGET_AI_MODELS=%ZENITH_BASE%\ai\models"
 set "TARGET_RUNTIME=%ZENITH_BASE%\ai\runtime"
-set "TARGET_MODELS_LEGACY=%ZENITH_BASE%\translator\models"
 
 echo [1/4] التحقق من مجلدات الذكاء الاصطناعي في AppData...
 if not exist "%TARGET_AI_MODELS%" mkdir "%TARGET_AI_MODELS%"
 if not exist "%TARGET_RUNTIME%" mkdir "%TARGET_RUNTIME%"
-if not exist "%TARGET_MODELS_LEGACY%" mkdir "%TARGET_MODELS_LEGACY%"
 echo   + مسار التثبيت النهائي: %TARGET_AI_MODELS%
 echo.
 
@@ -92,13 +90,6 @@ if exist "%SOURCE_DIR%\runtime\llama-server.exe" (
         tar -xf "%%z" -C "%TARGET_RUNTIME%" 2>nul
         del /Q "%%z" 2>nul
         set "FOUND_RUNTIME=1"
-    )
-)
-
-:: إنشاء رابط توافق في المسار القديم إن لزم الأمر
-if exist "%TARGET_AI_MODELS%\qwen2.5-1.5b-instruct-q4_k_m.gguf" (
-    if not exist "%TARGET_MODELS_LEGACY%\qwen2.5-1.5b-instruct-q4_k_m.gguf" (
-        copy /Y "%TARGET_AI_MODELS%\qwen2.5-1.5b-instruct-q4_k_m.gguf" "%TARGET_MODELS_LEGACY%\" >nul 2>&1
     )
 )
 
