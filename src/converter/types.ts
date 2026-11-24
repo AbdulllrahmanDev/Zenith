@@ -93,3 +93,93 @@ export interface DonutSides {
 	secondary: TargetOption[];
 	detectedCategory: FileCategory;
 }
+
+export type ConflictPolicy = "rename" | "overwrite" | "skip";
+export type IsoFilesystem = "joliet" | "udf201";
+
+export interface ToolbarProfileState {
+	id: string;
+	category: FileCategory | string;
+	label: string;
+	primary_ids: string[];
+	secondary_ids: string[];
+}
+
+export interface ConverterPresetConfig {
+	id: string;
+	name: string;
+	target_format: string;
+	quality: number | null;
+	pages: string | null;
+	split_every: number | null;
+	split_parts: number | null;
+	conflict: ConflictPolicy | string | null;
+	keep_dates: boolean | null;
+	zip: boolean | null;
+	iso_filesystem: IsoFilesystem | string | null;
+	iso_label: string | null;
+}
+
+export interface RecentConversion {
+	id: string;
+	source_path: string;
+	source_name: string;
+	source_ext: string;
+	output_path: string;
+	output_format: string;
+	timestamp_ms: number;
+	thumbnail_data_url: string | null;
+	status: string;
+}
+
+export interface WatchRule {
+	id: string;
+	folder: string;
+	target_format: string;
+	preset_id: string | null;
+	output_folder: string;
+	recursive: boolean;
+	move_originals: boolean;
+	keep_dates: boolean;
+	enabled: boolean;
+}
+
+export interface ConverterState {
+	profiles: ToolbarProfileState[];
+	presets: ConverterPresetConfig[];
+	recent: RecentConversion[];
+	watch_rules: WatchRule[];
+}
+
+export interface ConvertRequest {
+	job_id: string;
+	inputs: string[];
+	to: string;
+	preset: string | null;
+	output_dir: string | null;
+	quality: number | null;
+	pages: string | null;
+	split_every: number | null;
+	split_parts: number | null;
+	conflict: string | null;
+	overwrite: boolean | null;
+	keep_dates: boolean | null;
+	zip: boolean | null;
+	iso_filesystem: string | null;
+	iso_label: string | null;
+}
+
+export interface ConvertedFileItem {
+	source: string;
+	state: string;
+	outputs: string[];
+	error: string | null;
+	error_key: string | null;
+	missing_engine: string | null;
+}
+
+export interface ConvertJobResult {
+	job_id: string;
+	files: ConvertedFileItem[];
+	missing_engine: string | null;
+}

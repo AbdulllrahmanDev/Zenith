@@ -290,7 +290,12 @@ fn main() {
             converter::converter_set_overlay_open,
             converter::converter_set_progress_rect,
             converter::converter_clear_progress_rect,
-            converter::converter_update_trigger_config
+            converter::converter_update_trigger_config,
+            converter::converter_get_state,
+            converter::converter_save_profiles,
+            converter::converter_save_presets,
+            converter::converter_clear_history,
+            converter::converter_open_output
         ])
         .setup(|app| {
             crate::converter::set_main_thread_id(std::thread::current().id());

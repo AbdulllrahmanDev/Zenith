@@ -1,5 +1,8 @@
 import type {
 	ActionKind,
+	ConverterPresetConfig,
+	ConverterState,
+	ConvertRequest,
 	DonutSides,
 	FileCategory,
 	TargetOption,
@@ -1291,5 +1294,170 @@ export function matchFormatsForPaths(
 		primary,
 		secondary,
 		detectedCategory: "mixed",
+	};
+}
+
+export function detectInputCategory(pathOrExt: string): FileCategory {
+	const trimmed = pathOrExt.trim();
+	if (!trimmed) return "mixed";
+	const bareLower = trimmed.toLowerCase().replace(/^\./, "");
+	if (bareLower === "folder" || trimmed.endsWith("/") || trimmed.endsWith("\\")) {
+		return "folder";
+	}
+	if (!trimmed.includes(".") && !trimmed.includes("/") && !trimmed.includes("\\")) {
+		return EXTENSION_CATEGORY[bareLower]?.category ?? "mixed";
+	}
+	return classifyPath(trimmed).category;
+}
+
+export function getCompatibleCatalogIdsForCategory(category: FileCategory): string[] {
+	const compatSet = CATEGORY_COMPATIBLE_TARGETS[category];
+	return Object.entries(DEFAULT_PRESET_CATALOG)
+		.filter(([, opt]) => {
+			if (category === "mixed") {
+				return (
+					opt.actionKind === "pack-zip" ||
+					ARCHIVE_TARGET_FORMATS.has(opt.format) ||
+					opt.format === "pdf" ||
+					opt.format === "png" ||
+					opt.format === "jpg" ||
+					opt.format === "docx" ||
+					opt.format === "txt"
+				);
+			}
+			if (opt.actionKind === "pack-zip" || ARCHIVE_TARGET_FORMATS.has(opt.format)) {
+				return true;
+			}
+			if (opt.format === "*") {
+				return opt.category === category;
+			}
+			return Boolean(compatSet?.has(opt.format));
+		})
+		.map(([id]) => id);
+}
+
+export function buildCustomMatcherInputs(state: ConverterState | null | undefined): {
+	profiles: ToolbarProfile[] | undefined;
+	extraPresets: Record<string, TargetOption> | undefined;
+	presetsById: Map<string, ConverterPresetConfig>;
+} {
+	const presetsById = new Map<string, ConverterPresetConfig>();
+	if (!state) {
+		return { profiles: undefined, extraPresets: undefined, presetsById };
+	}
+
+	const profiles: ToolbarProfile[] | undefined =
+		state.profiles.length > 0
+			? state.profiles.map((p) => {
+					const cat: FileCategory =
+						p.category in CATEGORY_COMPATIBLE_TARGETS
+							? (p.category as FileCategory)
+							: "mixed";
+					return {
+						id: p.id,
+						category: cat,
+						label: p.label,
+						primaryIds: [...p.primary_ids],
+						secondaryIds: [...p.secondary_ids],
+					};
+				})
+			: undefined;
+
+	let extraPresets: Record<string, TargetOption> | undefined;
+	if (state.presets.length > 0) {
+		extraPresets = {};
+		const defaultOptions = Object.values(DEFAULT_PRESET_CATALOG);
+		for (const presetCfg of state.presets) {
+			if (!presetCfg.id.trim()) continue;
+			presetsById.set(presetCfg.id, presetCfg);
+
+			const builtIn = DEFAULT_PRESET_CATALOG[presetCfg.id];
+			const cleanFmt = presetCfg.target_format.trim().toLowerCase().replace(/^\./, "");
+
+			if (builtIn) {
+				const opt: TargetOption = {
+					...builtIn,
+					format: cleanFmt || builtIn.format,
+					label: presetCfg.name.trim() || builtIn.label,
+					presetId: presetCfg.id,
+				};
+				if (presetCfg.quality !== null && presetCfg.quality !== undefined) {
+					opt.quality = presetCfg.quality;
+				}
+				extraPresets[presetCfg.id] = opt;
+			} else if (cleanFmt) {
+				const template = defaultOptions.find((o) => o.format === cleanFmt);
+				const inferredCategory =
+					EXTENSION_CATEGORY[cleanFmt]?.category ?? template?.category ?? "mixed";
+				const opt: TargetOption = {
+					format: cleanFmt,
+					label: presetCfg.name.trim() || cleanFmt.toUpperCase(),
+					category: inferredCategory,
+					actionKind: "convert",
+					presetId: presetCfg.id,
+				};
+				if (template?.requiredEngine) {
+					opt.requiredEngine = template.requiredEngine;
+				}
+				if (presetCfg.quality !== null && presetCfg.quality !== undefined) {
+					opt.quality = presetCfg.quality;
+				}
+				extraPresets[presetCfg.id] = opt;
+			}
+		}
+	}
+
+	return { profiles, extraPresets, presetsById };
+}
+
+export function buildConvertRequestFromOption(params: {
+	jobId: string;
+	inputs: string[];
+	option: TargetOption;
+	outputDir: string | null;
+	presetsById?: Map<string, ConverterPresetConfig>;
+}): ConvertRequest {
+	const { jobId, inputs, option, outputDir, presetsById } = params;
+	const presetCfg = option.presetId ? presetsById?.get(option.presetId) : undefined;
+	const builtIn = option.presetId ? DEFAULT_PRESET_CATALOG[option.presetId] : undefined;
+
+	const rawFormat =
+		presetCfg?.target_format?.trim() ||
+		(option.format === "*audio" ? "same-audio" : option.format);
+	const normalizedFormat = rawFormat.replace(/^\./, "").toLowerCase();
+
+	const useBuiltInPreset = Boolean(
+		builtIn &&
+			(!presetCfg ||
+				presetCfg.target_format.trim().replace(/^\./, "").toLowerCase() ===
+					builtIn.format.toLowerCase()),
+	);
+
+	const splitEvery =
+		presetCfg?.split_every && presetCfg.split_every > 0 ? presetCfg.split_every : null;
+	const splitParts =
+		!splitEvery && presetCfg?.split_parts && presetCfg.split_parts >= 2
+			? presetCfg.split_parts
+			: null;
+
+	const conflict = presetCfg?.conflict?.trim().toLowerCase() || null;
+	const isIso = normalizedFormat === "iso";
+
+	return {
+		job_id: jobId,
+		inputs,
+		to: normalizedFormat,
+		preset: useBuiltInPreset ? (builtIn?.presetId ?? option.presetId ?? null) : null,
+		output_dir: outputDir,
+		quality: presetCfg?.quality ?? option.quality ?? null,
+		pages: presetCfg?.pages?.trim() || null,
+		split_every: splitEvery,
+		split_parts: splitParts,
+		conflict,
+		overwrite: conflict === "overwrite" ? true : null,
+		keep_dates: presetCfg?.keep_dates ?? null,
+		zip: presetCfg?.zip ?? null,
+		iso_filesystem: isIso ? presetCfg?.iso_filesystem?.trim() || null : null,
+		iso_label: isIso ? presetCfg?.iso_label?.trim() || null : null,
 	};
 }

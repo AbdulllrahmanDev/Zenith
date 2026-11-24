@@ -1,35 +1,81 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
 	AlertCircle,
+	Archive,
 	ArrowRightLeft,
+	BookOpen,
+	Box,
+	Braces,
 	CheckCircle2,
+	ChevronDown,
+	ChevronUp,
+	Compass,
 	Cpu,
 	Disc,
 	Download,
+	ExternalLink,
+	FileCode2,
+	FileSpreadsheet,
+	FileText,
+	Film,
 	Folder,
 	FolderOpen,
+	FolderSync,
 	Globe,
+	GripVertical,
 	History,
+	Image,
 	Keyboard,
 	Loader2,
+	MapPin,
 	Menu,
+	Music,
 	Package,
+	PenTool,
+	Plus,
 	Power,
+	Presentation,
 	RefreshCw,
+	RotateCcw,
+	Save,
 	Sliders,
-	Trash2
+	Subtitles,
+	Trash2,
+	Type,
+	Upload,
+	X
 } from "lucide-react";
 import { SettingRow } from "./SettingRow";
 import { ZenithSelect } from "../components/ZenithSelect";
 import { useI18n } from "../i18n";
+import {
+	buildConvertRequestFromOption,
+	buildCustomMatcherInputs,
+	DEFAULT_PRESET_CATALOG,
+	DEFAULT_TOOLBAR_PROFILES,
+	detectInputCategory,
+	getCompatibleCatalogIdsForCategory,
+	matchFormatsForPaths
+} from "../converter/formats";
 import type {
+	ConflictPolicy,
+	ConverterPresetConfig,
 	ConverterRuntimeStatus,
+	ConverterState,
+	ConvertJobResult,
 	CoreInstallProgressEvent,
 	EngineInstallProgressEvent,
-	EnginePackInfo
+	EnginePackInfo,
+	FileCategory,
+	IsoFilesystem,
+	RecentConversion,
+	TargetOption,
+	ToolbarProfileState
 } from "../converter/types";
+import "./ConverterTab.css";
 
 export type ConverterTriggerKey = "ctrl" | "alt" | "shift" | "right-drag";
 export type ConverterOutputMode = "next-to-source" | "folder";
@@ -49,6 +95,39 @@ export interface ConverterTabProps {
 	converterExplorerMenu: boolean;
 	toggleConverterExplorerMenu: () => void;
 }
+
+interface DropJobState {
+	jobId: string;
+	targetLabel: string;
+	status: "converting" | "done" | "error" | "cancelled";
+	fraction: number;
+	outputs: string[];
+	error: string | null;
+}
+
+interface PendingDropInstall {
+	option: TargetOption;
+	inputs: string[];
+	needsCore: boolean;
+	engineId: string | null;
+	enginePack: EnginePackInfo | null;
+	installing: boolean;
+	error: string | null;
+}
+
+interface ConverterProgressPayload {
+	job_id: string;
+	kind: string;
+	source: string;
+	fraction?: number;
+}
+
+const EMPTY_CONVERTER_STATE: ConverterState = {
+	profiles: [],
+	presets: [],
+	recent: [],
+	watch_rules: []
+};
 
 function formatPackSize(bytes: number): string {
 	if (!Number.isFinite(bytes) || bytes <= 0) return "0 MB";
@@ -78,6 +157,87 @@ function formatTransferAmount(bytes: number): string {
 function cleanErrorMessage(err: unknown): string {
 	const raw = err instanceof Error ? err.message : String(err);
 	return raw.replace(/^[A-Z0-9_]+:\s*/, "").trim() || raw;
+}
+
+function extractBaseName(path: string): string {
+	const trimmed = path.trim();
+	const idx = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
+	return idx >= 0 ? trimmed.slice(idx + 1) || trimmed : trimmed;
+}
+
+function arraysEqual(a: string[], b: string[]): boolean {
+	if (a.length !== b.length) return false;
+	for (let i = 0; i < a.length; i++) {
+		if (a[i] !== b[i]) return false;
+	}
+	return true;
+}
+
+function iconForCategory(category: FileCategory) {
+	const map: Record<FileCategory, typeof Image> = {
+		image: Image,
+		vector: PenTool,
+		pdf: FileText,
+		document: FileText,
+		spreadsheet: FileSpreadsheet,
+		presentation: Presentation,
+		hwp: FileText,
+		text: FileCode2,
+		ebook: BookOpen,
+		video: Film,
+		audio: Music,
+		subtitle: Subtitles,
+		archive: Archive,
+		cad: Compass,
+		font: Type,
+		data: Braces,
+		model3d: Box,
+		geospatial: MapPin,
+		folder: Folder,
+		mixed: ArrowRightLeft
+	};
+	return map[category] ?? ArrowRightLeft;
+}
+
+function buildDraftForPresetId(
+	id: string,
+	savedPresets: ConverterPresetConfig[]
+): ConverterPresetConfig {
+	const existing = savedPresets.find((p) => p.id === id);
+	if (existing) {
+		return { ...existing };
+	}
+	const builtIn = DEFAULT_PRESET_CATALOG[id];
+	if (builtIn) {
+		return {
+			id,
+			name: builtIn.label,
+			target_format: builtIn.format,
+			quality: builtIn.quality ?? null,
+			pages: null,
+			split_every: null,
+			split_parts: null,
+			conflict: "rename",
+			keep_dates: false,
+			zip: false,
+			iso_filesystem: null,
+			iso_label: null
+		};
+	}
+	return {
+		id,
+		name: "",
+		target_format: "webp",
+		quality: 85,
+		pages: null,
+		split_every: null,
+		split_parts: null,
+		conflict: "rename",
+		keep_dates: false,
+		zip: false,
+		iso_filesystem: null,
+		iso_label: null
+	};
 }
 
 export function ConverterTab({
@@ -112,6 +272,55 @@ export function ConverterTab({
 	const [engineProgress, setEngineProgress] = useState<Record<string, EngineInstallProgressEvent>>({});
 	const [packErrors, setPackErrors] = useState<Record<string, string>>({});
 
+	// Persistent state.json (profiles, presets, recent, watch_rules)
+	const [converterState, setConverterState] = useState<ConverterState>(EMPTY_CONVERTER_STATE);
+	const [stateError, setStateError] = useState<string | null>(null);
+	const [profileSaveStatus, setProfileSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+	const saveStatusTimerRef = useRef<number | null>(null);
+
+	// Donut Slice & Preset Editor state
+	const [selectedProfileId, setSelectedProfileId] = useState<string>(
+		DEFAULT_TOOLBAR_PROFILES[0]?.id ?? "images"
+	);
+	const [addSliceSelection, setAddSliceSelection] = useState<{ primary: string; secondary: string }>({
+		primary: "",
+		secondary: ""
+	});
+	const [dragSlice, setDragSlice] = useState<{ face: "primary" | "secondary"; index: number } | null>(
+		null
+	);
+	const [dragOverSlice, setDragOverSlice] = useState<{
+		face: "primary" | "secondary";
+		index: number;
+	} | null>(null);
+
+	const [selectedPresetId, setSelectedPresetId] = useState<string>("to-jpg");
+	const [isCreatingPreset, setIsCreatingPreset] = useState(false);
+	const [presetDraft, setPresetDraft] = useState<ConverterPresetConfig>(() =>
+		buildDraftForPresetId("to-jpg", [])
+	);
+	const [presetSplitMode, setPresetSplitMode] = useState<"none" | "every" | "parts">("none");
+	const [presetSplitInput, setPresetSplitInput] = useState<string>("5");
+	const [presetError, setPresetError] = useState<string | null>(null);
+	const [presetSavedFlash, setPresetSavedFlash] = useState(false);
+	const presetSavedTimerRef = useRef<number | null>(null);
+	const initialStateLoadedRef = useRef(false);
+	const selectedPresetIdRef = useRef(selectedPresetId);
+	selectedPresetIdRef.current = selectedPresetId;
+	const presetEditorRef = useRef<HTMLDivElement | null>(null);
+
+	// Settings Drop Zone & History state
+	const [queuedFiles, setQueuedFiles] = useState<string[]>([]);
+	const [isDropOver, setIsDropOver] = useState(false);
+	const [dropJob, setDropJob] = useState<DropJobState | null>(null);
+	const [pendingDropInstall, setPendingDropInstall] = useState<PendingDropInstall | null>(null);
+	const [historyError, setHistoryError] = useState<string | null>(null);
+	const [clearingHistory, setClearingHistory] = useState(false);
+
+	const dropJobSeqRef = useRef(0);
+	const activeDropJobIdRef = useRef<string | null>(null);
+	const dropFileProgressRef = useRef<Map<string, number>>(new Map());
+
 	const refreshStatusAndPacks = useCallback(async () => {
 		setStatusChecking(true);
 		setStatusError(null);
@@ -136,12 +345,43 @@ export function ConverterTab({
 		setEnginesLoading(false);
 	}, []);
 
+	const syncSplitStateFromDraft = useCallback((draft: ConverterPresetConfig) => {
+		if (draft.split_every && draft.split_every > 0) {
+			setPresetSplitMode("every");
+			setPresetSplitInput(String(draft.split_every));
+		} else if (draft.split_parts && draft.split_parts >= 2) {
+			setPresetSplitMode("parts");
+			setPresetSplitInput(String(draft.split_parts));
+		} else {
+			setPresetSplitMode("none");
+			setPresetSplitInput("5");
+		}
+	}, []);
+
+	const loadState = useCallback(async () => {
+		try {
+			const st = await invoke<ConverterState>("converter_get_state");
+			setConverterState(st);
+			setStateError(null);
+			if (!initialStateLoadedRef.current) {
+				initialStateLoadedRef.current = true;
+				const initialDraft = buildDraftForPresetId(selectedPresetIdRef.current, st.presets);
+				setPresetDraft(initialDraft);
+				syncSplitStateFromDraft(initialDraft);
+			}
+		} catch (e) {
+			setStateError(cleanErrorMessage(e));
+		}
+	}, [syncSplitStateFromDraft]);
+
 	useEffect(() => {
 		let cancelled = false;
 		let unlistenCore: (() => void) | undefined;
 		let unlistenEngine: (() => void) | undefined;
+		let unlistenState: (() => void) | undefined;
 
 		refreshStatusAndPacks();
+		loadState();
 
 		listen<CoreInstallProgressEvent>("converter-core-progress", (ev) => {
 			if (cancelled) return;
@@ -151,11 +391,8 @@ export function ConverterTab({
 			}
 		})
 			.then((fn) => {
-				if (cancelled) {
-					fn();
-				} else {
-					unlistenCore = fn;
-				}
+				if (cancelled) fn();
+				else unlistenCore = fn;
 			})
 			.catch(() => {});
 
@@ -167,20 +404,186 @@ export function ConverterTab({
 			}));
 		})
 			.then((fn) => {
-				if (cancelled) {
-					fn();
-				} else {
-					unlistenEngine = fn;
-				}
+				if (cancelled) fn();
+				else unlistenEngine = fn;
+			})
+			.catch(() => {});
+
+		listen<ConverterState>("converter-state-changed", (ev) => {
+			if (cancelled) return;
+			setConverterState(ev.payload);
+			setStateError(null);
+		})
+			.then((fn) => {
+				if (cancelled) fn();
+				else unlistenState = fn;
 			})
 			.catch(() => {});
 
 		return () => {
 			cancelled = true;
+			if (saveStatusTimerRef.current !== null) {
+				window.clearTimeout(saveStatusTimerRef.current);
+			}
+			if (presetSavedTimerRef.current !== null) {
+				window.clearTimeout(presetSavedTimerRef.current);
+			}
 			unlistenCore?.();
 			unlistenEngine?.();
+			unlistenState?.();
 		};
-	}, [refreshStatusAndPacks]);
+	}, [loadState, refreshStatusAndPacks]);
+
+	// Listen for native Tauri drag-and-drop events when Watch & History sub-tab is active
+	useEffect(() => {
+		if (subTab !== "history") {
+			setIsDropOver(false);
+			return;
+		}
+		let cancelled = false;
+		let unlistenDrop: (() => void) | undefined;
+
+		getCurrentWebview()
+			.onDragDropEvent((ev) => {
+				if (cancelled) return;
+				if (ev.payload.type === "enter" || ev.payload.type === "over") {
+					setIsDropOver(true);
+				} else if (ev.payload.type === "leave") {
+					setIsDropOver(false);
+				} else if (ev.payload.type === "drop") {
+					setIsDropOver(false);
+					const dropped = ev.payload.paths ?? [];
+					if (dropped.length > 0) {
+						setQueuedFiles((prev) => {
+							const merged = [...prev];
+							for (const p of dropped) {
+								if (p && !merged.includes(p)) {
+									merged.push(p);
+								}
+							}
+							return merged;
+						});
+						setPendingDropInstall(null);
+					}
+				}
+			})
+			.then((fn) => {
+				if (cancelled) fn();
+				else unlistenDrop = fn;
+			})
+			.catch(() => {});
+
+		return () => {
+			cancelled = true;
+			unlistenDrop?.();
+		};
+	}, [subTab]);
+
+	// Track live CLI progress for Settings Drop Zone jobs
+	useEffect(() => {
+		if (!dropJob || dropJob.status !== "converting") return;
+		let cancelled = false;
+		let unlistenProg: (() => void) | undefined;
+
+		listen<ConverterProgressPayload>("converter-progress", (ev) => {
+			if (cancelled) return;
+			const p = ev.payload;
+			if (!activeDropJobIdRef.current || p.job_id !== activeDropJobIdRef.current) return;
+
+			if (p.kind === "progress" && typeof p.fraction === "number") {
+				dropFileProgressRef.current.set(p.source, Math.max(0, Math.min(1, p.fraction)));
+			} else if (p.kind === "file") {
+				dropFileProgressRef.current.set(p.source, 1);
+			}
+
+			const vals = Array.from(dropFileProgressRef.current.values());
+			const avg =
+				vals.length > 0
+					? vals.reduce((acc, v) => acc + v, 0) / vals.length
+					: Math.max(0, Math.min(1, p.fraction ?? 0));
+
+			setDropJob((prev) =>
+				prev && prev.jobId === p.job_id && prev.status === "converting"
+					? { ...prev, fraction: avg }
+					: prev
+			);
+		})
+			.then((fn) => {
+				if (cancelled) fn();
+				else unlistenProg = fn;
+			})
+			.catch(() => {});
+
+		return () => {
+			cancelled = true;
+			unlistenProg?.();
+		};
+	}, [dropJob?.jobId, dropJob?.status]);
+
+	const customMatcherInputs = useMemo(
+		() => buildCustomMatcherInputs(converterState),
+		[converterState]
+	);
+
+	const mergedProfiles = useMemo<ToolbarProfileState[]>(() => {
+		return DEFAULT_TOOLBAR_PROFILES.map((def) => {
+			const saved = converterState.profiles.find(
+				(sp) => sp.id === def.id || sp.category === def.category
+			);
+			if (saved) {
+				return {
+					id: def.id,
+					category: def.category,
+					label: saved.label || def.label,
+					primary_ids: [...saved.primary_ids],
+					secondary_ids: [...saved.secondary_ids]
+				};
+			}
+			return {
+				id: def.id,
+				category: def.category,
+				label: def.label,
+				primary_ids: [...def.primaryIds],
+				secondary_ids: [...def.secondaryIds]
+			};
+		});
+	}, [converterState.profiles]);
+
+	const customizedProfileIds = useMemo(() => {
+		const set = new Set<string>();
+		for (const def of DEFAULT_TOOLBAR_PROFILES) {
+			const saved = converterState.profiles.find(
+				(sp) => sp.id === def.id || sp.category === def.category
+			);
+			if (
+				saved &&
+				(!arraysEqual(saved.primary_ids, def.primaryIds) ||
+					!arraysEqual(saved.secondary_ids, def.secondaryIds))
+			) {
+				set.add(def.id);
+			}
+		}
+		return set;
+	}, [converterState.profiles]);
+
+	const activeProfile = useMemo(
+		() => mergedProfiles.find((p) => p.id === selectedProfileId) ?? mergedProfiles[0],
+		[mergedProfiles, selectedProfileId]
+	);
+
+	// Reset add-slice dropdowns when switching category
+	useEffect(() => {
+		setAddSliceSelection({ primary: "", secondary: "" });
+	}, [selectedProfileId]);
+
+	const dropZoneDonutSides = useMemo(() => {
+		if (queuedFiles.length === 0) return null;
+		return matchFormatsForPaths(
+			queuedFiles,
+			customMatcherInputs.profiles,
+			customMatcherInputs.extraPresets
+		);
+	}, [queuedFiles, customMatcherInputs]);
 
 	const triggerLabel =
 		converterTriggerKey === "alt"
@@ -231,8 +634,8 @@ export function ConverterTab({
 		}
 	};
 
-	const handleInstallPack = async (id: string) => {
-		if (activeEngineOp[id]) return;
+	const handleInstallPack = async (id: string): Promise<{ ok: boolean; error?: string }> => {
+		if (activeEngineOp[id]) return { ok: false, error: c.packs.installing };
 		setPackErrors((prev) => {
 			const next = { ...prev };
 			delete next[id];
@@ -247,7 +650,7 @@ export function ConverterTab({
 					if (coreResult.error) {
 						setPackErrors((prev) => ({ ...prev, [id]: coreResult.error! }));
 					}
-					return;
+					return { ok: false, error: coreResult.error };
 				}
 			}
 			const updated = await invoke<EnginePackInfo>("converter_install_engine", { id });
@@ -255,8 +658,11 @@ export function ConverterTab({
 				const exists = prev.some((p) => p.id === updated.id);
 				return exists ? prev.map((p) => (p.id === updated.id ? updated : p)) : [...prev, updated];
 			});
+			return { ok: true };
 		} catch (e) {
-			setPackErrors((prev) => ({ ...prev, [id]: cleanErrorMessage(e) }));
+			const msg = cleanErrorMessage(e);
+			setPackErrors((prev) => ({ ...prev, [id]: msg }));
+			return { ok: false, error: msg };
 		} finally {
 			setActiveEngineOp((prev) => {
 				const next = { ...prev };
@@ -291,6 +697,556 @@ export function ConverterTab({
 				delete next[id];
 				return next;
 			});
+		}
+	};
+
+	// ─── Donut Profile Slice Mutations ───────────────────────────────────────────
+
+	const persistMergedProfiles = useCallback(async (nextAllProfiles: ToolbarProfileState[]) => {
+		const customizedOnly = nextAllProfiles.filter((profile) => {
+			const def = DEFAULT_TOOLBAR_PROFILES.find(
+				(d) => d.id === profile.id || d.category === profile.category
+			);
+			if (!def) return true;
+			return (
+				!arraysEqual(profile.primary_ids, def.primaryIds) ||
+				!arraysEqual(profile.secondary_ids, def.secondaryIds)
+			);
+		});
+
+		setProfileSaveStatus("saving");
+		setStateError(null);
+		if (saveStatusTimerRef.current !== null) {
+			window.clearTimeout(saveStatusTimerRef.current);
+			saveStatusTimerRef.current = null;
+		}
+		try {
+			const updated = await invoke<ConverterState>("converter_save_profiles", {
+				profiles: customizedOnly
+			});
+			setConverterState(updated);
+			setProfileSaveStatus("saved");
+			saveStatusTimerRef.current = window.setTimeout(() => {
+				saveStatusTimerRef.current = null;
+				setProfileSaveStatus("idle");
+			}, 1600);
+		} catch (e) {
+			setStateError(cleanErrorMessage(e));
+			setProfileSaveStatus("idle");
+		}
+	}, []);
+
+	const updateActiveProfileSlices = useCallback(
+		(face: "primary" | "secondary", updater: (ids: string[]) => string[]) => {
+			if (!activeProfile) return;
+			const nextProfiles = mergedProfiles.map((p) => {
+				if (p.id !== activeProfile.id) return p;
+				return {
+					...p,
+					primary_ids: face === "primary" ? updater(p.primary_ids) : p.primary_ids,
+					secondary_ids: face === "secondary" ? updater(p.secondary_ids) : p.secondary_ids
+				};
+			});
+			void persistMergedProfiles(nextProfiles);
+		},
+		[activeProfile, mergedProfiles, persistMergedProfiles]
+	);
+
+	const handleMoveSlice = (face: "primary" | "secondary", fromIdx: number, toIdx: number) => {
+		updateActiveProfileSlices(face, (ids) => {
+			if (toIdx < 0 || toIdx >= ids.length || fromIdx === toIdx) return ids;
+			const copy = [...ids];
+			const [item] = copy.splice(fromIdx, 1);
+			copy.splice(toIdx, 0, item);
+			return copy;
+		});
+	};
+
+	const handleRemoveSlice = (face: "primary" | "secondary", index: number) => {
+		updateActiveProfileSlices(face, (ids) => ids.filter((_, i) => i !== index));
+	};
+
+	const handleAddSlice = (face: "primary" | "secondary", sliceIdOverride?: string) => {
+		const targetId = (sliceIdOverride ?? addSliceSelection[face]).trim();
+		if (!targetId) return;
+		updateActiveProfileSlices(face, (ids) => (ids.includes(targetId) ? ids : [...ids, targetId]));
+		if (!sliceIdOverride) {
+			setAddSliceSelection((prev) => ({ ...prev, [face]: "" }));
+		}
+	};
+
+	const handleResetCategoryProfile = () => {
+		if (!activeProfile) return;
+		const def = DEFAULT_TOOLBAR_PROFILES.find(
+			(d) => d.id === activeProfile.id || d.category === activeProfile.category
+		);
+		if (!def) return;
+		const nextProfiles = mergedProfiles.map((p) =>
+			p.id === activeProfile.id
+				? {
+						...p,
+						primary_ids: [...def.primaryIds],
+						secondary_ids: [...def.secondaryIds]
+					}
+				: p
+		);
+		void persistMergedProfiles(nextProfiles);
+	};
+
+	const handleResetAllProfiles = () => {
+		const defaults: ToolbarProfileState[] = DEFAULT_TOOLBAR_PROFILES.map((d) => ({
+			id: d.id,
+			category: d.category,
+			label: d.label,
+			primary_ids: [...d.primaryIds],
+			secondary_ids: [...d.secondaryIds]
+		}));
+		void persistMergedProfiles(defaults);
+	};
+
+	// ─── Preset Editor Handlers ──────────────────────────────────────────────────
+
+	const handleSelectPresetForEdit = (id: string) => {
+		const nextDraft = buildDraftForPresetId(id, converterState.presets);
+		setIsCreatingPreset(false);
+		setSelectedPresetId(id);
+		setPresetDraft(nextDraft);
+		syncSplitStateFromDraft(nextDraft);
+		setPresetError(null);
+		setPresetSavedFlash(false);
+	};
+
+	const handleJumpToPresetFromSlice = (id: string) => {
+		handleSelectPresetForEdit(id);
+		presetEditorRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+	};
+
+	const handleNewPreset = () => {
+		const freshId = `custom-${Date.now()}`;
+		const freshDraft: ConverterPresetConfig = {
+			id: freshId,
+			name: "",
+			target_format: "webp",
+			quality: 85,
+			pages: null,
+			split_every: null,
+			split_parts: null,
+			conflict: "rename",
+			keep_dates: false,
+			zip: false,
+			iso_filesystem: null,
+			iso_label: null
+		};
+		setIsCreatingPreset(true);
+		setSelectedPresetId(freshId);
+		setPresetDraft(freshDraft);
+		syncSplitStateFromDraft(freshDraft);
+		setPresetError(null);
+		setPresetSavedFlash(false);
+	};
+
+	const savePresetList = useCallback(async (nextPresets: ConverterPresetConfig[]) => {
+		const updated = await invoke<ConverterState>("converter_save_presets", {
+			presets: nextPresets
+		});
+		setConverterState(updated);
+		return updated;
+	}, []);
+
+	const handleSavePreset = async (): Promise<ConverterPresetConfig | null> => {
+		const cleanFmt = presetDraft.target_format.trim().replace(/^\./, "").toLowerCase();
+		if (!cleanFmt) {
+			setPresetError(c.presets.validationFormatRequired);
+			return null;
+		}
+		const cleanName = presetDraft.name.trim() || cleanFmt.toUpperCase();
+		const isIso = cleanFmt === "iso";
+		const parsedSplitNum = Number.parseInt(presetSplitInput, 10);
+		const splitEvery =
+			presetSplitMode === "every"
+				? Math.max(1, Number.isFinite(parsedSplitNum) ? parsedSplitNum : 5)
+				: null;
+		const splitParts =
+			presetSplitMode === "parts"
+				? Math.max(2, Number.isFinite(parsedSplitNum) ? parsedSplitNum : 2)
+				: null;
+
+		const toSave: ConverterPresetConfig = {
+			...presetDraft,
+			name: cleanName,
+			target_format: cleanFmt,
+			quality:
+				presetDraft.quality !== null && presetDraft.quality !== undefined
+					? Math.max(1, Math.min(100, Math.round(presetDraft.quality)))
+					: null,
+			pages: presetDraft.pages?.trim() || null,
+			split_every: splitEvery,
+			split_parts: splitParts,
+			conflict: presetDraft.conflict || "rename",
+			keep_dates: Boolean(presetDraft.keep_dates),
+			zip: Boolean(presetDraft.zip),
+			iso_filesystem: isIso ? presetDraft.iso_filesystem || null : null,
+			iso_label: isIso ? presetDraft.iso_label?.trim() || null : null
+		};
+
+		setPresetError(null);
+		try {
+			const exists = converterState.presets.some((p) => p.id === toSave.id);
+			const nextPresets = exists
+				? converterState.presets.map((p) => (p.id === toSave.id ? toSave : p))
+				: [...converterState.presets, toSave];
+			await savePresetList(nextPresets);
+			setIsCreatingPreset(false);
+			setSelectedPresetId(toSave.id);
+			setPresetDraft(toSave);
+			syncSplitStateFromDraft(toSave);
+			setPresetSavedFlash(true);
+			if (presetSavedTimerRef.current !== null) {
+				window.clearTimeout(presetSavedTimerRef.current);
+			}
+			presetSavedTimerRef.current = window.setTimeout(() => {
+				presetSavedTimerRef.current = null;
+				setPresetSavedFlash(false);
+			}, 1800);
+			return toSave;
+		} catch (e) {
+			setPresetError(cleanErrorMessage(e));
+			return null;
+		}
+	};
+
+	const handleDeleteOrResetPreset = async () => {
+		const id = presetDraft.id;
+		const isSaved = converterState.presets.some((p) => p.id === id);
+		if (!isSaved) {
+			if (isCreatingPreset) {
+				handleSelectPresetForEdit("to-jpg");
+			}
+			return;
+		}
+		setPresetError(null);
+		try {
+			const nextPresets = converterState.presets.filter((p) => p.id !== id);
+			await savePresetList(nextPresets);
+
+			// If a custom preset was removed from presets, clean up any profile references to it.
+			const isBuiltIn = Boolean(DEFAULT_PRESET_CATALOG[id]);
+			if (!isBuiltIn) {
+				const hasRef = mergedProfiles.some(
+					(p) => p.primary_ids.includes(id) || p.secondary_ids.includes(id)
+				);
+				if (hasRef) {
+					const cleanedProfiles = mergedProfiles.map((p) => ({
+						...p,
+						primary_ids: p.primary_ids.filter((x) => x !== id),
+						secondary_ids: p.secondary_ids.filter((x) => x !== id)
+					}));
+					await persistMergedProfiles(cleanedProfiles);
+				}
+				handleSelectPresetForEdit("to-jpg");
+			} else {
+				const resetDraft = buildDraftForPresetId(id, nextPresets);
+				setPresetDraft(resetDraft);
+				syncSplitStateFromDraft(resetDraft);
+			}
+		} catch (e) {
+			setPresetError(cleanErrorMessage(e));
+		}
+	};
+
+	const handleAddPresetToFace = async (face: "primary" | "secondary") => {
+		const saved = await handleSavePreset();
+		if (saved) {
+			handleAddSlice(face, saved.id);
+		}
+	};
+
+	// ─── Settings Drop Zone & History Actions ────────────────────────────────────
+
+	const handleBrowseDropZoneFiles = async () => {
+		try {
+			const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
+			const selected = await openDialog({
+				multiple: true
+			});
+			const picked = Array.isArray(selected) ? selected : [];
+			if (picked.length > 0) {
+				setQueuedFiles((prev) => {
+					const merged = [...prev];
+					for (const p of picked) {
+						if (p && !merged.includes(p)) merged.push(p);
+					}
+					return merged;
+				});
+				setPendingDropInstall(null);
+			}
+		} catch (e) {
+			setHistoryError(cleanErrorMessage(e));
+		}
+	};
+
+	const executeDropConversion = useCallback(
+		async (option: TargetOption, inputs: string[]) => {
+			if (inputs.length === 0) return;
+			const jobId = `settings-${Date.now()}-${++dropJobSeqRef.current}`;
+			activeDropJobIdRef.current = jobId;
+			dropFileProgressRef.current = new Map(inputs.map((p) => [p, 0]));
+			setPendingDropInstall(null);
+			setHistoryError(null);
+			setDropJob({
+				jobId,
+				targetLabel: option.label,
+				status: "converting",
+				fraction: 0,
+				outputs: [],
+				error: null
+			});
+
+			const outDir =
+				converterOutputMode === "folder" && converterOutputFolder.trim().length > 0
+					? converterOutputFolder.trim()
+					: null;
+
+			const req = buildConvertRequestFromOption({
+				jobId,
+				inputs,
+				option,
+				outputDir: outDir,
+				presetsById: customMatcherInputs.presetsById
+			});
+
+			try {
+				const result = await invoke<ConvertJobResult>("converter_convert", { req });
+				if (activeDropJobIdRef.current !== jobId) return;
+
+				const outputs = result.files.flatMap((f) => f.outputs ?? []);
+				const missingEngine =
+					result.missing_engine ||
+					result.files.find((f) => Boolean(f.missing_engine))?.missing_engine ||
+					null;
+
+				if (missingEngine && outputs.length === 0) {
+					const latestEngines = await invoke<EnginePackInfo[]>("converter_list_engines").catch(
+						() => engines
+					);
+					const pack =
+						latestEngines.find((e) => e.id.toLowerCase() === missingEngine.toLowerCase()) ??
+						null;
+					setDropJob(null);
+					setPendingDropInstall({
+						option,
+						inputs,
+						needsCore: false,
+						engineId: missingEngine,
+						enginePack: pack,
+						installing: false,
+						error: null
+					});
+					return;
+				}
+
+				const failedFile = result.files.find((f) => f.state.toLowerCase() === "failed");
+				if (failedFile && outputs.length === 0) {
+					setDropJob({
+						jobId,
+						targetLabel: option.label,
+						status: "error",
+						fraction: 0,
+						outputs,
+						error: cleanErrorMessage(failedFile.error || c.donut.failedTitle)
+					});
+					return;
+				}
+
+				setDropJob({
+					jobId,
+					targetLabel: option.label,
+					status: "done",
+					fraction: 1,
+					outputs,
+					error: null
+				});
+			} catch (err) {
+				if (activeDropJobIdRef.current !== jobId) return;
+				const raw = err instanceof Error ? err.message : String(err);
+				if (raw === "CANCELLED" || raw.startsWith("CANCELLED")) {
+					setDropJob({
+						jobId,
+						targetLabel: option.label,
+						status: "cancelled",
+						fraction: 0,
+						outputs: [],
+						error: null
+					});
+					return;
+				}
+				if (raw.startsWith("CORE_NOT_INSTALLED")) {
+					const requiredEngine = option.requiredEngine?.trim() || null;
+					const pack = requiredEngine
+						? engines.find((e) => e.id.toLowerCase() === requiredEngine.toLowerCase()) ?? null
+						: null;
+					setDropJob(null);
+					setPendingDropInstall({
+						option,
+						inputs,
+						needsCore: true,
+						engineId: requiredEngine,
+						enginePack: pack,
+						installing: false,
+						error: null
+					});
+					return;
+				}
+				if (raw.startsWith("MISSING_ENGINE:")) {
+					const missingId = raw.slice("MISSING_ENGINE:".length).trim();
+					const pack =
+						engines.find((e) => e.id.toLowerCase() === missingId.toLowerCase()) ?? null;
+					setDropJob(null);
+					setPendingDropInstall({
+						option,
+						inputs,
+						needsCore: false,
+						engineId: missingId,
+						enginePack: pack,
+						installing: false,
+						error: null
+					});
+					return;
+				}
+				setDropJob({
+					jobId,
+					targetLabel: option.label,
+					status: "error",
+					fraction: 0,
+					outputs: [],
+					error: cleanErrorMessage(raw)
+				});
+			}
+		},
+		[
+			c.donut.failedTitle,
+			converterOutputFolder,
+			converterOutputMode,
+			customMatcherInputs.presetsById,
+			engines
+		]
+	);
+
+	const handleDropTargetClick = async (option: TargetOption) => {
+		if (queuedFiles.length === 0 || dropJob?.status === "converting") return;
+
+		const [statusRes, enginesRes] = await Promise.allSettled([
+			invoke<ConverterRuntimeStatus>("converter_status"),
+			invoke<EnginePackInfo[]>("converter_list_engines")
+		]);
+
+		const coreInstalled =
+			statusRes.status === "fulfilled" ? statusRes.value.core_installed : Boolean(runtimeStatus?.core_installed);
+		const latestEngines = enginesRes.status === "fulfilled" ? enginesRes.value : engines;
+		if (enginesRes.status === "fulfilled") {
+			setEngines(latestEngines);
+		}
+		if (statusRes.status === "fulfilled") {
+			setRuntimeStatus(statusRes.value);
+		}
+
+		const requiredEngine = option.requiredEngine?.trim() || null;
+		const enginePack = requiredEngine
+			? latestEngines.find((e) => e.id.toLowerCase() === requiredEngine.toLowerCase()) ?? null
+			: null;
+		const needsEngine = Boolean(
+			requiredEngine &&
+				(enginesRes.status === "fulfilled"
+					? !enginePack || enginePack.status === "notinstalled"
+					: !coreInstalled)
+		);
+
+		if (!coreInstalled || needsEngine) {
+			setDropJob(null);
+			setPendingDropInstall({
+				option,
+				inputs: [...queuedFiles],
+				needsCore: !coreInstalled,
+				engineId: needsEngine ? requiredEngine : null,
+				enginePack,
+				installing: false,
+				error: null
+			});
+			return;
+		}
+
+		await executeDropConversion(option, [...queuedFiles]);
+	};
+
+	const handleConfirmDropInstall = async () => {
+		if (!pendingDropInstall || pendingDropInstall.installing) return;
+		const current = pendingDropInstall;
+		setPendingDropInstall((prev) => (prev ? { ...prev, installing: true, error: null } : null));
+
+		try {
+			if (current.needsCore) {
+				const coreRes = await handleEnsureCore();
+				if (!coreRes.ok) {
+					throw new Error(coreRes.error || c.runtime.missingTitle);
+				}
+			}
+			if (current.engineId) {
+				const packRes = await handleInstallPack(current.engineId);
+				if (!packRes.ok) {
+					throw new Error(packRes.error || c.donut.unavailablePack);
+				}
+			}
+			await executeDropConversion(current.option, current.inputs);
+		} catch (e) {
+			setPendingDropInstall((prev) =>
+				prev ? { ...prev, installing: false, error: cleanErrorMessage(e) } : null
+			);
+		}
+	};
+
+	const handleCancelDropJob = async () => {
+		if (!dropJob || dropJob.status !== "converting") return;
+		const id = dropJob.jobId;
+		activeDropJobIdRef.current = null;
+		await invoke("converter_cancel", { jobId: id }).catch(() => {});
+		setDropJob((prev) => (prev && prev.jobId === id ? { ...prev, status: "cancelled" } : prev));
+	};
+
+	const handleOpenOutput = async (path: string, revealInFolder: boolean) => {
+		if (!path.trim()) return;
+		setHistoryError(null);
+		try {
+			await invoke("converter_open_output", { path, revealInFolder });
+		} catch (e) {
+			setHistoryError(cleanErrorMessage(e));
+		}
+	};
+
+	const handleClearHistory = async () => {
+		if (clearingHistory || converterState.recent.length === 0) return;
+		setClearingHistory(true);
+		setHistoryError(null);
+		try {
+			const updated = await invoke<ConverterState>("converter_clear_history");
+			setConverterState(updated);
+		} catch (e) {
+			setHistoryError(cleanErrorMessage(e));
+		} finally {
+			setClearingHistory(false);
+		}
+	};
+
+	const formatTimestamp = (timestampMs: number): string => {
+		if (!timestampMs) return "";
+		const diffSec = Math.max(0, Math.floor((Date.now() - timestampMs) / 1000));
+		if (diffSec < 60) return c.history.justNow;
+		if (diffSec < 3600) return c.history.minutesAgo(Math.floor(diffSec / 60));
+		if (diffSec < 86400) return c.history.hoursAgo(Math.floor(diffSec / 3600));
+		if (diffSec < 7 * 86400) return c.history.daysAgo(Math.floor(diffSec / 86400));
+		try {
+			return new Date(timestampMs).toLocaleDateString();
+		} catch {
+			return "";
 		}
 	};
 
@@ -570,23 +1526,1072 @@ export function ConverterTab({
 		);
 	};
 
-	const renderPlaceholder = (
-		icon: typeof Disc,
-		title: string,
-		desc: string
-	) => {
-		const Icon = icon;
+	const resolveCatalogEntry = (id: string): TargetOption | undefined =>
+		customMatcherInputs.extraPresets?.[id] ?? DEFAULT_PRESET_CATALOG[id];
+
+	const renderFaceColumn = (face: "primary" | "secondary", ids: string[]) => {
+		const faceTitle = face === "primary" ? c.donutEditor.face1Title : c.donutEditor.face2Title;
+		const existingSet = new Set(ids);
+		const activeCat = (activeProfile?.category as FileCategory) || "mixed";
+		const compatibleIds = getCompatibleCatalogIdsForCategory(activeCat).filter(
+			(id) => !existingSet.has(id)
+		);
+		const compatSet = new Set(compatibleIds);
+		const customPresetEntries = converterState.presets.filter(
+			(p) => !existingSet.has(p.id) && !(p.id in DEFAULT_PRESET_CATALOG)
+		);
+		const remainingCatalogIds = Object.keys(DEFAULT_PRESET_CATALOG).filter(
+			(id) => !existingSet.has(id) && !compatSet.has(id)
+		);
+
 		return (
-			<div key={subTab} className="zn-converter-panel">
-				<div className="setting-group">
-					<div className="zn-converter-empty-state">
-						<div className="zn-converter-empty-icon">
-							<Icon size={20} strokeWidth={1.6} />
-						</div>
-						<div className="zn-converter-empty-title">{title}</div>
-						<div className="zn-converter-empty-desc">{desc}</div>
-						<span className="zn-converter-empty-badge">{c.comingSoonBadge}</span>
+			<div className="zn-slice-face-card">
+				<div className="zn-slice-face-header">
+					<span className="zn-slice-face-title">{faceTitle}</span>
+					<span className="zn-slice-count-pill">{ids.length}</span>
+				</div>
+
+				<div className="zn-slice-list">
+					{ids.length === 0 ? (
+						<div className="zn-slice-empty">{c.donutEditor.emptyFace}</div>
+					) : (
+						ids.map((sliceId, index) => {
+							const opt = resolveCatalogEntry(sliceId);
+							const fmtBadge =
+								opt && opt.format !== "*" && opt.format !== "*audio"
+									? opt.format.toUpperCase()
+									: sliceId;
+							const isDragTarget =
+								dragOverSlice?.face === face && dragOverSlice?.index === index;
+
+							return (
+								<div
+									key={`${face}-${sliceId}-${index}`}
+									className={`zn-slice-row ${isDragTarget ? "is-drag-target" : ""}`}
+									draggable
+									onDragStart={(e) => {
+										e.dataTransfer.effectAllowed = "move";
+										e.dataTransfer.setData("text/plain", String(index));
+										setDragSlice({ face, index });
+									}}
+									onDragOver={(e) => {
+										if (dragSlice && dragSlice.face === face) {
+											e.preventDefault();
+											if (dragOverSlice?.index !== index || dragOverSlice?.face !== face) {
+												setDragOverSlice({ face, index });
+											}
+										}
+									}}
+									onDrop={(e) => {
+										e.preventDefault();
+										if (dragSlice && dragSlice.face === face) {
+											handleMoveSlice(face, dragSlice.index, index);
+										}
+										setDragSlice(null);
+										setDragOverSlice(null);
+									}}
+									onDragEnd={() => {
+										setDragSlice(null);
+										setDragOverSlice(null);
+									}}
+								>
+									<span className="zn-slice-drag-grip" aria-hidden>
+										<GripVertical size={12} />
+									</span>
+									<div className="zn-slice-info">
+										<span className="zn-slice-label">{opt?.label ?? sliceId}</span>
+										<span className="zn-slice-fmt">{fmtBadge}</span>
+										{opt?.requiredEngine && (
+											<span className="zn-slice-engine">+{opt.requiredEngine}</span>
+										)}
+									</div>
+									<div className="zn-slice-row-actions">
+										<button
+											type="button"
+											className="zn-icon-action-btn"
+											disabled={index === 0}
+											onClick={() => handleMoveSlice(face, index, index - 1)}
+											title={c.donutEditor.moveUp}
+											aria-label={c.donutEditor.moveUp}
+										>
+											<ChevronUp size={12} />
+										</button>
+										<button
+											type="button"
+											className="zn-icon-action-btn"
+											disabled={index === ids.length - 1}
+											onClick={() => handleMoveSlice(face, index, index + 1)}
+											title={c.donutEditor.moveDown}
+											aria-label={c.donutEditor.moveDown}
+										>
+											<ChevronDown size={12} />
+										</button>
+										<button
+											type="button"
+											className="zn-icon-action-btn"
+											onClick={() => handleJumpToPresetFromSlice(sliceId)}
+											title={c.donutEditor.editPreset}
+											aria-label={c.donutEditor.editPreset}
+										>
+											<Sliders size={11} />
+										</button>
+										<button
+											type="button"
+											className="zn-icon-action-btn danger"
+											onClick={() => handleRemoveSlice(face, index)}
+											title={c.donutEditor.removeSlice}
+											aria-label={c.donutEditor.removeSlice}
+										>
+											<X size={12} />
+										</button>
+									</div>
+								</div>
+							);
+						})
+					)}
+				</div>
+
+				<div className="zn-slice-add-row">
+					<ZenithSelect
+						className="settings-select zn-slice-add-select"
+						value={addSliceSelection[face]}
+						onChange={(e) => {
+							const val = e.target.value;
+							if (val) {
+								handleAddSlice(face, val);
+							}
+						}}
+						aria-label={c.donutEditor.addSlicePlaceholder}
+					>
+						<option value="" disabled>
+							{c.donutEditor.addSlicePlaceholder}
+						</option>
+						{customPresetEntries.length > 0 && (
+							<option value={`__hdr_custom_${face}`} disabled>
+								— {c.donutEditor.customPresetsGroup} —
+							</option>
+						)}
+						{customPresetEntries.map((p) => (
+							<option key={p.id} value={p.id}>
+								{p.name || p.id} ({p.target_format.toUpperCase()})
+							</option>
+						))}
+						{compatibleIds.length > 0 && (
+							<option value={`__hdr_compat_${face}`} disabled>
+								— {c.donutEditor.compatibleGroup} —
+							</option>
+						)}
+						{compatibleIds.map((id) => {
+							const opt = resolveCatalogEntry(id);
+							return (
+								<option key={id} value={id}>
+									{opt?.label ?? id}
+								</option>
+							);
+						})}
+						{remainingCatalogIds.length > 0 && (
+							<option value={`__hdr_all_${face}`} disabled>
+								— {c.donutEditor.allCatalogGroup} —
+							</option>
+						)}
+						{remainingCatalogIds.map((id) => {
+							const opt = resolveCatalogEntry(id);
+							return (
+								<option key={id} value={id}>
+									{opt?.label ?? id}
+								</option>
+							);
+						})}
+					</ZenithSelect>
+				</div>
+			</div>
+		);
+	};
+
+	const renderDonutSubTab = () => {
+		const isBuiltInPreset = Boolean(DEFAULT_PRESET_CATALOG[presetDraft.id]);
+		const isSavedInState = converterState.presets.some((p) => p.id === presetDraft.id);
+		const isIsoTarget = presetDraft.target_format.trim().toLowerCase() === "iso";
+		const builtInIds = Object.keys(DEFAULT_PRESET_CATALOG);
+
+		return (
+			<div key="donut" className="zn-converter-panel">
+				{stateError && (
+					<div className="zn-converter-error-banner" role="alert">
+						<AlertCircle size={13} />
+						<span>{stateError}</span>
 					</div>
+				)}
+
+				{/* Donut Slice Layout Editor */}
+				<div className="zn-converter-section-card">
+					<div className="zn-converter-section-head">
+						<div className="zn-converter-section-title-col">
+							<div className="zn-converter-section-title">
+								<span>{c.donutEditor.profilesLabel}</span>
+								{profileSaveStatus === "saving" && (
+									<span className="zn-slice-count-pill">{c.donutEditor.saving}</span>
+								)}
+								{profileSaveStatus === "saved" && (
+									<span className="zn-converter-save-pill">{c.donutEditor.saved}</span>
+								)}
+							</div>
+							<div className="zn-converter-section-desc">{c.donutEditor.profilesDesc}</div>
+						</div>
+
+						<div className="zn-converter-section-actions">
+							<button
+								type="button"
+								className="settings-btn"
+								onClick={handleResetCategoryProfile}
+								disabled={!activeProfile || !customizedProfileIds.has(activeProfile.id)}
+							>
+								<RotateCcw size={11} />
+								<span>{c.donutEditor.resetCategory}</span>
+							</button>
+							<button
+								type="button"
+								className="settings-btn"
+								onClick={handleResetAllProfiles}
+								disabled={customizedProfileIds.size === 0}
+							>
+								<span>{c.donutEditor.resetAll}</span>
+							</button>
+						</div>
+					</div>
+
+					<div className="zn-converter-category-pills">
+						{mergedProfiles.map((profile) => {
+							const label = c.donut.categories[profile.category] ?? profile.label;
+							const isActive = profile.id === activeProfile?.id;
+							const isEdited = customizedProfileIds.has(profile.id);
+							return (
+								<button
+									key={profile.id}
+									type="button"
+									className={`zn-conv-cat-pill ${isActive ? "active" : ""}`}
+									onClick={() => setSelectedProfileId(profile.id)}
+								>
+									<span>{label}</span>
+									{isEdited && (
+										<span
+											className="zn-conv-cat-dot"
+											title={c.donutEditor.customizedBadge}
+											aria-label={c.donutEditor.customizedBadge}
+										/>
+									)}
+								</button>
+							);
+						})}
+					</div>
+
+					{activeProfile && (
+						<div className="zn-slice-faces-grid">
+							{renderFaceColumn("primary", activeProfile.primary_ids)}
+							{renderFaceColumn("secondary", activeProfile.secondary_ids)}
+						</div>
+					)}
+				</div>
+
+				{/* Preset & CLI Options Editor */}
+				<div ref={presetEditorRef} className="zn-converter-section-card">
+					<div className="zn-converter-section-head">
+						<div className="zn-converter-section-title-col">
+							<div className="zn-converter-section-title">
+								<span>{c.presets.groupLabel}</span>
+								<span
+									className={`zn-preset-kind-badge ${!isBuiltInPreset ? "is-custom" : ""}`}
+								>
+									{isBuiltInPreset ? c.presets.builtInTag : c.presets.customTag}
+								</span>
+								{presetSavedFlash && (
+									<span className="zn-converter-save-pill">{c.donutEditor.saved}</span>
+								)}
+							</div>
+							<div className="zn-converter-section-desc">{c.presets.groupDesc}</div>
+						</div>
+
+						<div className="zn-converter-section-actions">
+							<button type="button" className="settings-btn" onClick={handleNewPreset}>
+								<Plus size={12} />
+								<span>{c.presets.newPreset}</span>
+							</button>
+						</div>
+					</div>
+
+					<div className="zn-preset-toolbar">
+						<ZenithSelect
+							className="settings-select zn-preset-select"
+							value={isCreatingPreset ? "__creating__" : selectedPresetId}
+							onChange={(e) => {
+								if (e.target.value !== "__creating__") {
+									handleSelectPresetForEdit(e.target.value);
+								}
+							}}
+							aria-label={c.presets.selectLabel}
+						>
+							{isCreatingPreset && (
+								<option value="__creating__">
+									{presetDraft.name.trim() || c.presets.newPreset}
+								</option>
+							)}
+							{converterState.presets.length > 0 && (
+								<option value="__hdr_saved_presets" disabled>
+									— {c.presets.customGroup} —
+								</option>
+							)}
+							{converterState.presets.map((p) => (
+								<option key={`saved-${p.id}`} value={p.id}>
+									{p.name} ({p.target_format.toUpperCase()})
+								</option>
+							))}
+							<option value="__hdr_builtin_presets" disabled>
+								— {c.presets.builtInGroup} —
+							</option>
+							{builtInIds
+								.filter((id) => !converterState.presets.some((sp) => sp.id === id))
+								.map((id) => {
+									const opt = DEFAULT_PRESET_CATALOG[id];
+									return (
+										<option key={`bi-${id}`} value={id}>
+											{opt.label} ({opt.format.toUpperCase()})
+										</option>
+									);
+								})}
+						</ZenithSelect>
+					</div>
+
+					<div className="zn-preset-form-grid">
+						<div className="zn-preset-field">
+							<label className="zn-preset-field-label" htmlFor="zn-preset-name">
+								{c.presets.nameLabel}
+							</label>
+							<input
+								id="zn-preset-name"
+								type="text"
+								className="settings-text-input"
+								value={presetDraft.name}
+								placeholder={c.presets.namePlaceholder}
+								onChange={(e) =>
+									setPresetDraft((prev) => ({ ...prev, name: e.target.value }))
+								}
+							/>
+						</div>
+
+						<div className="zn-preset-field">
+							<label className="zn-preset-field-label" htmlFor="zn-preset-format">
+								{c.presets.targetFormatLabel}
+							</label>
+							<input
+								id="zn-preset-format"
+								type="text"
+								className="settings-text-input"
+								dir="ltr"
+								disabled={isBuiltInPreset}
+								value={presetDraft.target_format}
+								placeholder={c.presets.targetFormatPlaceholder}
+								onChange={(e) =>
+									setPresetDraft((prev) => ({ ...prev, target_format: e.target.value }))
+								}
+							/>
+						</div>
+
+						<div className="zn-preset-field full-span">
+							<div className="zn-preset-field-label-row">
+								<span className="zn-preset-field-label">{c.presets.qualityLabel}</span>
+								<label className="zn-preset-inline-check">
+									<input
+										type="checkbox"
+										checked={presetDraft.quality !== null && presetDraft.quality !== undefined}
+										onChange={(e) =>
+											setPresetDraft((prev) => ({
+												...prev,
+												quality: e.target.checked ? prev.quality ?? 85 : null
+											}))
+										}
+									/>
+									<span>
+										{presetDraft.quality !== null && presetDraft.quality !== undefined
+											? c.presets.qualityUseCustom
+											: c.presets.qualityDefault}
+									</span>
+								</label>
+							</div>
+							{presetDraft.quality !== null && presetDraft.quality !== undefined && (
+								<div className="zn-preset-quality-row">
+									<input
+										type="range"
+										min={1}
+										max={100}
+										className="settings-slider zn-preset-quality-slider"
+										value={presetDraft.quality}
+										onChange={(e) =>
+											setPresetDraft((prev) => ({
+												...prev,
+												quality: Number(e.target.value)
+											}))
+										}
+									/>
+									<span className="zn-preset-quality-val">{presetDraft.quality}</span>
+								</div>
+							)}
+						</div>
+
+						<div className="zn-preset-field">
+							<label className="zn-preset-field-label" htmlFor="zn-preset-pages">
+								{c.presets.pagesLabel}
+							</label>
+							<input
+								id="zn-preset-pages"
+								type="text"
+								className="settings-text-input"
+								dir="ltr"
+								value={presetDraft.pages ?? ""}
+								placeholder={c.presets.pagesPlaceholder}
+								onChange={(e) =>
+									setPresetDraft((prev) => ({
+										...prev,
+										pages: e.target.value || null
+									}))
+								}
+							/>
+						</div>
+
+						<div className="zn-preset-field">
+							<span className="zn-preset-field-label">{c.presets.conflictLabel}</span>
+							<ZenithSelect
+								className="settings-select"
+								value={(presetDraft.conflict as ConflictPolicy) || "rename"}
+								onChange={(e) =>
+									setPresetDraft((prev) => ({
+										...prev,
+										conflict: e.target.value as ConflictPolicy
+									}))
+								}
+							>
+								<option value="rename">{c.presets.conflictRename}</option>
+								<option value="overwrite">{c.presets.conflictOverwrite}</option>
+								<option value="skip">{c.presets.conflictSkip}</option>
+							</ZenithSelect>
+						</div>
+
+						<div className="zn-preset-field">
+							<span className="zn-preset-field-label">{c.presets.splitModeLabel}</span>
+							<ZenithSelect
+								className="settings-select"
+								value={presetSplitMode}
+								onChange={(e) => {
+									const next = e.target.value as "none" | "every" | "parts";
+									setPresetSplitMode(next);
+									if (next === "every") {
+										const val = presetDraft.split_every || 5;
+										setPresetSplitInput(String(val));
+										setPresetDraft((prev) => ({
+											...prev,
+											split_every: val,
+											split_parts: null
+										}));
+									} else if (next === "parts") {
+										const val = presetDraft.split_parts || 2;
+										setPresetSplitInput(String(val));
+										setPresetDraft((prev) => ({
+											...prev,
+											split_every: null,
+											split_parts: val
+										}));
+									} else {
+										setPresetDraft((prev) => ({
+											...prev,
+											split_every: null,
+											split_parts: null
+										}));
+									}
+								}}
+							>
+								<option value="none">{c.presets.splitNone}</option>
+								<option value="every">{c.presets.splitEvery}</option>
+								<option value="parts">{c.presets.splitParts}</option>
+							</ZenithSelect>
+						</div>
+
+						{presetSplitMode !== "none" && (
+							<div className="zn-preset-field">
+								<label className="zn-preset-field-label" htmlFor="zn-preset-split-val">
+									{presetSplitMode === "every"
+										? c.presets.splitEveryLabel
+										: c.presets.splitPartsLabel}
+								</label>
+								<input
+									id="zn-preset-split-val"
+									type="number"
+									min={presetSplitMode === "every" ? 1 : 2}
+									max={9999}
+									className="settings-text-input"
+									dir="ltr"
+									value={presetSplitInput}
+									onChange={(e) => {
+										const raw = e.target.value;
+										setPresetSplitInput(raw);
+										const num = Number.parseInt(raw, 10);
+										if (Number.isFinite(num)) {
+											setPresetDraft((prev) =>
+												presetSplitMode === "every"
+													? { ...prev, split_every: Math.max(1, num), split_parts: null }
+													: { ...prev, split_parts: Math.max(2, num), split_every: null }
+											);
+										}
+									}}
+								/>
+							</div>
+						)}
+
+						{isIsoTarget && (
+							<>
+								<div className="zn-preset-field">
+									<span className="zn-preset-field-label">{c.presets.isoFsLabel}</span>
+									<ZenithSelect
+										className="settings-select"
+										value={(presetDraft.iso_filesystem as IsoFilesystem) || ""}
+										onChange={(e) =>
+											setPresetDraft((prev) => ({
+												...prev,
+												iso_filesystem: e.target.value || null
+											}))
+										}
+									>
+										<option value="">{c.presets.isoFsDefault}</option>
+										<option value="joliet">{c.presets.isoFsJoliet}</option>
+										<option value="udf201">{c.presets.isoFsUdf}</option>
+									</ZenithSelect>
+								</div>
+
+								<div className="zn-preset-field">
+									<label className="zn-preset-field-label" htmlFor="zn-preset-iso-label">
+										{c.presets.isoLabelField}
+									</label>
+									<input
+										id="zn-preset-iso-label"
+										type="text"
+										className="settings-text-input"
+										dir="ltr"
+										value={presetDraft.iso_label ?? ""}
+										placeholder={c.presets.isoLabelPlaceholder}
+										onChange={(e) =>
+											setPresetDraft((prev) => ({
+												...prev,
+												iso_label: e.target.value || null
+											}))
+										}
+									/>
+								</div>
+							</>
+						)}
+
+						<div className="zn-preset-field full-span">
+							<div className="zn-preset-toggles">
+								<div className="zn-preset-toggle-row">
+									<div className="zn-preset-toggle-info">
+										<span className="zn-preset-toggle-title">{c.presets.keepDatesLabel}</span>
+										<span className="zn-preset-toggle-desc">{c.presets.keepDatesDesc}</span>
+									</div>
+									<label className="toggle-switch">
+										<input
+											type="checkbox"
+											checked={Boolean(presetDraft.keep_dates)}
+											onChange={(e) =>
+												setPresetDraft((prev) => ({
+													...prev,
+													keep_dates: e.target.checked
+												}))
+											}
+										/>
+										<span className="slider" />
+									</label>
+								</div>
+
+								<div className="zn-preset-toggle-row">
+									<div className="zn-preset-toggle-info">
+										<span className="zn-preset-toggle-title">{c.presets.zipLabel}</span>
+										<span className="zn-preset-toggle-desc">{c.presets.zipDesc}</span>
+									</div>
+									<label className="toggle-switch">
+										<input
+											type="checkbox"
+											checked={Boolean(presetDraft.zip)}
+											onChange={(e) =>
+												setPresetDraft((prev) => ({
+													...prev,
+													zip: e.target.checked
+												}))
+											}
+										/>
+										<span className="slider" />
+									</label>
+								</div>
+							</div>
+						</div>
+					</div>
+
+					{presetError && (
+						<div className="zn-converter-error-banner" role="alert">
+							<AlertCircle size={13} />
+							<span>{presetError}</span>
+						</div>
+					)}
+
+					<div className="zn-preset-footer">
+						<div className="zn-preset-footer-group">
+							{activeProfile && (
+								<>
+									<button
+										type="button"
+										className="settings-btn"
+										onClick={() => handleAddPresetToFace("primary")}
+									>
+										<span>{c.presets.addToFace1}</span>
+									</button>
+									<button
+										type="button"
+										className="settings-btn"
+										onClick={() => handleAddPresetToFace("secondary")}
+									>
+										<span>{c.presets.addToFace2}</span>
+									</button>
+								</>
+							)}
+						</div>
+
+						<div className="zn-preset-footer-group">
+							{isSavedInState && (
+								<button
+									type="button"
+									className="settings-btn zn-pack-remove-btn"
+									onClick={handleDeleteOrResetPreset}
+								>
+									<Trash2 size={12} />
+									<span>
+										{isBuiltInPreset ? c.presets.resetOverride : c.presets.deletePreset}
+									</span>
+								</button>
+							)}
+							<button
+								type="button"
+								className="settings-btn zn-converter-primary-btn"
+								onClick={handleSavePreset}
+							>
+								<Save size={12} />
+								<span>{c.presets.savePreset}</span>
+							</button>
+						</div>
+					</div>
+				</div>
+			</div>
+		);
+	};
+
+	const renderRecentRow = (item: RecentConversion) => {
+		const cat = detectInputCategory(item.source_ext || item.output_format);
+		const Icon = iconForCategory(cat);
+		const normalizedStatus = item.status.toLowerCase();
+		const statusLabel =
+			normalizedStatus === "skipped"
+				? c.history.statusSkipped
+				: normalizedStatus === "failed"
+					? c.history.statusFailed
+					: c.history.statusDone;
+		const statusClass =
+			normalizedStatus === "skipped"
+				? "is-skipped"
+				: normalizedStatus === "failed"
+					? "is-failed"
+					: "is-done";
+		const srcLabel = (item.source_ext || "FILE").toUpperCase();
+		const outLabel = (item.output_format || "FILE").toUpperCase();
+		const canOpen = Boolean(item.output_path) && normalizedStatus !== "failed";
+		const revealPath = item.output_path || item.source_path;
+
+		return (
+			<div key={item.id} className="zn-recent-item">
+				<div className="zn-recent-main">
+					<div className="zn-recent-thumb">
+						{item.thumbnail_data_url ? (
+							<img src={item.thumbnail_data_url} alt="" />
+						) : (
+							<Icon size={16} strokeWidth={1.7} />
+						)}
+					</div>
+					<div className="zn-recent-info">
+						<div className="zn-recent-name" title={item.source_path}>
+							{item.source_name}
+						</div>
+						<div className="zn-recent-meta">
+							<span className="zn-recent-flow-badge" dir="ltr">
+								{srcLabel} → {outLabel}
+							</span>
+							<span className={`zn-recent-status ${statusClass}`}>{statusLabel}</span>
+							<span>{formatTimestamp(item.timestamp_ms)}</span>
+						</div>
+					</div>
+				</div>
+
+				<div className="zn-recent-actions">
+					{canOpen && (
+						<button
+							type="button"
+							className="settings-btn"
+							onClick={() => handleOpenOutput(item.output_path, false)}
+							title={c.history.openFile}
+						>
+							<ExternalLink size={11} />
+							<span>{c.history.openFile}</span>
+						</button>
+					)}
+					{revealPath && (
+						<button
+							type="button"
+							className="settings-btn"
+							onClick={() => handleOpenOutput(revealPath, true)}
+							title={c.history.revealInFolder}
+						>
+							<FolderOpen size={11} />
+							<span>{c.history.revealInFolder}</span>
+						</button>
+					)}
+				</div>
+			</div>
+		);
+	};
+
+	const renderHistorySubTab = () => {
+		const dropPct = Math.max(0, Math.min(100, Math.round((dropJob?.fraction ?? 0) * 100)));
+		const pendingPackName = pendingDropInstall?.engineId
+			? c.packs.catalog[pendingDropInstall.engineId]?.name ?? pendingDropInstall.engineId
+			: null;
+
+		return (
+			<div key="history" className="zn-converter-panel">
+				{/* Interactive Settings Drop Zone */}
+				<div className="zn-converter-section-card">
+					<div className="zn-converter-section-head">
+						<div className="zn-converter-section-title-col">
+							<div className="zn-converter-section-title">
+								<span>{c.dropZone.groupLabel}</span>
+							</div>
+						</div>
+						<div className="zn-converter-section-actions">
+							<button
+								type="button"
+								className="settings-btn"
+								onClick={handleBrowseDropZoneFiles}
+							>
+								<FolderOpen size={12} />
+								<span>{c.dropZone.browseFiles}</span>
+							</button>
+							{queuedFiles.length > 0 && (
+								<button
+									type="button"
+									className="settings-btn"
+									onClick={() => {
+										setQueuedFiles([]);
+										setPendingDropInstall(null);
+										setDropJob(null);
+									}}
+								>
+									<span>{c.dropZone.clearFiles}</span>
+								</button>
+							)}
+						</div>
+					</div>
+
+					<div
+						className={`zn-dropzone-area ${isDropOver ? "is-dragover" : ""}`}
+						onDragOver={(e) => {
+							e.preventDefault();
+							if (!isDropOver) setIsDropOver(true);
+						}}
+						onDragLeave={() => setIsDropOver(false)}
+						onDrop={(e) => {
+							e.preventDefault();
+							setIsDropOver(false);
+							const files = Array.from(e.dataTransfer?.files ?? []);
+							const paths = files
+								.map((f) => (f as File & { path?: string }).path)
+								.filter((p): p is string => Boolean(p && p.trim()));
+							if (paths.length > 0) {
+								setQueuedFiles((prev) => {
+									const merged = [...prev];
+									for (const p of paths) {
+										if (!merged.includes(p)) merged.push(p);
+									}
+									return merged;
+								});
+								setPendingDropInstall(null);
+							}
+						}}
+					>
+						<div className="zn-dropzone-icon">
+							<Upload size={16} strokeWidth={1.8} />
+						</div>
+						<div className="zn-dropzone-title">
+							{isDropOver ? c.dropZone.activeTitle : c.dropZone.title}
+						</div>
+						<div className="zn-dropzone-desc">{c.dropZone.desc}</div>
+					</div>
+
+					{queuedFiles.length > 0 && dropZoneDonutSides && (
+						<div className="zn-dropzone-queued">
+							<div className="zn-dropzone-files-bar">
+								<span className="zn-slice-count-pill">
+									{c.dropZone.queuedFiles(queuedFiles.length)} ·{" "}
+									{c.donut.categories[dropZoneDonutSides.detectedCategory] ??
+										dropZoneDonutSides.detectedCategory}
+								</span>
+							</div>
+
+							<div className="zn-dropzone-chips">
+								{queuedFiles.map((filePath) => (
+									<span key={filePath} className="zn-dropzone-file-chip" title={filePath}>
+										<span className="zn-dropzone-file-name">{extractBaseName(filePath)}</span>
+										<button
+											type="button"
+											className="zn-dropzone-chip-x"
+											onClick={() =>
+												setQueuedFiles((prev) => prev.filter((p) => p !== filePath))
+											}
+											aria-label={c.donutEditor.removeSlice}
+										>
+											<X size={11} />
+										</button>
+									</span>
+								))}
+							</div>
+
+							{dropZoneDonutSides.primary.length > 0 && (
+								<div className="zn-dropzone-targets-group">
+									<div className="zn-dropzone-targets-label">{c.dropZone.primaryTargets}</div>
+									<div className="zn-dropzone-pills">
+										{dropZoneDonutSides.primary.map((opt, idx) => (
+											<button
+												key={`dz-p-${opt.presetId ?? opt.format}-${idx}`}
+												type="button"
+												className="zn-target-pill-btn"
+												disabled={dropJob?.status === "converting"}
+												onClick={() => handleDropTargetClick(opt)}
+											>
+												<span>{opt.label}</span>
+												{opt.requiredEngine && (
+													<span className="zn-target-pill-engine">
+														+{opt.requiredEngine}
+													</span>
+												)}
+											</button>
+										))}
+									</div>
+								</div>
+							)}
+
+							{dropZoneDonutSides.secondary.length > 0 && (
+								<div className="zn-dropzone-targets-group">
+									<div className="zn-dropzone-targets-label">{c.dropZone.secondaryTargets}</div>
+									<div className="zn-dropzone-pills">
+										{dropZoneDonutSides.secondary.map((opt, idx) => (
+											<button
+												key={`dz-s-${opt.presetId ?? opt.format}-${idx}`}
+												type="button"
+												className="zn-target-pill-btn"
+												disabled={dropJob?.status === "converting"}
+												onClick={() => handleDropTargetClick(opt)}
+											>
+												<span>{opt.label}</span>
+												{opt.requiredEngine && (
+													<span className="zn-target-pill-engine">
+														+{opt.requiredEngine}
+													</span>
+												)}
+											</button>
+										))}
+									</div>
+								</div>
+							)}
+						</div>
+					)}
+
+					{pendingDropInstall && (
+						<div className="zn-dropzone-job-box">
+							<div className="zn-dropzone-job-top">
+								<span>
+									{pendingPackName
+										? c.dropZone.requiresPackNotice(pendingPackName)
+										: c.dropZone.requiresCoreNotice}
+								</span>
+								<button
+									type="button"
+									className="zn-icon-action-btn"
+									disabled={pendingDropInstall.installing}
+									onClick={() => setPendingDropInstall(null)}
+									aria-label={t.common.cancel}
+								>
+									<X size={12} />
+								</button>
+							</div>
+							{pendingDropInstall.error && (
+								<div className="zn-converter-error-banner" role="alert">
+									<AlertCircle size={13} />
+									<span>{pendingDropInstall.error}</span>
+								</div>
+							)}
+							<div className="zn-dropzone-done-actions">
+								<button
+									type="button"
+									className="settings-btn zn-converter-primary-btn"
+									disabled={
+										pendingDropInstall.installing ||
+										Boolean(
+											pendingDropInstall.enginePack &&
+												!pendingDropInstall.enginePack.downloadable
+										)
+									}
+									onClick={handleConfirmDropInstall}
+								>
+									{pendingDropInstall.installing ? (
+										<Loader2 size={12} className="zn-spin" />
+									) : (
+										<Download size={12} />
+									)}
+									<span>
+										{pendingPackName
+											? c.dropZone.installPackAction(pendingPackName)
+											: c.dropZone.setupCoreAction}
+									</span>
+								</button>
+							</div>
+						</div>
+					)}
+
+					{dropJob && (
+						<div className="zn-dropzone-job-box">
+							<div className="zn-dropzone-job-top">
+								<span>
+									{dropJob.status === "converting"
+										? `${c.dropZone.converting} (${dropJob.targetLabel}) · ${dropPct}%`
+										: dropJob.status === "done"
+											? `${c.dropZone.doneTitle} · ${dropJob.targetLabel}`
+											: dropJob.status === "cancelled"
+												? c.donut.cancelledTitle
+												: c.donut.failedTitle}
+								</span>
+								{dropJob.status === "converting" ? (
+									<button
+										type="button"
+										className="settings-btn"
+										onClick={handleCancelDropJob}
+									>
+										<X size={11} />
+										<span>{c.dropZone.cancel}</span>
+									</button>
+								) : (
+									<button
+										type="button"
+										className="zn-icon-action-btn"
+										onClick={() => setDropJob(null)}
+										aria-label={c.donut.dismiss}
+									>
+										<X size={12} />
+									</button>
+								)}
+							</div>
+
+							{dropJob.status === "converting" && (
+								<div className="zn-converter-progress-track">
+									<div
+										className="zn-converter-progress-fill"
+										style={{ width: `${Math.max(dropPct, 6)}%` }}
+									/>
+								</div>
+							)}
+
+							{dropJob.status === "error" && dropJob.error && (
+								<div className="zn-converter-error-banner" role="alert">
+									<AlertCircle size={13} />
+									<span>{dropJob.error}</span>
+								</div>
+							)}
+
+							{dropJob.status === "done" && dropJob.outputs.length > 0 && (
+								<div className="zn-dropzone-done-actions">
+									<button
+										type="button"
+										className="settings-btn"
+										onClick={() => handleOpenOutput(dropJob.outputs[0], false)}
+									>
+										<ExternalLink size={11} />
+										<span>{c.dropZone.openOutput}</span>
+									</button>
+									<button
+										type="button"
+										className="settings-btn"
+										onClick={() => handleOpenOutput(dropJob.outputs[0], true)}
+									>
+										<FolderOpen size={11} />
+										<span>{c.dropZone.showInFolder}</span>
+									</button>
+								</div>
+							)}
+						</div>
+					)}
+				</div>
+
+				{/* Watch Folders Placeholder (wired in Task 10) */}
+				<div className="zn-watch-placeholder-card">
+					<div className="zn-watch-placeholder-left">
+						<div className="zn-watch-placeholder-icon">
+							<FolderSync size={16} strokeWidth={1.7} />
+						</div>
+						<div className="zn-converter-section-title-col">
+							<div className="zn-converter-section-title">{c.history.watchTitle}</div>
+							<div className="zn-converter-section-desc">{c.history.watchDesc}</div>
+						</div>
+					</div>
+					<span className="zn-converter-empty-badge">{c.comingSoonBadge}</span>
+				</div>
+
+				{/* Recent Conversions List */}
+				<div className="zn-converter-section-card">
+					<div className="zn-converter-section-head">
+						<div className="zn-converter-section-title-col">
+							<div className="zn-converter-section-title">
+								<span>{c.history.recentGroupLabel}</span>
+								<span className="zn-slice-count-pill">{converterState.recent.length}</span>
+							</div>
+						</div>
+						<div className="zn-converter-section-actions">
+							<button
+								type="button"
+								className="settings-btn zn-pack-remove-btn"
+								disabled={clearingHistory || converterState.recent.length === 0}
+								onClick={handleClearHistory}
+							>
+								<Trash2 size={12} />
+								<span>{c.history.clearHistory}</span>
+							</button>
+						</div>
+					</div>
+
+					{(stateError || historyError) && (
+						<div className="zn-converter-error-banner" role="alert">
+							<AlertCircle size={13} />
+							<span>{historyError || stateError}</span>
+						</div>
+					)}
+
+					{converterState.recent.length === 0 ? (
+						<div className="zn-recent-empty">
+							<div className="zn-converter-empty-title">{c.history.emptyTitle}</div>
+							<div className="zn-converter-empty-desc">{c.history.emptyDesc}</div>
+						</div>
+					) : (
+						<div className="zn-recent-list">{converterState.recent.map(renderRecentRow)}</div>
+					)}
 				</div>
 			</div>
 		);
@@ -787,9 +2792,8 @@ export function ConverterTab({
 				</div>
 			)}
 
-			{/* Sub-tab 2: Donut & Presets (populated in Task 7) */}
-			{subTab === "donut" &&
-				renderPlaceholder(Disc, c.placeholders.donutTitle, c.placeholders.donutDesc)}
+			{/* Sub-tab 2: Donut & Presets */}
+			{subTab === "donut" && renderDonutSubTab()}
 
 			{/* Sub-tab 3: Packs */}
 			{subTab === "packs" && (
@@ -829,9 +2833,8 @@ export function ConverterTab({
 				</div>
 			)}
 
-			{/* Sub-tab 4: Watch & History (populated in Task 10) */}
-			{subTab === "history" &&
-				renderPlaceholder(History, c.placeholders.historyTitle, c.placeholders.historyDesc)}
+			{/* Sub-tab 4: Watch & History */}
+			{subTab === "history" && renderHistorySubTab()}
 		</div>
 	);
 }

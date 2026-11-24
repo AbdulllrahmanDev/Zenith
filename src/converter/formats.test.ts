@@ -1,13 +1,17 @@
 // @ts-expect-error -- bun:test is provided by Bun's test runner (@types/bun is not installed)
 import { describe, expect, test } from "bun:test";
 import {
+	buildConvertRequestFromOption,
+	buildCustomMatcherInputs,
 	DEFAULT_PRESET_CATALOG,
 	DEFAULT_TOOLBAR_PROFILES,
+	detectInputCategory,
 	EXTENSION_CATEGORY,
 	extractExtension,
+	getCompatibleCatalogIdsForCategory,
 	matchFormatsForPaths,
 } from "./formats";
-import type { TargetOption, ToolbarProfile } from "./types";
+import type { ConverterState, TargetOption, ToolbarProfile } from "./types";
 
 describe("extractExtension", () => {
 	test("extracts compound extensions before simple extensions", () => {
@@ -148,5 +152,131 @@ describe("matchFormatsForPaths", () => {
 		expect(folderResult.detectedCategory).toBe("folder");
 		expect(folderResult.primary.map((o) => o.format)).toContain("zip");
 		expect(folderResult.primary.map((o) => o.format)).toContain("iso");
+	});
+});
+
+describe("ConverterState helpers & ConvertRequest builder", () => {
+	test("maps ConverterState profiles and presets into matcher inputs and ConvertRequest", () => {
+		const state: ConverterState = {
+			profiles: [
+				{
+					id: "images",
+					category: "image",
+					label: "Images",
+					primary_ids: ["custom-webp-75", "to-jpg"],
+					secondary_ids: ["zip-all"],
+				},
+			],
+			presets: [
+				{
+					id: "custom-webp-75",
+					name: "WebP 75",
+					target_format: "webp",
+					quality: 75,
+					pages: null,
+					split_every: null,
+					split_parts: null,
+					conflict: "skip",
+					keep_dates: true,
+					zip: true,
+					iso_filesystem: "udf201",
+					iso_label: "IGNORED_NON_ISO",
+				},
+				{
+					id: "to-jpg",
+					name: "JPG HQ",
+					target_format: "jpg",
+					quality: 96,
+					pages: null,
+					split_every: null,
+					split_parts: null,
+					conflict: "overwrite",
+					keep_dates: false,
+					zip: false,
+					iso_filesystem: null,
+					iso_label: null,
+				},
+			],
+			recent: [],
+			watch_rules: [],
+		};
+
+		const { profiles, extraPresets, presetsById } = buildCustomMatcherInputs(state);
+		const sides = matchFormatsForPaths(["photo.png"], profiles, extraPresets);
+
+		expect(sides.primary.map((o) => o.presetId)).toEqual(["custom-webp-75", "to-jpg"]);
+		expect(sides.primary[0]?.label).toBe("WebP 75");
+		expect(sides.primary[0]?.quality).toBe(75);
+
+		const customReq = buildConvertRequestFromOption({
+			jobId: "job-c",
+			inputs: ["C:\\Temp\\photo.png"],
+			option: sides.primary[0],
+			outputDir: null,
+			presetsById,
+		});
+		expect(customReq.preset).toBeNull();
+		expect(customReq.to).toBe("webp");
+		expect(customReq.quality).toBe(75);
+		expect(customReq.conflict).toBe("skip");
+		expect(customReq.overwrite).toBeNull();
+		expect(customReq.keep_dates).toBe(true);
+		expect(customReq.zip).toBe(true);
+		expect(customReq.iso_filesystem).toBeNull();
+
+		const builtInReq = buildConvertRequestFromOption({
+			jobId: "job-b",
+			inputs: ["C:\\Temp\\photo.png"],
+			option: sides.primary[1],
+			outputDir: "C:\\Out",
+			presetsById,
+		});
+		expect(builtInReq.preset).toBe("to-jpg");
+		expect(builtInReq.quality).toBe(96);
+		expect(builtInReq.conflict).toBe("overwrite");
+		expect(builtInReq.overwrite).toBe(true);
+		expect(builtInReq.output_dir).toBe("C:\\Out");
+	});
+
+	test("handles PDF split and ISO fields plus category detection helpers", () => {
+		const isoPresetMap = new Map([
+			[
+				"to-iso",
+				{
+					id: "to-iso",
+					name: "ISO UDF",
+					target_format: "iso",
+					quality: null,
+					pages: null,
+					split_every: null,
+					split_parts: null,
+					conflict: "rename",
+					keep_dates: true,
+					zip: false,
+					iso_filesystem: "udf201",
+					iso_label: "BACKUP_DISC",
+				},
+			],
+		]);
+		const isoReq = buildConvertRequestFromOption({
+			jobId: "job-iso",
+			inputs: ["C:\\Folder\\"],
+			option: DEFAULT_PRESET_CATALOG["to-iso"],
+			outputDir: null,
+			presetsById: isoPresetMap,
+		});
+		expect(isoReq.iso_filesystem).toBe("udf201");
+		expect(isoReq.iso_label).toBe("BACKUP_DISC");
+		expect(isoReq.conflict).toBe("rename");
+		expect(isoReq.overwrite).toBeNull();
+
+		expect(detectInputCategory("png")).toBe("image");
+		expect(detectInputCategory("C:\\Temp\\clip.mp4")).toBe("video");
+		expect(detectInputCategory("C:\\Folder\\")).toBe("folder");
+
+		const imageCompat = getCompatibleCatalogIdsForCategory("image");
+		expect(imageCompat).toContain("to-webp");
+		expect(imageCompat).toContain("tool-crop");
+		expect(imageCompat).not.toContain("to-mp3");
 	});
 });

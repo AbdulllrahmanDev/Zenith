@@ -46,6 +46,12 @@ pub struct ConvertRequest {
     #[serde(default)]
     pub pages: Option<String>,
     #[serde(default)]
+    pub split_every: Option<u32>,
+    #[serde(default)]
+    pub split_parts: Option<u32>,
+    #[serde(default)]
+    pub conflict: Option<String>,
+    #[serde(default)]
     pub overwrite: Option<bool>,
     #[serde(default)]
     pub keep_dates: Option<bool>,
@@ -55,6 +61,82 @@ pub struct ConvertRequest {
     pub iso_filesystem: Option<String>,
     #[serde(default)]
     pub iso_label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ToolbarProfileState {
+    pub id: String,
+    pub category: String,
+    pub label: String,
+    #[serde(default)]
+    pub primary_ids: Vec<String>,
+    #[serde(default)]
+    pub secondary_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ConverterPresetConfig {
+    pub id: String,
+    pub name: String,
+    pub target_format: String,
+    #[serde(default)]
+    pub quality: Option<u8>,
+    #[serde(default)]
+    pub pages: Option<String>,
+    #[serde(default)]
+    pub split_every: Option<u32>,
+    #[serde(default)]
+    pub split_parts: Option<u32>,
+    #[serde(default)]
+    pub conflict: Option<String>,
+    #[serde(default)]
+    pub keep_dates: Option<bool>,
+    #[serde(default)]
+    pub zip: Option<bool>,
+    #[serde(default)]
+    pub iso_filesystem: Option<String>,
+    #[serde(default)]
+    pub iso_label: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct RecentConversion {
+    pub id: String,
+    pub source_path: String,
+    pub source_name: String,
+    pub source_ext: String,
+    pub output_path: String,
+    pub output_format: String,
+    pub timestamp_ms: u64,
+    #[serde(default)]
+    pub thumbnail_data_url: Option<String>,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct WatchRule {
+    pub id: String,
+    pub folder: String,
+    pub target_format: String,
+    #[serde(default)]
+    pub preset_id: Option<String>,
+    pub output_folder: String,
+    pub recursive: bool,
+    pub move_originals: bool,
+    pub keep_dates: bool,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct ConverterState {
+    #[serde(default)]
+    pub profiles: Vec<ToolbarProfileState>,
+    #[serde(default)]
+    pub presets: Vec<ConverterPresetConfig>,
+    #[serde(default)]
+    pub recent: Vec<RecentConversion>,
+    #[serde(default)]
+    pub watch_rules: Vec<WatchRule>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -468,8 +550,29 @@ pub fn build_convert_args(req: &ConvertRequest, _paths: &ConverterPaths) -> Vec<
         args.push(pages.to_string());
     }
 
-    if req.overwrite == Some(true) {
-        args.push("--overwrite".to_string());
+    if let Some(every) = req.split_every.filter(|&n| n > 0) {
+        args.push("--split-every".to_string());
+        args.push(every.to_string());
+    } else if let Some(parts) = req.split_parts.filter(|&n| n >= 2) {
+        args.push("--split-parts".to_string());
+        args.push(parts.to_string());
+    }
+
+    match req
+        .conflict
+        .as_deref()
+        .map(|s| s.trim().to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("overwrite") => args.push("--overwrite".to_string()),
+        Some("skip") => args.push("--skip".to_string()),
+        Some("rename") | Some("") => {}
+        Some(_) => {}
+        None => {
+            if req.overwrite == Some(true) {
+                args.push("--overwrite".to_string());
+            }
+        }
     }
 
     if req.keep_dates == Some(true) {
@@ -853,13 +956,26 @@ pub async fn converter_convert(
             .unwrap_or_default()
     };
 
-    map_cli_exit_code(status.code(), missing_engine.as_deref(), &detail_tail)?;
-
-    Ok(ConvertJobResult {
-        job_id: req.job_id,
-        files,
-        missing_engine,
-    })
+    let outcome = map_cli_exit_code(status.code(), missing_engine.as_deref(), &detail_tail);
+    match outcome {
+        Ok(_) => {
+            record_conversion_history(&app, &paths, &req, &files).await;
+            Ok(ConvertJobResult {
+                job_id: req.job_id,
+                files,
+                missing_engine,
+            })
+        }
+        Err(err) => {
+            if err.starts_with("CONVERSION_FAILED:")
+                && missing_engine.is_none()
+                && !files.is_empty()
+            {
+                record_conversion_history(&app, &paths, &req, &files).await;
+            }
+            Err(err)
+        }
+    }
 }
 
 #[tauri::command]
@@ -868,6 +984,467 @@ pub async fn converter_cancel(job_id: String) -> Result<(), String> {
         terminate_process_tree(pid);
     }
     Ok(())
+}
+
+// ─── State Persistence (`state.json`), Thumbnails & Recent Conversions ────────
+
+const MAX_RECENT_CONVERSIONS: usize = 50;
+const MAX_THUMBNAIL_SOURCE_BYTES: u64 = 32 * 1024 * 1024;
+static STATE_FILE_LOCK: Mutex<()> = Mutex::new(());
+
+fn load_converter_state_unlocked(state_file: &Path) -> Result<ConverterState, String> {
+    let raw = match std::fs::read_to_string(state_file) {
+        Ok(text) => text,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(ConverterState::default());
+        }
+        Err(err) => {
+            return Err(format!(
+                "STATE_IO_ERROR: Failed to read {}: {err}",
+                state_file.display()
+            ));
+        }
+    };
+
+    let trimmed = raw.trim().trim_start_matches('\u{feff}');
+    if trimmed.is_empty() {
+        return Err(format!(
+            "STATE_CORRUPT: Converter state file {} is empty",
+            state_file.display()
+        ));
+    }
+
+    serde_json::from_str::<ConverterState>(trimmed).map_err(|err| {
+        format!(
+            "STATE_CORRUPT: Failed to parse converter state at {}: {err}",
+            state_file.display()
+        )
+    })
+}
+
+fn normalize_state_recent(state: &mut ConverterState) {
+    state
+        .recent
+        .sort_by_key(|entry| std::cmp::Reverse(entry.timestamp_ms));
+    if state.recent.len() > MAX_RECENT_CONVERSIONS {
+        state.recent.truncate(MAX_RECENT_CONVERSIONS);
+    }
+}
+
+fn save_converter_state_atomic_unlocked(
+    state_file: &Path,
+    state: &mut ConverterState,
+) -> Result<(), String> {
+    normalize_state_recent(state);
+
+    let Some(parent) = state_file.parent() else {
+        return Err("STATE_IO_ERROR: Invalid converter state path".to_string());
+    };
+    std::fs::create_dir_all(parent).map_err(|err| {
+        format!(
+            "STATE_IO_ERROR: Failed to create converter state folder {}: {err}",
+            parent.display()
+        )
+    })?;
+
+    let json = serde_json::to_string_pretty(state)
+        .map_err(|err| format!("STATE_SERIALIZE_ERROR: {err}"))?;
+
+    let tmp_name = format!(
+        "{}.tmp.{}.{}",
+        state_file
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("state.json"),
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    );
+    let tmp_path = parent.join(tmp_name);
+
+    let write_res = (|| -> std::io::Result<()> {
+        let mut file = std::fs::File::create(&tmp_path)?;
+        file.write_all(json.as_bytes())?;
+        file.sync_all()?;
+        Ok(())
+    })();
+
+    if let Err(err) = write_res {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(format!(
+            "STATE_IO_ERROR: Failed to write temp state {}: {err}",
+            tmp_path.display()
+        ));
+    }
+
+    if let Err(err) = std::fs::rename(&tmp_path, state_file) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(format!(
+            "STATE_IO_ERROR: Failed to finalize converter state {}: {err}",
+            state_file.display()
+        ));
+    }
+
+    Ok(())
+}
+
+pub fn load_converter_state(paths: &ConverterPaths) -> Result<ConverterState, String> {
+    let _guard = STATE_FILE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    load_converter_state_unlocked(&paths.state_file)
+}
+
+#[allow(dead_code)]
+pub fn save_converter_state_atomic(
+    paths: &ConverterPaths,
+    state: &mut ConverterState,
+) -> Result<(), String> {
+    let _guard = STATE_FILE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    save_converter_state_atomic_unlocked(&paths.state_file, state)
+}
+
+pub fn update_converter_state<F>(
+    paths: &ConverterPaths,
+    mutate: F,
+) -> Result<ConverterState, String>
+where
+    F: FnOnce(&mut ConverterState),
+{
+    let _guard = STATE_FILE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut state = load_converter_state_unlocked(&paths.state_file)?;
+    mutate(&mut state);
+    save_converter_state_atomic_unlocked(&paths.state_file, &mut state)?;
+    Ok(state)
+}
+
+pub fn generate_thumbnail_data_url(path: &Path) -> Option<String> {
+    use base64::Engine;
+
+    let meta = std::fs::metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > MAX_THUMBNAIL_SOURCE_BYTES {
+        return None;
+    }
+
+    let reader = image::ImageReader::open(path)
+        .ok()?
+        .with_guessed_format()
+        .ok()?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(8192);
+    limits.max_image_height = Some(8192);
+    limits.max_alloc = Some(256 * 1024 * 1024);
+    let mut reader = reader;
+    reader.limits(limits);
+
+    let thumb = reader.decode().ok()?.thumbnail(64, 64);
+    let mut png = Vec::new();
+    thumb
+        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
+        .ok()?;
+
+    Some(format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(&png)
+    ))
+}
+
+fn infer_output_format(output_path: &str, req: &ConvertRequest) -> String {
+    let trimmed_out = output_path.trim();
+    if !trimmed_out.is_empty() {
+        let p = Path::new(trimmed_out);
+        if p.is_dir() {
+            return "folder".to_string();
+        }
+        if let Some(name) = p.file_name().and_then(|n| n.to_str()) {
+            let lower = name.to_ascii_lowercase();
+            for compound in ["tar.gz", "tar.bz2", "tar.xz", "tar.zst", "kepub.epub"] {
+                if lower.ends_with(&format!(".{compound}")) {
+                    return compound.to_string();
+                }
+            }
+        }
+        if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
+            let clean = ext.trim().to_ascii_lowercase();
+            if !clean.is_empty() {
+                return clean;
+            }
+        }
+    }
+
+    let req_to = req.to.trim().trim_start_matches('.').to_ascii_lowercase();
+    if !req_to.is_empty() && req_to != "*" && req_to != "*audio" {
+        return req_to;
+    }
+    if req_to == "*audio" {
+        return "audio".to_string();
+    }
+    req.preset
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("file")
+        .to_ascii_lowercase()
+}
+
+fn build_recent_entries(req: &ConvertRequest, files: &[ConvertedFileItem]) -> Vec<RecentConversion> {
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+
+    files
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, item)| {
+            let status = item.state.trim().to_ascii_lowercase();
+            if status == "cancelled" {
+                return None;
+            }
+            let src_path = Path::new(&item.source);
+            let source_name = src_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .filter(|s| !s.is_empty())
+                .unwrap_or(&item.source)
+                .to_string();
+            let source_ext = src_path
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.to_ascii_lowercase())
+                .unwrap_or_default();
+            let output_path = item.outputs.first().cloned().unwrap_or_default();
+            let output_format = infer_output_format(&output_path, req);
+            let thumbnail_data_url = if !output_path.is_empty() && status == "done" {
+                generate_thumbnail_data_url(Path::new(&output_path))
+            } else {
+                None
+            };
+
+            Some(RecentConversion {
+                id: format!("{}-{}-{}", req.job_id, idx, now_ms),
+                source_path: item.source.clone(),
+                source_name,
+                source_ext,
+                output_path,
+                output_format,
+                timestamp_ms: now_ms,
+                thumbnail_data_url,
+                status: if status.is_empty() {
+                    "done".to_string()
+                } else {
+                    status
+                },
+            })
+        })
+        .collect()
+}
+
+async fn record_conversion_history(
+    app: &AppHandle,
+    paths: &ConverterPaths,
+    req: &ConvertRequest,
+    files: &[ConvertedFileItem],
+) {
+    if files.is_empty() {
+        return;
+    }
+    let paths_clone = paths.clone();
+    let req_clone = req.clone();
+    let files_clone = files.to_vec();
+
+    let res = tokio::task::spawn_blocking(move || -> Result<Option<ConverterState>, String> {
+        let entries = build_recent_entries(&req_clone, &files_clone);
+        if entries.is_empty() {
+            return Ok(None);
+        }
+        let updated = update_converter_state(&paths_clone, |state| {
+            for entry in entries.into_iter().rev() {
+                state.recent.insert(0, entry);
+            }
+        })?;
+        Ok(Some(updated))
+    })
+    .await;
+
+    match res {
+        Ok(Ok(Some(updated))) => {
+            let _ = app.emit("converter-state-changed", &updated);
+        }
+        Ok(Ok(None)) => {}
+        Ok(Err(err)) => {
+            eprintln!("Failed to record converter history: {err}");
+        }
+        Err(err) => {
+            eprintln!("Converter history task failed: {err}");
+        }
+    }
+}
+
+fn sanitize_profile(mut profile: ToolbarProfileState) -> ToolbarProfileState {
+    profile.id = profile.id.trim().to_string();
+    profile.category = profile.category.trim().to_string();
+    profile.label = profile.label.trim().to_string();
+    profile.primary_ids = profile
+        .primary_ids
+        .into_iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    profile.secondary_ids = profile
+        .secondary_ids
+        .into_iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    profile
+}
+
+fn sanitize_preset(mut preset: ConverterPresetConfig) -> ConverterPresetConfig {
+    preset.id = preset.id.trim().to_string();
+    preset.name = preset.name.trim().to_string();
+    preset.target_format = preset.target_format.trim().trim_start_matches('.').to_ascii_lowercase();
+    preset.quality = preset.quality.map(|q| q.clamp(1, 100));
+    preset.pages = preset
+        .pages
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    preset.split_every = preset.split_every.filter(|&n| n > 0);
+    preset.split_parts = if preset.split_every.is_some() {
+        None
+    } else {
+        preset.split_parts.filter(|&n| n >= 2)
+    };
+    preset.conflict = preset
+        .conflict
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| matches!(s.as_str(), "rename" | "overwrite" | "skip"));
+    preset.iso_filesystem = preset
+        .iso_filesystem
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| matches!(s.as_str(), "joliet" | "udf201"));
+    preset.iso_label = preset
+        .iso_label
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    preset
+}
+
+#[tauri::command]
+pub async fn converter_get_state(app: AppHandle) -> Result<ConverterState, String> {
+    let paths = resolve_converter_paths(&app)?;
+    tokio::task::spawn_blocking(move || load_converter_state(&paths))
+        .await
+        .map_err(|e| format!("Failed to load converter state: {e}"))?
+}
+
+#[tauri::command]
+pub async fn converter_save_profiles(
+    app: AppHandle,
+    profiles: Vec<ToolbarProfileState>,
+) -> Result<ConverterState, String> {
+    let paths = resolve_converter_paths(&app)?;
+    let sanitized: Vec<ToolbarProfileState> = profiles
+        .into_iter()
+        .map(sanitize_profile)
+        .filter(|p| !p.id.is_empty() && !p.category.is_empty())
+        .collect();
+
+    let updated = tokio::task::spawn_blocking(move || {
+        update_converter_state(&paths, |state| {
+            state.profiles = sanitized;
+        })
+    })
+    .await
+    .map_err(|e| format!("Failed to save converter profiles: {e}"))??;
+
+    let _ = app.emit("converter-state-changed", &updated);
+    Ok(updated)
+}
+
+#[tauri::command]
+pub async fn converter_save_presets(
+    app: AppHandle,
+    presets: Vec<ConverterPresetConfig>,
+) -> Result<ConverterState, String> {
+    let paths = resolve_converter_paths(&app)?;
+    let sanitized: Vec<ConverterPresetConfig> = presets
+        .into_iter()
+        .map(sanitize_preset)
+        .filter(|p| !p.id.is_empty() && !p.target_format.is_empty())
+        .collect();
+
+    let updated = tokio::task::spawn_blocking(move || {
+        update_converter_state(&paths, |state| {
+            state.presets = sanitized;
+        })
+    })
+    .await
+    .map_err(|e| format!("Failed to save converter presets: {e}"))??;
+
+    let _ = app.emit("converter-state-changed", &updated);
+    Ok(updated)
+}
+
+#[tauri::command]
+pub async fn converter_clear_history(app: AppHandle) -> Result<ConverterState, String> {
+    let paths = resolve_converter_paths(&app)?;
+    let updated = tokio::task::spawn_blocking(move || {
+        update_converter_state(&paths, |state| {
+            state.recent.clear();
+        })
+    })
+    .await
+    .map_err(|e| format!("Failed to clear converter history: {e}"))??;
+
+    let _ = app.emit("converter-state-changed", &updated);
+    Ok(updated)
+}
+
+#[tauri::command]
+pub async fn converter_open_output(path: String, reveal_in_folder: bool) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let trimmed = path.trim();
+        if trimmed.is_empty() {
+            return Err("INVALID_PATH: Output path is empty".to_string());
+        }
+
+        let normalized = trimmed.replace('/', "\\");
+        let clean = if normalized.len() > 3 {
+            normalized.trim_end_matches('\\').to_string()
+        } else {
+            normalized
+        };
+
+        let target = Path::new(&clean);
+        if !target.exists() {
+            return Err(format!(
+                "FILE_NOT_FOUND: '{}' no longer exists on disk",
+                target.display()
+            ));
+        }
+
+        if reveal_in_folder {
+            use std::os::windows::process::CommandExt;
+            let escaped = clean.replace('"', "");
+            std::process::Command::new("explorer.exe")
+                .raw_arg(format!("/select,\"{escaped}\""))
+                .spawn()
+                .map_err(|e| format!("OPEN_FAILED: Failed to open Explorer: {e}"))?;
+            Ok(())
+        } else {
+            tauri_plugin_opener::open_path(&clean, None::<&str>)
+                .map_err(|e| format!("OPEN_FAILED: {e}"))
+        }
+    })
+    .await
+    .map_err(|e| format!("OPEN_FAILED: {e}"))?
 }
 
 #[derive(Deserialize)]
@@ -3157,6 +3734,9 @@ mod tests {
             output_dir: Some(r"C:\Out Dir".to_string()),
             quality: Some(85),
             pages: Some("1-3,5".to_string()),
+            split_every: None,
+            split_parts: None,
+            conflict: None,
             overwrite: Some(true),
             keep_dates: Some(true),
             zip: Some(true),
@@ -3194,6 +3774,9 @@ mod tests {
             output_dir: None,
             quality: None,
             pages: None,
+            split_every: None,
+            split_parts: None,
+            conflict: None,
             overwrite: Some(false),
             keep_dates: None,
             zip: None,
@@ -3224,6 +3807,9 @@ mod tests {
             output_dir: None,
             quality: None,
             pages: None,
+            split_every: None,
+            split_parts: None,
+            conflict: None,
             overwrite: None,
             keep_dates: None,
             zip: None,
@@ -3237,6 +3823,69 @@ mod tests {
                 r"C:\Doc.pdf",
                 "--preset",
                 "compress-pdf",
+                "--json",
+            ]
+        );
+
+        let split_skip_req = ConvertRequest {
+            job_id: "job-4".to_string(),
+            inputs: vec![r"C:\Book.pdf".to_string()],
+            to: "pdf".to_string(),
+            preset: None,
+            output_dir: None,
+            quality: None,
+            pages: Some("1-20".to_string()),
+            split_every: Some(5),
+            split_parts: Some(3),
+            conflict: Some("skip".to_string()),
+            overwrite: Some(true),
+            keep_dates: None,
+            zip: None,
+            iso_filesystem: None,
+            iso_label: None,
+        };
+        assert_eq!(
+            build_convert_args(&split_skip_req, &paths),
+            vec![
+                "convert",
+                r"C:\Book.pdf",
+                "--to",
+                "pdf",
+                "--pages",
+                "1-20",
+                "--split-every",
+                "5",
+                "--skip",
+                "--json",
+            ]
+        );
+
+        let parts_rename_req = ConvertRequest {
+            job_id: "job-5".to_string(),
+            inputs: vec![r"C:\Book.pdf".to_string()],
+            to: "pdf".to_string(),
+            preset: None,
+            output_dir: None,
+            quality: None,
+            pages: None,
+            split_every: None,
+            split_parts: Some(4),
+            conflict: Some("rename".to_string()),
+            overwrite: Some(true),
+            keep_dates: None,
+            zip: None,
+            iso_filesystem: None,
+            iso_label: None,
+        };
+        assert_eq!(
+            build_convert_args(&parts_rename_req, &paths),
+            vec![
+                "convert",
+                r"C:\Book.pdf",
+                "--to",
+                "pdf",
+                "--split-parts",
+                "4",
                 "--json",
             ]
         );
@@ -3941,5 +4590,153 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  Filee-2.5.0-wi
         converter_clear_progress_rect();
         assert!(!has_converter_progress_rect());
         assert!(!is_point_in_converter_progress_rect(150.0, 360.0));
+    }
+
+    #[test]
+    fn converter_state_round_trips_atomically_and_caps_recent_at_50() {
+        let base = std::env::temp_dir().join(format!(
+            "zenith_converter_state_rt_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let paths = converter_paths_from_root(base.clone());
+
+        let mut recent = Vec::with_capacity(65);
+        for idx in 0..65usize {
+            recent.push(RecentConversion {
+                id: format!("rec-{idx}"),
+                source_path: format!(r"C:\Temp\photo_{idx}.png"),
+                source_name: format!("photo_{idx}.png"),
+                source_ext: "png".to_string(),
+                output_path: format!(r"C:\Temp\photo_{idx}.webp"),
+                output_format: "webp".to_string(),
+                timestamp_ms: 1_700_000_000_000 + (idx as u64) * 1000,
+                thumbnail_data_url: None,
+                status: "done".to_string(),
+            });
+        }
+
+        let mut state = ConverterState {
+            profiles: vec![ToolbarProfileState {
+                id: "images".to_string(),
+                category: "image".to_string(),
+                label: "Images".to_string(),
+                primary_ids: vec!["to-webp".to_string(), "to-png".to_string()],
+                secondary_ids: vec!["tool-crop".to_string(), "zip-all".to_string()],
+            }],
+            presets: vec![ConverterPresetConfig {
+                id: "custom-webp-80".to_string(),
+                name: "WebP 80".to_string(),
+                target_format: "webp".to_string(),
+                quality: Some(80),
+                pages: None,
+                split_every: None,
+                split_parts: None,
+                conflict: Some("overwrite".to_string()),
+                keep_dates: Some(true),
+                zip: Some(false),
+                iso_filesystem: None,
+                iso_label: None,
+            }],
+            recent,
+            watch_rules: vec![WatchRule {
+                id: "watch-1".to_string(),
+                folder: r"C:\Watch".to_string(),
+                target_format: "webp".to_string(),
+                preset_id: None,
+                output_folder: r"C:\Out".to_string(),
+                recursive: true,
+                move_originals: false,
+                keep_dates: true,
+                enabled: false,
+            }],
+        };
+
+        save_converter_state_atomic(&paths, &mut state).expect("atomic save should succeed");
+        assert!(paths.state_file.is_file());
+
+        let entries: Vec<String> = std::fs::read_dir(&paths.root)
+            .expect("read root dir")
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(entries, vec!["state.json".to_string()]);
+
+        let loaded = load_converter_state(&paths).expect("reload should succeed");
+        assert_eq!(loaded.profiles, state.profiles);
+        assert_eq!(loaded.presets, state.presets);
+        assert_eq!(loaded.watch_rules, state.watch_rules);
+        assert_eq!(loaded.recent.len(), 50);
+        assert_eq!(loaded.recent[0].id, "rec-64");
+        assert_eq!(loaded.recent[49].id, "rec-15");
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn converter_state_loads_default_when_missing_or_corrupt() {
+        let base = std::env::temp_dir().join(format!(
+            "zenith_converter_state_missing_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let paths = converter_paths_from_root(base.clone());
+
+        let missing = load_converter_state(&paths).expect("missing file returns default state");
+        assert_eq!(missing, ConverterState::default());
+
+        std::fs::create_dir_all(&paths.root).unwrap();
+        std::fs::write(&paths.state_file, "{ corrupt json !!!").unwrap();
+        let err = load_converter_state(&paths).unwrap_err();
+        assert!(
+            err.contains("STATE_CORRUPT") || err.to_lowercase().contains("parse"),
+            "expected clear parse error, got: {err}"
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn generate_thumbnail_data_url_resizes_image_to_64px_or_less() {
+        use base64::Engine;
+
+        let base = std::env::temp_dir().join(format!(
+            "zenith_converter_thumb_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&base).unwrap();
+
+        let img_path = base.join("wide.png");
+        let img = image::RgbaImage::from_pixel(200, 100, image::Rgba([255, 80, 40, 255]));
+        img.save(&img_path).unwrap();
+
+        let data_url =
+            generate_thumbnail_data_url(&img_path).expect("thumbnail data url for png");
+        let b64 = data_url
+            .strip_prefix("data:image/png;base64,")
+            .expect("png data url prefix");
+        let decoded_bytes = base64::engine::general_purpose::STANDARD
+            .decode(b64)
+            .expect("valid base64");
+        let thumb = image::load_from_memory(&decoded_bytes).expect("valid png bytes");
+        assert!(thumb.width() <= 64 && thumb.height() <= 64);
+        assert_eq!((thumb.width(), thumb.height()), (64, 32));
+
+        let txt_path = base.join("not-an-image.txt");
+        std::fs::write(&txt_path, b"hello").unwrap();
+        assert_eq!(generate_thumbnail_data_url(&txt_path), None);
+        assert_eq!(generate_thumbnail_data_url(&base.join("missing.png")), None);
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

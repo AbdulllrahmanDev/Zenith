@@ -43,9 +43,15 @@ import {
 	Wand2,
 	X
 } from "lucide-react";
-import { matchFormatsForPaths } from "../converter/formats";
+import {
+	buildConvertRequestFromOption,
+	buildCustomMatcherInputs,
+	matchFormatsForPaths
+} from "../converter/formats";
 import type {
 	ConverterRuntimeStatus,
+	ConverterState,
+	ConvertJobResult,
 	CoreInstallProgressEvent,
 	DonutSides,
 	EngineInstallProgressEvent,
@@ -105,21 +111,6 @@ interface ConverterProgressPayload {
 	error?: string;
 	error_key?: string;
 	missing_engine?: string;
-}
-
-interface ConvertedFileItem {
-	source: string;
-	state: string;
-	outputs: string[];
-	error: string | null;
-	error_key: string | null;
-	missing_engine: string | null;
-}
-
-interface ConvertJobResult {
-	job_id: string;
-	files: ConvertedFileItem[];
-	missing_engine: string | null;
 }
 
 interface WheelSession {
@@ -587,6 +578,7 @@ export function ConverterDonut({
 	const cancelledJobIdsRef = useRef<Set<string>>(new Set());
 	const emittedJobIdsRef = useRef<Set<string>>(new Set());
 	const fileProgressRef = useRef<Map<string, number>>(new Map());
+	const converterStateRef = useRef<ConverterState | null>(null);
 	const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
 	const lastWheelFlipRef = useRef(0);
 	const autoDismissTimerRef = useRef<number | null>(null);
@@ -652,6 +644,29 @@ export function ConverterDonut({
 			p3.then((fn) => fn());
 		};
 	}, [refreshThemeSnap]);
+
+	// Load custom donut profiles & conversion presets and stay synced on updates.
+	useEffect(() => {
+		let cancelled = false;
+		invoke<ConverterState>("converter_get_state")
+			.then((st) => {
+				if (!cancelled) {
+					converterStateRef.current = st;
+				}
+			})
+			.catch(() => {});
+
+		const unState = listen<ConverterState>("converter-state-changed", (ev) => {
+			if (!cancelled) {
+				converterStateRef.current = ev.payload;
+			}
+		});
+
+		return () => {
+			cancelled = true;
+			unState.then((fn) => fn());
+		};
+	}, []);
 
 	const clearCheckingState = useCallback(() => {
 		if (checkingTimerRef.current !== null) {
@@ -948,14 +963,14 @@ export function ConverterDonut({
 					? outputFolderRef.current.trim()
 					: null;
 
-			const req = {
-				job_id: jobId,
+			const { presetsById } = buildCustomMatcherInputs(converterStateRef.current);
+			const req = buildConvertRequestFromOption({
+				jobId,
 				inputs,
-				to: option.format,
-				preset: option.presetId ?? null,
-				output_dir: outDir,
-				quality: option.quality ?? null
-			};
+				option,
+				outputDir: outDir,
+				presetsById
+			});
 
 			try {
 				const result = await invoke<ConvertJobResult>("converter_convert", { req });
@@ -1173,7 +1188,8 @@ export function ConverterDonut({
 			sessionGenRef.current += 1;
 			clearCheckingState();
 			refreshThemeSnap();
-			const sides = matchFormatsForPaths(matchInputs);
+			const { profiles, extraPresets } = buildCustomMatcherInputs(converterStateRef.current);
+			const sides = matchFormatsForPaths(matchInputs, profiles, extraPresets);
 			lastPointerRef.current = { x, y };
 
 			setInstallPrompt(null);
