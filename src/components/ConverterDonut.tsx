@@ -46,6 +46,7 @@ import {
 import {
 	buildConvertRequestFromOption,
 	buildCustomMatcherInputs,
+	DEFAULT_PRESET_CATALOG,
 	matchFormatsForPaths
 } from "../converter/formats";
 import type {
@@ -53,12 +54,14 @@ import type {
 	ConverterState,
 	ConvertJobResult,
 	CoreInstallProgressEvent,
+	CropBox,
 	DonutSides,
 	EngineInstallProgressEvent,
 	EnginePackInfo,
 	FileCategory,
 	TargetOption
 } from "../converter/types";
+import { ConverterCropModal, type CropConfirmItem } from "./ConverterCropModal";
 import { useI18n } from "../i18n";
 import { clampWheelCenter } from "../radial/radialDrag";
 import {
@@ -74,7 +77,7 @@ import { radialScrimGradient } from "../radial/radialScrim";
 import { sectorIndexForDelta } from "../radial/radialSectors";
 import "./ConverterDonut.css";
 
-export type ConverterPhase = "idle" | "donut" | "checking" | "install" | "progress";
+export type ConverterPhase = "idle" | "donut" | "checking" | "install" | "crop" | "progress";
 
 export interface ConverterDonutProps {
 	enabled: boolean;
@@ -124,10 +127,24 @@ interface WheelSession {
 	flipKey: number;
 }
 
+interface CropBatch {
+	option: TargetOption;
+	inputs: string[];
+	crop: CropBox;
+}
+
+interface CropSessionState {
+	option: TargetOption;
+	inputs: string[];
+	dropPoint: { x: number; y: number };
+}
+
 interface InstallPromptState {
 	option: TargetOption;
 	inputs: string[];
 	dropPoint: { x: number; y: number };
+	crop?: CropBox | null;
+	remainingCropBatches?: CropBatch[];
 	needsCore: boolean;
 	engineId: string | null;
 	enginePack: EnginePackInfo | null;
@@ -553,6 +570,7 @@ export function ConverterDonut({
 	const c = t.converter;
 
 	const [wheelSession, setWheelSession] = useState<WheelSession | null>(null);
+	const [cropSession, setCropSession] = useState<CropSessionState | null>(null);
 	const [checkingJob, setCheckingJob] = useState<JobState | null>(null);
 	const [checkingVisible, setCheckingVisible] = useState(false);
 	const [installPrompt, setInstallPrompt] = useState<InstallPromptState | null>(null);
@@ -609,13 +627,15 @@ export function ConverterDonut({
 	// Track current high-level overlay phase for Overlay.tsx region & mode coordination.
 	const phase: ConverterPhase = wheelSession
 		? "donut"
-		: checkingJob
-			? "checking"
-			: installPrompt
-				? "install"
-				: jobState
-					? "progress"
-					: "idle";
+		: cropSession
+			? "crop"
+			: checkingJob
+				? "checking"
+				: installPrompt
+					? "install"
+					: jobState
+						? "progress"
+						: "idle";
 
 	useEffect(() => {
 		onPhaseChange?.(phase);
@@ -688,19 +708,20 @@ export function ConverterDonut({
 		return () => observer.disconnect();
 	}, [installPrompt, jobState, checkingVisible, checkingJob]);
 
-	// If suppressed by RadialMenu / Splash / Updating, dismiss open donut, preflight, or install card cleanly.
+	// If suppressed by RadialMenu / Splash / Updating, dismiss open donut, crop modal, preflight, or install card cleanly.
 	useEffect(() => {
 		if (!suppressed) return;
-		if (wheelSession || checkingJob || installPrompt) {
+		if (wheelSession || cropSession || checkingJob || installPrompt) {
 			sessionGenRef.current += 1;
 			clearCheckingState();
 			setWheelSession(null);
+			setCropSession(null);
 			setInstallPrompt(null);
 			setActiveIndex(null);
 			setIsCenterActive(false);
 			void releaseOverlayLock();
 		}
-	}, [suppressed, wheelSession, checkingJob, installPrompt, clearCheckingState, releaseOverlayLock]);
+	}, [suppressed, wheelSession, cropSession, checkingJob, installPrompt, clearCheckingState, releaseOverlayLock]);
 
 	const currentSlices = useMemo(() => {
 		if (!wheelSession) return [];
@@ -758,6 +779,7 @@ export function ConverterDonut({
 
 	const stateRef = useRef({
 		wheelSession,
+		cropSession,
 		checkingJob,
 		installPrompt,
 		currentSlices,
@@ -769,6 +791,7 @@ export function ConverterDonut({
 	useLayoutEffect(() => {
 		stateRef.current = {
 			wheelSession,
+			cropSession,
 			checkingJob,
 			installPrompt,
 			currentSlices,
@@ -798,6 +821,7 @@ export function ConverterDonut({
 		sessionGenRef.current += 1;
 		clearCheckingState();
 		setWheelSession(null);
+		setCropSession(null);
 		setInstallPrompt(null);
 		setActiveIndex(null);
 		setIsCenterActive(false);
@@ -844,7 +868,9 @@ export function ConverterDonut({
 			inputs: string[],
 			dropPoint: { x: number; y: number },
 			needsCore = false,
-			gen?: number
+			gen?: number,
+			crop?: CropBox | null,
+			remainingCropBatches?: CropBatch[]
 		) => {
 			const checkGen = gen ?? sessionGenRef.current;
 			setJobState(null);
@@ -859,6 +885,8 @@ export function ConverterDonut({
 				option,
 				inputs,
 				dropPoint,
+				crop: crop ?? null,
+				remainingCropBatches,
 				needsCore,
 				engineId,
 				enginePack: pack,
@@ -876,7 +904,9 @@ export function ConverterDonut({
 			option: TargetOption,
 			inputs: string[],
 			dropPoint: { x: number; y: number },
-			gen?: number
+			gen?: number,
+			crop?: CropBox | null,
+			remainingCropBatches?: CropBatch[]
 		) => {
 			const checkGen = gen ?? sessionGenRef.current;
 			setJobState(null);
@@ -895,6 +925,8 @@ export function ConverterDonut({
 				option,
 				inputs,
 				dropPoint,
+				crop: crop ?? null,
+				remainingCropBatches,
 				needsCore: true,
 				engineId: requiredEngine,
 				enginePack: pack,
@@ -940,9 +972,11 @@ export function ConverterDonut({
 			option: TargetOption,
 			inputs: string[],
 			dropPoint: { x: number; y: number },
-			gen: number
-		) => {
-			if (sessionGenRef.current !== gen) return;
+			gen: number,
+			crop?: CropBox | null,
+			remainingCropBatches?: CropBatch[]
+		): Promise<boolean> => {
+			if (sessionGenRef.current !== gen) return false;
 			const jobId = `conv-${Date.now()}-${++jobSeqRef.current}`;
 			activeJobIdRef.current = jobId;
 			fileProgressRef.current = new Map(inputs.map((p) => [p, 0]));
@@ -969,12 +1003,15 @@ export function ConverterDonut({
 				inputs,
 				option,
 				outputDir: outDir,
-				presetsById
+				presetsById,
+				crop
 			});
 
 			try {
 				const result = await invoke<ConvertJobResult>("converter_convert", { req });
-				if (activeJobIdRef.current !== jobId || cancelledJobIdsRef.current.has(jobId)) return;
+				if (activeJobIdRef.current !== jobId || cancelledJobIdsRef.current.has(jobId)) {
+					return false;
+				}
 
 				const outputs = result.files.flatMap((f) => f.outputs ?? []);
 				const missingEngine =
@@ -983,8 +1020,17 @@ export function ConverterDonut({
 					null;
 
 				if (missingEngine && outputs.length === 0) {
-					await openMissingEnginePrompt(missingEngine, option, inputs, dropPoint, false, gen);
-					return;
+					await openMissingEnginePrompt(
+						missingEngine,
+						option,
+						inputs,
+						dropPoint,
+						false,
+						gen,
+						crop,
+						remainingCropBatches
+					);
+					return false;
 				}
 
 				const failedFile = result.files.find((f) => f.state.toLowerCase() === "failed");
@@ -996,7 +1042,7 @@ export function ConverterDonut({
 							: prev
 					);
 					emitJobFinished(jobId, "error", option, inputs, outputs, errMsg);
-					return;
+					return false;
 				}
 
 				setJobState((prev) =>
@@ -1005,8 +1051,11 @@ export function ConverterDonut({
 						: prev
 				);
 				emitJobFinished(jobId, "done", option, inputs, outputs);
+				return true;
 			} catch (err) {
-				if (activeJobIdRef.current !== jobId || cancelledJobIdsRef.current.has(jobId)) return;
+				if (activeJobIdRef.current !== jobId || cancelledJobIdsRef.current.has(jobId)) {
+					return false;
+				}
 				const raw = err instanceof Error ? err.message : String(err);
 
 				if (raw === "CANCELLED" || raw.startsWith("CANCELLED")) {
@@ -1016,20 +1065,36 @@ export function ConverterDonut({
 							: prev
 					);
 					emitJobFinished(jobId, "cancelled", option, inputs, []);
-					return;
+					return false;
 				}
 
 				if (raw.startsWith("MISSING_ENGINE:")) {
 					const engineId = raw.slice("MISSING_ENGINE:".length).trim();
 					if (engineId) {
-						await openMissingEnginePrompt(engineId, option, inputs, dropPoint, false, gen);
-						return;
+						await openMissingEnginePrompt(
+							engineId,
+							option,
+							inputs,
+							dropPoint,
+							false,
+							gen,
+							crop,
+							remainingCropBatches
+						);
+						return false;
 					}
 				}
 
 				if (raw.startsWith("CORE_NOT_INSTALLED")) {
-					await openMissingCorePrompt(option, inputs, dropPoint, gen);
-					return;
+					await openMissingCorePrompt(
+						option,
+						inputs,
+						dropPoint,
+						gen,
+						crop,
+						remainingCropBatches
+					);
+					return false;
 				}
 
 				const clean = cleanErrorMessage(raw);
@@ -1039,22 +1104,21 @@ export function ConverterDonut({
 						: prev
 				);
 				emitJobFinished(jobId, "error", option, inputs, [], clean);
+				return false;
 			}
 		},
 		[c.donut.failedTitle, emitJobFinished, openMissingCorePrompt, openMissingEnginePrompt]
 	);
 
-	const commitSlice = useCallback(
-		async (option: TargetOption, inputs: string[], dropPoint: { x: number; y: number }) => {
-			if (inputs.length === 0) {
-				dismissWheelOrInstall();
-				return;
-			}
-			const myGen = ++sessionGenRef.current;
-			setWheelSession(null);
-			setActiveIndex(null);
-			setIsCenterActive(false);
-
+	const runPreflightAndConvert = useCallback(
+		async (
+			option: TargetOption,
+			inputs: string[],
+			dropPoint: { x: number; y: number },
+			myGen: number,
+			crop?: CropBox | null,
+			remainingCropBatches?: CropBatch[]
+		): Promise<boolean> => {
 			clearCheckingState();
 			setCheckingJob({
 				jobId: `checking-${myGen}`,
@@ -1077,7 +1141,7 @@ export function ConverterDonut({
 				invoke<ConverterRuntimeStatus>("converter_status"),
 				invoke<EnginePackInfo[]>("converter_list_engines")
 			]);
-			if (sessionGenRef.current !== myGen) return;
+			if (sessionGenRef.current !== myGen) return false;
 
 			const coreInstalled =
 				statusRes.status === "fulfilled" ? statusRes.value.core_installed : true;
@@ -1097,10 +1161,13 @@ export function ConverterDonut({
 
 			if (!coreInstalled || needsEngine) {
 				setJobState(null);
+				invoke("converter_set_overlay_open", { open: true }).catch(() => {});
 				setInstallPrompt({
 					option,
 					inputs,
 					dropPoint,
+					crop: crop ?? null,
+					remainingCropBatches,
 					needsCore: !coreInstalled,
 					engineId: needsEngine ? requiredEngine : null,
 					enginePack,
@@ -1109,14 +1176,127 @@ export function ConverterDonut({
 					engineProgress: null,
 					error: null
 				});
-				return;
+				return false;
 			}
 
 			await releaseOverlayLock();
-			await runConversionJob(option, inputs, dropPoint, myGen);
+			return runConversionJob(
+				option,
+				inputs,
+				dropPoint,
+				myGen,
+				crop,
+				remainingCropBatches
+			);
 		},
-		[clearCheckingState, dismissWheelOrInstall, releaseOverlayLock, runConversionJob]
+		[clearCheckingState, releaseOverlayLock, runConversionJob]
 	);
+
+	const commitSlice = useCallback(
+		async (option: TargetOption, inputs: string[], dropPoint: { x: number; y: number }) => {
+			if (inputs.length === 0) {
+				dismissWheelOrInstall();
+				return;
+			}
+			const myGen = ++sessionGenRef.current;
+			setWheelSession(null);
+			setActiveIndex(null);
+			setIsCenterActive(false);
+
+			if (option.actionKind === "crop") {
+				clearCheckingState();
+				setInstallPrompt(null);
+				setJobState((prev) => (prev && prev.status === "converting" ? prev : null));
+				invoke("converter_set_overlay_open", { open: true }).catch(() => {});
+				setCropSession({ option, inputs, dropPoint });
+				return;
+			}
+
+			await runPreflightAndConvert(option, inputs, dropPoint, myGen);
+		},
+		[clearCheckingState, dismissWheelOrInstall, runPreflightAndConvert]
+	);
+
+	const runCropBatches = useCallback(
+		async (batches: CropBatch[], dropPoint: { x: number; y: number }, gen: number) => {
+			for (let i = 0; i < batches.length; i += 1) {
+				if (sessionGenRef.current !== gen) return;
+				const batch = batches[i];
+				const rest = batches.slice(i + 1);
+				const ok =
+					i === 0
+						? await runPreflightAndConvert(
+								batch.option,
+								batch.inputs,
+								dropPoint,
+								gen,
+								batch.crop,
+								rest.length > 0 ? rest : undefined
+							)
+						: await runConversionJob(
+								batch.option,
+								batch.inputs,
+								dropPoint,
+								gen,
+								batch.crop,
+								rest.length > 0 ? rest : undefined
+							);
+				if (!ok) return;
+			}
+		},
+		[runConversionJob, runPreflightAndConvert]
+	);
+
+	const handleCropConfirm = useCallback(
+		async (items: CropConfirmItem[]) => {
+			const cs = stateRef.current.cropSession;
+			setCropSession(null);
+			if (!cs || items.length === 0) {
+				await releaseOverlayLock();
+				return;
+			}
+
+			const myGen = ++sessionGenRef.current;
+			const batches: CropBatch[] = [];
+			for (const item of items) {
+				const fmt = item.format.trim().replace(/^\./, "").toLowerCase() || "png";
+				const prev = batches[batches.length - 1];
+				if (
+					prev &&
+					prev.option.format === fmt &&
+					prev.crop.x === item.crop.x &&
+					prev.crop.y === item.crop.y &&
+					prev.crop.width === item.crop.width &&
+					prev.crop.height === item.crop.height
+				) {
+					prev.inputs.push(item.path);
+				} else {
+					const catalogOpt = DEFAULT_PRESET_CATALOG[`to-${fmt}`];
+					const option: TargetOption = catalogOpt
+						? { ...catalogOpt, label: fmt.toUpperCase() }
+						: {
+								format: fmt,
+								label: fmt.toUpperCase(),
+								category: "image"
+							};
+					batches.push({
+						option,
+						inputs: [item.path],
+						crop: item.crop
+					});
+				}
+			}
+
+			await runCropBatches(batches, cs.dropPoint, myGen);
+		},
+		[releaseOverlayLock, runCropBatches]
+	);
+
+	const handleCropCancel = useCallback(() => {
+		sessionGenRef.current += 1;
+		setCropSession(null);
+		void releaseOverlayLock();
+	}, [releaseOverlayLock]);
 
 	const handleConfirmInstall = useCallback(async () => {
 		const prompt = stateRef.current.installPrompt;
@@ -1161,7 +1341,31 @@ export function ConverterDonut({
 
 			setInstallPrompt(null);
 			await releaseOverlayLock();
-			await runConversionJob(prompt.option, prompt.inputs, prompt.dropPoint, myGen);
+			const remaining = prompt.remainingCropBatches;
+			const ok = await runConversionJob(
+				prompt.option,
+				prompt.inputs,
+				prompt.dropPoint,
+				myGen,
+				prompt.crop,
+				remaining
+			);
+			if (ok && remaining && remaining.length > 0) {
+				for (let i = 0; i < remaining.length; i += 1) {
+					if (sessionGenRef.current !== myGen) return;
+					const batch = remaining[i];
+					const rest = remaining.slice(i + 1);
+					const nextOk = await runConversionJob(
+						batch.option,
+						batch.inputs,
+						prompt.dropPoint,
+						myGen,
+						batch.crop,
+						rest.length > 0 ? rest : undefined
+					);
+					if (!nextOk) return;
+				}
+			}
 		} catch (err) {
 			if (sessionGenRef.current !== myGen) return;
 			const msg = cleanErrorMessage(err);
@@ -1192,6 +1396,7 @@ export function ConverterDonut({
 			const sides = matchFormatsForPaths(matchInputs, profiles, extraPresets);
 			lastPointerRef.current = { x, y };
 
+			setCropSession(null);
 			setInstallPrompt(null);
 			setJobState((prev) =>
 				prev && prev.status === "converting" ? prev : null
@@ -1227,7 +1432,9 @@ export function ConverterDonut({
 		const unDrop = listen<DonutDropPayload>("converter-donut-drop", (ev) => {
 			const ws = stateRef.current.wheelSession;
 			if (!ws) {
-				releaseOverlayLock();
+				if (!stateRef.current.cropSession) {
+					releaseOverlayLock();
+				}
 				return;
 			}
 			const dropPt = { x: ev.payload.x, y: ev.payload.y };
@@ -1255,12 +1462,14 @@ export function ConverterDonut({
 		const unClose = listen("converter-donut-close", () => {
 			if (
 				stateRef.current.wheelSession ||
+				stateRef.current.cropSession ||
 				stateRef.current.checkingJob ||
 				stateRef.current.installPrompt
 			) {
 				sessionGenRef.current += 1;
 				clearCheckingState();
 				setWheelSession(null);
+				setCropSession(null);
 				setInstallPrompt(null);
 				setActiveIndex(null);
 				setIsCenterActive(false);
@@ -1519,7 +1728,7 @@ export function ConverterDonut({
 		);
 	}, [installPrompt, viewportSize]);
 
-	const activeRingJob = !wheelSession && !installPrompt
+	const activeRingJob = !wheelSession && !cropSession && !installPrompt
 		? checkingVisible && checkingJob
 			? checkingJob
 			: jobState
@@ -1825,6 +2034,17 @@ export function ConverterDonut({
 						</div>
 					</div>
 				</div>
+			)}
+
+			{/* ── Image Crop-Before-Convert Modal ── */}
+			{cropSession && !suppressed && (
+				<ConverterCropModal
+					inputs={cropSession.inputs}
+					accentColor={accentColor}
+					accentForeground={accentForeground}
+					onConfirm={handleCropConfirm}
+					onCancel={handleCropCancel}
+				/>
 			)}
 
 			{/* ── Inline Missing Core / Optional Engine Pack Card ── */}

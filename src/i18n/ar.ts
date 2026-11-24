@@ -1467,6 +1467,26 @@ export const ar: TranslationDict = {
 			escToCancel: "Esc للإغلاق",
 			noTargets: "لا توجد صيغ متوافقة"
 		},
+		cropModal: {
+			title: "قص الصورة",
+			imageProgress: (current: number, total: number) => `الصورة ${current} / ${total}`,
+			aspectFree: "حر",
+			aspect1x1: "1:1",
+			aspect16x9: "16:9",
+			aspect4x3: "4:3",
+			aspect9x16: "9:16",
+			targetFormat: "الصيغة الهدف",
+			dimensionsBadge: (w: number, h: number) => `${w} × ${h} px`,
+			originalSize: (w: number, h: number) => `الأصل ${w} × ${h}`,
+			resetCrop: "إعادة ضبط",
+			applyAndConvert: "تطبيق وتحويل",
+			applyAndConvertAll: "تطبيق وتحويل الكل",
+			nextImage: "التالي",
+			skip: "تخطي",
+			cancel: "إلغاء",
+			loadingPreview: "جارٍ تحميل معاينة الصورة...",
+			previewError: "تعذّر تحميل معاينة الصورة."
+		},
 		donutEditor: {
 			profilesLabel: "شرائح الدائرة حسب نوع الملف",
 			profilesDesc: "اختر فئة الملفات وخصّص الصيغ والأدوات الظاهرة في الوجه الأول والوجه الثاني.",

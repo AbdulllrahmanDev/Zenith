@@ -33,6 +33,21 @@ pub struct ConverterPaths {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CropBox {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ImagePreviewPayload {
+    pub data_url: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ConvertRequest {
     pub job_id: String,
     pub inputs: Vec<String>,
@@ -61,6 +76,8 @@ pub struct ConvertRequest {
     pub iso_filesystem: Option<String>,
     #[serde(default)]
     pub iso_label: Option<String>,
+    #[serde(default)]
+    pub crop: Option<CropBox>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -793,6 +810,356 @@ fn emit_converter_event(app: &AppHandle, job_id: &str, event: &CliEvent) {
     let _ = app.emit("converter-progress", payload);
 }
 
+const MAX_IMAGE_PREVIEW_EDGE: u32 = 1280;
+
+pub fn clamp_crop_box(
+    crop: &CropBox,
+    img_width: u32,
+    img_height: u32,
+) -> Result<(u32, u32, u32, u32), String> {
+    if img_width == 0 || img_height == 0 {
+        return Err("INVALID_IMAGE: Source image has zero dimensions".to_string());
+    }
+    if crop.width == 0 || crop.height == 0 {
+        return Err("INVALID_CROP: Crop width and height must be at least 1 pixel".to_string());
+    }
+    let x = crop.x.min(img_width - 1);
+    let y = crop.y.min(img_height - 1);
+    let max_w = img_width - x;
+    let max_h = img_height - y;
+    let w = crop.width.clamp(1, max_w);
+    let h = crop.height.clamp(1, max_h);
+    Ok((x, y, w, h))
+}
+
+fn sanitize_path_stem(src_path: &Path) -> String {
+    let raw_stem = src_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("image");
+    let safe: String = raw_stem
+        .chars()
+        .map(|c| {
+            if matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || c.is_control()
+            {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    let trimmed = safe.trim();
+    if trimmed.is_empty() {
+        "image".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+pub fn crop_image_to_temp_png(
+    src_path: &Path,
+    crop: &CropBox,
+    temp_dir: &Path,
+) -> Result<PathBuf, String> {
+    let img = image::open(src_path)
+        .map_err(|e| format!("IMAGE_DECODE_FAILED: Failed to open {}: {e}", src_path.display()))?;
+    let (x, y, w, h) = clamp_crop_box(crop, img.width(), img.height())?;
+    let cropped = img.crop_imm(x, y, w, h);
+
+    std::fs::create_dir_all(temp_dir).map_err(|e| {
+        format!(
+            "TEMP_DIR_ERROR: Failed to create crop temp dir {}: {e}",
+            temp_dir.display()
+        )
+    })?;
+
+    let stem = sanitize_path_stem(src_path);
+    let mut out_path = temp_dir.join(format!("{stem}.png"));
+    if out_path.exists() {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        out_path = temp_dir.join(format!("{stem}_{nanos}.png"));
+    }
+
+    cropped
+        .save_with_format(&out_path, image::ImageFormat::Png)
+        .map_err(|e| {
+            format!(
+                "IMAGE_ENCODE_FAILED: Failed to save cropped PNG {}: {e}",
+                out_path.display()
+            )
+        })?;
+    Ok(out_path)
+}
+
+pub fn load_image_preview_sync(src_path: &Path) -> Result<ImagePreviewPayload, String> {
+    use base64::Engine;
+
+    if !src_path.is_file() {
+        return Err(format!(
+            "IMAGE_NOT_FOUND: Image file does not exist: {}",
+            src_path.display()
+        ));
+    }
+
+    let img = image::open(src_path)
+        .map_err(|e| format!("IMAGE_DECODE_FAILED: Failed to open {}: {e}", src_path.display()))?;
+    let width = img.width();
+    let height = img.height();
+    if width == 0 || height == 0 {
+        return Err("INVALID_IMAGE: Source image has zero dimensions".to_string());
+    }
+
+    let preview = if width > MAX_IMAGE_PREVIEW_EDGE || height > MAX_IMAGE_PREVIEW_EDGE {
+        img.resize(
+            MAX_IMAGE_PREVIEW_EDGE,
+            MAX_IMAGE_PREVIEW_EDGE,
+            image::imageops::FilterType::Triangle,
+        )
+    } else {
+        img
+    };
+
+    let mut png_bytes = Vec::new();
+    preview
+        .write_to(&mut std::io::Cursor::new(&mut png_bytes), image::ImageFormat::Png)
+        .map_err(|e| format!("IMAGE_ENCODE_FAILED: Failed to encode preview PNG: {e}"))?;
+
+    Ok(ImagePreviewPayload {
+        data_url: format!(
+            "data:image/png;base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(&png_bytes)
+        ),
+        width,
+        height,
+    })
+}
+
+#[tauri::command]
+pub async fn converter_load_image_preview(path: String) -> Result<ImagePreviewPayload, String> {
+    let trimmed = path.trim().to_string();
+    if trimmed.is_empty() {
+        return Err("INVALID_PATH: Image path is required".to_string());
+    }
+    tokio::task::spawn_blocking(move || load_image_preview_sync(Path::new(&trimmed)))
+        .await
+        .map_err(|e| format!("PREVIEW_TASK_FAILED: {e}"))?
+}
+
+struct CropTempCleanup(PathBuf);
+
+impl Drop for CropTempCleanup {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn remap_cropped_source(source: &str, temp_to_orig: &HashMap<String, String>) -> String {
+    if temp_to_orig.is_empty() {
+        return source.to_string();
+    }
+    if let Some(orig) = temp_to_orig.get(source) {
+        return orig.clone();
+    }
+    let normalized = source.replace('/', "\\").to_ascii_lowercase();
+    temp_to_orig
+        .get(&normalized)
+        .cloned()
+        .unwrap_or_else(|| source.to_string())
+}
+
+fn remap_cli_event(event: CliEvent, temp_to_orig: &HashMap<String, String>) -> CliEvent {
+    if temp_to_orig.is_empty() {
+        return event;
+    }
+    match event {
+        CliEvent::Progress { source, fraction } => CliEvent::Progress {
+            source: remap_cropped_source(&source, temp_to_orig),
+            fraction,
+        },
+        CliEvent::FileDone {
+            source,
+            outputs,
+            state,
+            error,
+            error_key,
+            missing_engine,
+        } => CliEvent::FileDone {
+            source: remap_cropped_source(&source, temp_to_orig),
+            outputs,
+            state,
+            error,
+            error_key,
+            missing_engine,
+        },
+    }
+}
+
+async fn run_single_cli_convert(
+    app: &AppHandle,
+    paths: &ConverterPaths,
+    cli_req: &ConvertRequest,
+    cancel_rx: &mut watch::Receiver<bool>,
+    temp_to_orig: &HashMap<String, String>,
+) -> Result<(Vec<ConvertedFileItem>, Option<String>, Option<String>), String> {
+    let args = build_convert_args(cli_req, paths);
+    let std_cmd = build_cli_command(&paths.cli_exe, &args, paths);
+    let mut cmd = tokio::process::Command::from(std_cmd);
+    cmd.kill_on_drop(true);
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("CLI_SPAWN_FAILED: {e}"))?;
+    let pid = child.id();
+
+    if !attach_job_pid(&cli_req.job_id, pid) {
+        terminate_child_and_tree(&mut child, pid).await;
+        return Err("CANCELLED".to_string());
+    }
+
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
+
+    let read_stdout = async move {
+        let mut bytes = Vec::new();
+        if let Some(out) = stdout {
+            let mut limited = out.take(MAX_STDOUT_BYTES as u64);
+            let _ = limited.read_to_end(&mut bytes).await;
+        }
+        bytes
+    };
+
+    let app_for_stderr = app.clone();
+    let job_id_for_stderr = cli_req.job_id.clone();
+    let temp_map_for_stderr = temp_to_orig.clone();
+    let read_stderr = async move {
+        let mut stderr_files = Vec::new();
+        let mut missing_engine: Option<String> = None;
+        let mut tail = VecDeque::with_capacity(MAX_STDERR_TAIL_LINES);
+
+        if let Some(err) = stderr {
+            let mut reader = BufReader::new(err);
+            let mut buf = Vec::with_capacity(512);
+            loop {
+                buf.clear();
+                match reader.read_until(b'\n', &mut buf).await {
+                    Ok(0) => break,
+                    Ok(_) => {
+                        if buf.len() > MAX_STDERR_LINE_BYTES {
+                            buf.truncate(MAX_STDERR_LINE_BYTES);
+                        }
+                        let line = String::from_utf8_lossy(&buf);
+                        if let Some(event) = parse_cli_stderr_line(&line) {
+                            let remapped = remap_cli_event(event, &temp_map_for_stderr);
+                            emit_converter_event(&app_for_stderr, &job_id_for_stderr, &remapped);
+                            if let CliEvent::FileDone {
+                                source,
+                                outputs,
+                                state,
+                                error,
+                                error_key,
+                                missing_engine: file_missing,
+                            } = remapped
+                            {
+                                if missing_engine.is_none() {
+                                    missing_engine = file_missing.clone();
+                                }
+                                stderr_files.push(ConvertedFileItem {
+                                    source,
+                                    state,
+                                    outputs,
+                                    error,
+                                    error_key,
+                                    missing_engine: file_missing,
+                                });
+                            }
+                        } else {
+                            push_stderr_tail(&mut tail, &line);
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        }
+
+        let tail_joined = tail.into_iter().collect::<Vec<_>>().join(" | ");
+        (stderr_files, missing_engine, tail_joined)
+    };
+
+    let io_result = {
+        let io_fut = std::pin::pin!(futures_util::future::join(read_stdout, read_stderr));
+        let cancel_fut = std::pin::pin!(wait_for_cancel(cancel_rx));
+        match futures_util::future::select(io_fut, cancel_fut).await {
+            futures_util::future::Either::Left((res, _)) => Some(res),
+            futures_util::future::Either::Right((_, _)) => None,
+        }
+    };
+    let Some((stdout_bytes, (stderr_files, mut missing_engine, stderr_tail))) = io_result else {
+        terminate_child_and_tree(&mut child, pid).await;
+        return Err("CANCELLED".to_string());
+    };
+
+    let wait_result = {
+        let wait_fut = std::pin::pin!(child.wait());
+        let cancel_fut = std::pin::pin!(wait_for_cancel(cancel_rx));
+        match futures_util::future::select(wait_fut, cancel_fut).await {
+            futures_util::future::Either::Left((res, _)) => Some(res),
+            futures_util::future::Either::Right((_, _)) => None,
+        }
+    };
+    let Some(wait_status_res) = wait_result else {
+        terminate_child_and_tree(&mut child, pid).await;
+        return Err("CANCELLED".to_string());
+    };
+    let status = wait_status_res.map_err(|e| format!("CLI_WAIT_FAILED: {e}"))?;
+
+    if *cancel_rx.borrow() {
+        return Err("CANCELLED".to_string());
+    }
+
+    let mut files = match parse_cli_stdout_json(&stdout_bytes) {
+        Some(parsed) if !parsed.is_empty() => parsed,
+        _ => stderr_files,
+    };
+    if !temp_to_orig.is_empty() {
+        for item in &mut files {
+            item.source = remap_cropped_source(&item.source, temp_to_orig);
+        }
+    }
+
+    if missing_engine.is_none() {
+        missing_engine = files.iter().find_map(|f| f.missing_engine.clone());
+    }
+
+    let detail_tail = if !stderr_tail.is_empty() {
+        stderr_tail
+    } else {
+        files
+            .iter()
+            .find_map(|f| f.error.clone())
+            .unwrap_or_default()
+    };
+
+    let outcome = map_cli_exit_code(status.code(), missing_engine.as_deref(), &detail_tail);
+    match outcome {
+        Ok(_) => Ok((files, missing_engine, None)),
+        Err(err) => {
+            if err.starts_with("CONVERSION_FAILED:")
+                && missing_engine.is_none()
+                && !files.is_empty()
+            {
+                Ok((files, missing_engine, Some(err)))
+            } else {
+                Err(err)
+            }
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn converter_convert(
     app: AppHandle,
@@ -825,157 +1192,117 @@ pub async fn converter_convert(
     }
 
     let (_guard, mut cancel_rx) = register_active_job(&req.job_id)?;
-    let args = build_convert_args(&req, &paths);
-    let std_cmd = build_cli_command(&paths.cli_exe, &args, &paths);
-    let mut cmd = tokio::process::Command::from(std_cmd);
-    cmd.kill_on_drop(true);
 
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("CLI_SPAWN_FAILED: {e}"))?;
-    let pid = child.id();
+    let mut _crop_cleanup: Option<CropTempCleanup> = None;
+    let mut temp_to_orig: HashMap<String, String> = HashMap::new();
 
-    if !attach_job_pid(&req.job_id, pid) {
-        terminate_child_and_tree(&mut child, pid).await;
-        return Err("CANCELLED".to_string());
-    }
+    let runs: Vec<ConvertRequest> = if let Some(ref crop) = req.crop {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let safe_job: String = req
+            .job_id
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .collect();
+        let temp_root = paths
+            .downloads_dir
+            .join(format!("crop_{safe_job}_{nanos}"));
+        _crop_cleanup = Some(CropTempCleanup(temp_root.clone()));
 
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
+        let inputs_clone = req.inputs.clone();
+        let crop_clone = crop.clone();
+        let cropped_pairs = tokio::task::spawn_blocking(move || -> Result<Vec<(String, String)>, String> {
+            let mut pairs = Vec::with_capacity(inputs_clone.len());
+            for (idx, orig) in inputs_clone.into_iter().enumerate() {
+                let slot_dir = temp_root.join(idx.to_string());
+                let cropped_path = crop_image_to_temp_png(Path::new(&orig), &crop_clone, &slot_dir)?;
+                pairs.push((orig, cropped_path.to_string_lossy().to_string()));
+            }
+            Ok(pairs)
+        })
+        .await
+        .map_err(|e| format!("CROP_TASK_FAILED: {e}"))??;
 
-    let read_stdout = async move {
-        let mut bytes = Vec::new();
-        if let Some(out) = stdout {
-            let mut limited = out.take(MAX_STDOUT_BYTES as u64);
-            let _ = limited.read_to_end(&mut bytes).await;
+        if *cancel_rx.borrow() {
+            return Err("CANCELLED".to_string());
         }
-        bytes
-    };
 
-    let app_for_stderr = app.clone();
-    let job_id_for_stderr = req.job_id.clone();
-    let read_stderr = async move {
-        let mut stderr_files = Vec::new();
-        let mut missing_engine: Option<String> = None;
-        let mut tail = VecDeque::with_capacity(MAX_STDERR_TAIL_LINES);
+        for (orig, temp) in &cropped_pairs {
+            temp_to_orig.insert(temp.clone(), orig.clone());
+            temp_to_orig.insert(temp.replace('/', "\\").to_ascii_lowercase(), orig.clone());
+        }
 
-        if let Some(err) = stderr {
-            let mut reader = BufReader::new(err);
-            let mut buf = Vec::with_capacity(512);
-            loop {
-                buf.clear();
-                match reader.read_until(b'\n', &mut buf).await {
-                    Ok(0) => break,
-                    Ok(_) => {
-                        if buf.len() > MAX_STDERR_LINE_BYTES {
-                            buf.truncate(MAX_STDERR_LINE_BYTES);
-                        }
-                        let line = String::from_utf8_lossy(&buf);
-                        if let Some(event) = parse_cli_stderr_line(&line) {
-                            emit_converter_event(&app_for_stderr, &job_id_for_stderr, &event);
-                            if let CliEvent::FileDone {
-                                source,
-                                outputs,
-                                state,
-                                error,
-                                error_key,
-                                missing_engine: file_missing,
-                            } = event
-                            {
-                                if missing_engine.is_none() {
-                                    missing_engine = file_missing.clone();
-                                }
-                                stderr_files.push(ConvertedFileItem {
-                                    source,
-                                    state,
-                                    outputs,
-                                    error,
-                                    error_key,
-                                    missing_engine: file_missing,
-                                });
-                            }
-                        } else {
-                            push_stderr_tail(&mut tail, &line);
-                        }
-                    }
-                    Err(_) => break,
+        let explicit_out_dir = req
+            .output_dir
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+
+        if explicit_out_dir.is_some() {
+            let mut r = req.clone();
+            r.inputs = cropped_pairs.into_iter().map(|(_, t)| t).collect();
+            r.crop = None;
+            vec![r]
+        } else {
+            let mut grouped: Vec<(Option<String>, Vec<String>)> = Vec::new();
+            for (orig, temp) in cropped_pairs {
+                let parent = Path::new(&orig)
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .filter(|s| !s.is_empty());
+                if let Some(existing) = grouped.iter_mut().find(|(dir, _)| *dir == parent) {
+                    existing.1.push(temp);
+                } else {
+                    grouped.push((parent, vec![temp]));
                 }
             }
+            grouped
+                .into_iter()
+                .map(|(dir, group_inputs)| {
+                    let mut r = req.clone();
+                    r.inputs = group_inputs;
+                    r.output_dir = dir;
+                    r.crop = None;
+                    r
+                })
+                .collect()
         }
-
-        let tail_joined = tail.into_iter().collect::<Vec<_>>().join(" | ");
-        (stderr_files, missing_engine, tail_joined)
-    };
-
-    let io_result = {
-        let io_fut = std::pin::pin!(futures_util::future::join(read_stdout, read_stderr));
-        let cancel_fut = std::pin::pin!(wait_for_cancel(&mut cancel_rx));
-        match futures_util::future::select(io_fut, cancel_fut).await {
-            futures_util::future::Either::Left((res, _)) => Some(res),
-            futures_util::future::Either::Right((_, _)) => None,
-        }
-    };
-    let Some((stdout_bytes, (stderr_files, mut missing_engine, stderr_tail))) = io_result else {
-        terminate_child_and_tree(&mut child, pid).await;
-        return Err("CANCELLED".to_string());
-    };
-
-    let wait_result = {
-        let wait_fut = std::pin::pin!(child.wait());
-        let cancel_fut = std::pin::pin!(wait_for_cancel(&mut cancel_rx));
-        match futures_util::future::select(wait_fut, cancel_fut).await {
-            futures_util::future::Either::Left((res, _)) => Some(res),
-            futures_util::future::Either::Right((_, _)) => None,
-        }
-    };
-    let Some(wait_status_res) = wait_result else {
-        terminate_child_and_tree(&mut child, pid).await;
-        return Err("CANCELLED".to_string());
-    };
-    let status = wait_status_res.map_err(|e| format!("CLI_WAIT_FAILED: {e}"))?;
-
-    if *cancel_rx.borrow() {
-        return Err("CANCELLED".to_string());
-    }
-
-    let files = match parse_cli_stdout_json(&stdout_bytes) {
-        Some(parsed) if !parsed.is_empty() => parsed,
-        _ => stderr_files,
-    };
-
-    if missing_engine.is_none() {
-        missing_engine = files.iter().find_map(|f| f.missing_engine.clone());
-    }
-
-    let detail_tail = if !stderr_tail.is_empty() {
-        stderr_tail
     } else {
-        files
-            .iter()
-            .find_map(|f| f.error.clone())
-            .unwrap_or_default()
+        vec![req.clone()]
     };
 
-    let outcome = map_cli_exit_code(status.code(), missing_engine.as_deref(), &detail_tail);
-    match outcome {
-        Ok(_) => {
-            record_conversion_history(&app, &paths, &req, &files).await;
-            Ok(ConvertJobResult {
-                job_id: req.job_id,
-                files,
-                missing_engine,
-            })
+    let mut all_files = Vec::new();
+    let mut missing_engine: Option<String> = None;
+    let mut conversion_err: Option<String> = None;
+
+    for cli_req in &runs {
+        let (mut run_files, run_missing, run_err) =
+            run_single_cli_convert(&app, &paths, cli_req, &mut cancel_rx, &temp_to_orig).await?;
+        if missing_engine.is_none() {
+            missing_engine = run_missing;
         }
-        Err(err) => {
-            if err.starts_with("CONVERSION_FAILED:")
-                && missing_engine.is_none()
-                && !files.is_empty()
-            {
-                record_conversion_history(&app, &paths, &req, &files).await;
-            }
-            Err(err)
+        if conversion_err.is_none() {
+            conversion_err = run_err;
         }
+        all_files.append(&mut run_files);
     }
+
+    if let Some(err) = conversion_err {
+        if missing_engine.is_none() && !all_files.is_empty() {
+            record_conversion_history(&app, &paths, &req, &all_files).await;
+        }
+        return Err(err);
+    }
+
+    record_conversion_history(&app, &paths, &req, &all_files).await;
+    Ok(ConvertJobResult {
+        job_id: req.job_id,
+        files: all_files,
+        missing_engine,
+    })
 }
 
 #[tauri::command]
@@ -3742,6 +4069,7 @@ mod tests {
             zip: Some(true),
             iso_filesystem: None,
             iso_label: None,
+            crop: None,
         };
 
         let args = build_convert_args(&req, &paths);
@@ -3782,6 +4110,7 @@ mod tests {
             zip: None,
             iso_filesystem: Some("udf201".to_string()),
             iso_label: Some("MY_DISC".to_string()),
+            crop: None,
         };
         let iso_args = build_convert_args(&iso_req, &paths);
         assert_eq!(
@@ -3815,6 +4144,7 @@ mod tests {
             zip: None,
             iso_filesystem: None,
             iso_label: None,
+            crop: None,
         };
         assert_eq!(
             build_convert_args(&preset_req, &paths),
@@ -3843,6 +4173,7 @@ mod tests {
             zip: None,
             iso_filesystem: None,
             iso_label: None,
+            crop: None,
         };
         assert_eq!(
             build_convert_args(&split_skip_req, &paths),
@@ -3876,6 +4207,7 @@ mod tests {
             zip: None,
             iso_filesystem: None,
             iso_label: None,
+            crop: None,
         };
         assert_eq!(
             build_convert_args(&parts_rename_req, &paths),
@@ -4736,6 +5068,136 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  Filee-2.5.0-wi
         std::fs::write(&txt_path, b"hello").unwrap();
         assert_eq!(generate_thumbnail_data_url(&txt_path), None);
         assert_eq!(generate_thumbnail_data_url(&base.join("missing.png")), None);
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn crop_image_region_clamps_bounds() {
+        let base = std::env::temp_dir().join(format!(
+            "zenith_converter_crop_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&base).unwrap();
+
+        let img_path = base.join("sample.png");
+        let img = image::RgbaImage::from_pixel(100, 80, image::Rgba([40, 140, 240, 255]));
+        img.save(&img_path).unwrap();
+
+        let clamped = clamp_crop_box(
+            &CropBox {
+                x: 90,
+                y: 70,
+                width: 50,
+                height: 40,
+            },
+            100,
+            80,
+        )
+        .expect("out-of-bounds crop should clamp within image");
+        assert_eq!(clamped, (90, 70, 10, 10));
+
+        assert!(
+            clamp_crop_box(
+                &CropBox {
+                    x: 10,
+                    y: 10,
+                    width: 0,
+                    height: 20,
+                },
+                100,
+                80,
+            )
+            .is_err(),
+            "zero width crop must be rejected"
+        );
+        assert!(
+            clamp_crop_box(
+                &CropBox {
+                    x: 10,
+                    y: 10,
+                    width: 20,
+                    height: 0,
+                },
+                100,
+                80,
+            )
+            .is_err(),
+            "zero height crop must be rejected"
+        );
+        assert!(
+            clamp_crop_box(
+                &CropBox {
+                    x: 0,
+                    y: 0,
+                    width: 10,
+                    height: 10,
+                },
+                0,
+                80,
+            )
+            .is_err(),
+            "zero-dimension source image must be rejected"
+        );
+
+        let temp_dir = base.join("out");
+        let out_png = crop_image_to_temp_png(
+            &img_path,
+            &CropBox {
+                x: 90,
+                y: 70,
+                width: 50,
+                height: 40,
+            },
+            &temp_dir,
+        )
+        .expect("crop_image_to_temp_png should succeed");
+        assert!(out_png.is_file());
+        let cropped = image::open(&out_png).expect("cropped png should be readable");
+        assert_eq!((cropped.width(), cropped.height()), (10, 10));
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn load_image_preview_sync_resizes_large_images_and_keeps_original_dims() {
+        use base64::Engine;
+
+        let base = std::env::temp_dir().join(format!(
+            "zenith_converter_preview_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&base).unwrap();
+
+        let img_path = base.join("large.png");
+        let img = image::RgbaImage::from_pixel(1600, 800, image::Rgba([10, 200, 120, 255]));
+        img.save(&img_path).unwrap();
+
+        let payload = load_image_preview_sync(&img_path).expect("preview payload should succeed");
+        assert_eq!((payload.width, payload.height), (1600, 800));
+        let b64 = payload
+            .data_url
+            .strip_prefix("data:image/png;base64,")
+            .expect("png data url prefix");
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(b64)
+            .expect("valid base64");
+        let preview_img = image::load_from_memory(&bytes).expect("valid png bytes");
+        assert_eq!((preview_img.width(), preview_img.height()), (1280, 640));
+
+        // Ensure ConvertRequest remains backward compatible without `crop`.
+        let legacy_json = r#"{"job_id":"j1","inputs":["a.png"],"to":"webp"}"#;
+        let parsed: ConvertRequest =
+            serde_json::from_str(legacy_json).expect("legacy ConvertRequest without crop");
+        assert_eq!(parsed.crop, None);
 
         let _ = std::fs::remove_dir_all(&base);
     }

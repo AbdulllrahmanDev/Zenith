@@ -1464,6 +1464,26 @@ export const en = {
 			escToCancel: "Esc to cancel",
 			noTargets: "No compatible targets"
 		},
+		cropModal: {
+			title: "Crop Image",
+			imageProgress: (current: number, total: number) => `Image ${current} / ${total}`,
+			aspectFree: "Free",
+			aspect1x1: "1:1",
+			aspect16x9: "16:9",
+			aspect4x3: "4:3",
+			aspect9x16: "9:16",
+			targetFormat: "Target Format",
+			dimensionsBadge: (w: number, h: number) => `${w} × ${h} px`,
+			originalSize: (w: number, h: number) => `Original ${w} × ${h}`,
+			resetCrop: "Reset",
+			applyAndConvert: "Apply & Convert",
+			applyAndConvertAll: "Apply & Convert All",
+			nextImage: "Next",
+			skip: "Skip",
+			cancel: "Cancel",
+			loadingPreview: "Loading image preview...",
+			previewError: "Could not load image preview."
+		},
 		donutEditor: {
 			profilesLabel: "Donut Slice Profiles",
 			profilesDesc: "Choose a file category and customize which targets appear on Face 1 and Face 2.",

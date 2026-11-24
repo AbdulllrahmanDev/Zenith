@@ -3,6 +3,7 @@ import type {
 	ConverterPresetConfig,
 	ConverterState,
 	ConvertRequest,
+	CropBox,
 	DonutSides,
 	FileCategory,
 	TargetOption,
@@ -1418,8 +1419,9 @@ export function buildConvertRequestFromOption(params: {
 	option: TargetOption;
 	outputDir: string | null;
 	presetsById?: Map<string, ConverterPresetConfig>;
+	crop?: CropBox | null;
 }): ConvertRequest {
-	const { jobId, inputs, option, outputDir, presetsById } = params;
+	const { jobId, inputs, option, outputDir, presetsById, crop } = params;
 	const presetCfg = option.presetId ? presetsById?.get(option.presetId) : undefined;
 	const builtIn = option.presetId ? DEFAULT_PRESET_CATALOG[option.presetId] : undefined;
 
@@ -1461,5 +1463,6 @@ export function buildConvertRequestFromOption(params: {
 		zip: presetCfg?.zip ?? null,
 		iso_filesystem: isIso ? presetCfg?.iso_filesystem?.trim() || null : null,
 		iso_label: isIso ? presetCfg?.iso_label?.trim() || null : null,
+		...(crop ? { crop } : null),
 	};
 }

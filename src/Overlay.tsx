@@ -1264,7 +1264,8 @@ function OverlayApp() {
 			mode === "splash" ||
 			mode === "updating" ||
 			mode === "radial" ||
-			converterPhase === "donut"
+			converterPhase === "donut" ||
+			converterPhase === "crop"
 		) {
 			return [{ x: 0, y: 0, width, height }];
 		}
@@ -1287,7 +1288,8 @@ function OverlayApp() {
 				[".volume-mixer-panel", 24],
 				[".brightness-notch-wrapper", 24],
 				[".converter-progress-ring", 24],
-				[".converter-install-card", 24]
+				[".converter-install-card", 24],
+				[".converter-crop-modal", 24]
 			])
 		];
 	}, [mode, converterPhase, scale, mixerExpanded]);
@@ -1295,7 +1297,10 @@ function OverlayApp() {
 	const handleConverterPhaseChange = useCallback((nextPhase: ConverterPhase) => {
 		setConverterPhase(nextPhase);
 		const isLocked =
-			nextPhase === "donut" || nextPhase === "checking" || nextPhase === "install";
+			nextPhase === "donut" ||
+			nextPhase === "checking" ||
+			nextPhase === "install" ||
+			nextPhase === "crop";
 		if (converterLockRef.current && !isLocked) {
 			converterForceRegionRef.current = true;
 		}

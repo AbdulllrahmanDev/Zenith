@@ -151,6 +151,19 @@ export interface ConverterState {
 	watch_rules: WatchRule[];
 }
 
+export interface CropBox {
+	x: number;
+	y: number;
+	width: number;
+	height: number;
+}
+
+export interface ImagePreviewPayload {
+	data_url: string;
+	width: number;
+	height: number;
+}
+
 export interface ConvertRequest {
 	job_id: string;
 	inputs: string[];
@@ -167,6 +180,7 @@ export interface ConvertRequest {
 	zip: boolean | null;
 	iso_filesystem: string | null;
 	iso_label: string | null;
+	crop?: CropBox | null;
 }
 
 export interface ConvertedFileItem {

@@ -295,7 +295,8 @@ fn main() {
             converter::converter_save_profiles,
             converter::converter_save_presets,
             converter::converter_clear_history,
-            converter::converter_open_output
+            converter::converter_open_output,
+            converter::converter_load_image_preview
         ])
         .setup(|app| {
             crate::converter::set_main_thread_id(std::thread::current().id());
