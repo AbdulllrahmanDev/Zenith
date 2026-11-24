@@ -3466,6 +3466,1398 @@ fn parse_url_lines(raw: &str) -> Vec<String> {
 }
 
 const MAX_URL_UNITS: usize = 1 << 15;
+const MAX_CF_HTML_BYTES: usize = 44 * 1024 * 1024;
+const MAX_DATA_URI_UNITS: usize = 22 * 1024 * 1024;
+const MAX_BROWSER_DATA_URI_BYTES: usize = 32 * 1024 * 1024;
+const MAX_BROWSER_DOWNLOAD_BYTES: u64 = 256 * 1024 * 1024;
+const MAX_BROWSER_REDIRECTS: usize = 5;
+const MAX_SAFE_DOWNLOAD_STEM_CHARS: usize = 120;
+const BROWSER_USER_AGENT: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Zenith-Converter/1.0";
+
+const BLOCKED_BROWSER_EXTENSIONS: &[&str] = &[
+    "exe", "dll", "bat", "cmd", "msi", "scr", "vbs", "ps1", "hta", "lnk",
+];
+
+const BROWSER_IMAGE_EXTENSIONS: &[&str] = &[
+    "png", "jpg", "jpeg", "jpe", "jfif", "webp", "gif", "bmp", "dib", "ico", "cur", "tif",
+    "tiff", "avif", "heic", "heif", "hif", "jxl", "svg", "svgz", "apng", "tga", "psd", "raw",
+    "dng", "exr", "hdr", "dds", "qoi", "xcf", "jp2", "j2k",
+];
+
+const BROWSER_EXPLICIT_FILE_EXTENSIONS: &[&str] = &[
+    // Images
+    "png", "jpg", "jpeg", "jpe", "jfif", "webp", "gif", "bmp", "dib", "ico", "cur", "tif",
+    "tiff", "avif", "heic", "heif", "hif", "jxl", "svg", "svgz", "apng", "tga", "psd", "raw",
+    "dng", "exr", "hdr", "dds", "qoi", "xcf", "jp2", "j2k", // Documents & PDF
+    "pdf", "doc", "docx", "docm", "dotx", "dot", "odt", "fodt", "rtf", "xls", "xlsx", "xlsm",
+    "ods", "csv", "tsv", "ppt", "pptx", "pptm", "ppsx", "odp", "key", "hwp", "hwpx", "eml",
+    "msg", // Text & Data (explicitly excludes html/htm/xhtml/php/asp/jsp)
+    "txt", "log", "md", "markdown", "rst", "tex", "latex", "json", "jsonl", "ndjson", "yaml",
+    "yml", "toml", "xml", "ini", "sql", // Ebooks
+    "epub", "mobi", "azw3", "fb2", "djvu", "cbz", "cbr", // Video
+    "mp4", "m4v", "mov", "mkv", "webm", "avi", "wmv", "flv", "ts", "m2ts", "3gp", "ogv",
+    // Audio & Subtitles
+    "mp3", "wav", "flac", "ogg", "oga", "opus", "m4a", "aac", "wma", "aiff", "aif", "alac",
+    "amr", "mid", "midi", "srt", "vtt", "ass", "ssa", "sub", // Archives
+    "zip", "7z", "rar", "tar", "gz", "tgz", "bz2", "tbz2", "xz", "txz", "zst", "iso",
+    // Vector / CAD / Fonts / 3D / Geo
+    "eps", "ps", "ai", "emf", "wmf", "dxf", "dwg", "ttf", "otf", "woff", "woff2", "eot", "stl",
+    "obj", "glb", "gltf", "fbx", "ply", "dae", "3ds", "geojson", "gpx", "kml", "kmz",
+];
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum BrowserDragSource {
+    ImageDataUri {
+        mime: String,
+        raw_uri: String,
+        suggested_name: String,
+    },
+    RemoteImageUrl {
+        url: String,
+        suggested_name: String,
+    },
+    RemoteFileUrl {
+        url: String,
+        suggested_name: String,
+    },
+}
+
+fn is_blocked_executable_ext(ext: &str) -> bool {
+    let clean = ext
+        .trim()
+        .trim_start_matches('.')
+        .trim_end_matches(['.', ' '])
+        .to_ascii_lowercase();
+    BLOCKED_BROWSER_EXTENSIONS.contains(&clean.as_str())
+}
+
+fn is_windows_reserved_device_name(name: &str) -> bool {
+    let trimmed = name.trim().trim_end_matches(['.', ' ']);
+    if trimmed.is_empty() {
+        return false;
+    }
+    let upper = trimmed.to_ascii_uppercase();
+    matches!(
+        upper.as_str(),
+        "CON"
+            | "PRN"
+            | "AUX"
+            | "NUL"
+            | "COM1"
+            | "COM2"
+            | "COM3"
+            | "COM4"
+            | "COM5"
+            | "COM6"
+            | "COM7"
+            | "COM8"
+            | "COM9"
+            | "LPT1"
+            | "LPT2"
+            | "LPT3"
+            | "LPT4"
+            | "LPT5"
+            | "LPT6"
+            | "LPT7"
+            | "LPT8"
+            | "LPT9"
+    )
+}
+
+pub fn sanitize_download_filename(raw_name: &str, fallback_ext: &str) -> String {
+    let clean_fallback_ext: String = fallback_ext
+        .trim()
+        .trim_start_matches('.')
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .take(16)
+        .collect::<String>()
+        .to_ascii_lowercase();
+
+    let last_segment = raw_name
+        .trim()
+        .rsplit(['/', '\\'])
+        .find(|s| !s.is_empty())
+        .unwrap_or("");
+
+    let mut sanitized: String = last_segment
+        .chars()
+        .map(|c| {
+            if matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || c.is_control()
+            {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+
+    while sanitized.contains("..") {
+        sanitized = sanitized.replace("..", "_");
+    }
+
+    let trimmed = sanitized.trim_matches(|c: char| c.is_whitespace() || c == '.');
+
+    let (raw_stem, chosen_ext) = if let Some(dot_idx) = trimmed.rfind('.') {
+        let candidate_stem = &trimmed[..dot_idx];
+        let candidate_ext = &trimmed[dot_idx + 1..];
+        if !candidate_ext.is_empty()
+            && candidate_ext.len() <= 16
+            && candidate_ext.chars().all(|c| c.is_ascii_alphanumeric())
+        {
+            (candidate_stem, candidate_ext.to_ascii_lowercase())
+        } else {
+            (trimmed, clean_fallback_ext)
+        }
+    } else {
+        (trimmed, clean_fallback_ext)
+    };
+
+    let mut stem = raw_stem
+        .trim_matches(|c: char| c.is_whitespace() || c == '.')
+        .to_string();
+    if stem.is_empty() {
+        stem = "download".to_string();
+    }
+
+    if stem.chars().count() > MAX_SAFE_DOWNLOAD_STEM_CHARS {
+        stem = stem
+            .chars()
+            .take(MAX_SAFE_DOWNLOAD_STEM_CHARS)
+            .collect::<String>()
+            .trim_matches(|c: char| c.is_whitespace() || c == '.')
+            .to_string();
+        if stem.is_empty() {
+            stem = "download".to_string();
+        }
+    }
+
+    let first_dot_prefix = stem.split('.').next().unwrap_or(&stem);
+    if is_windows_reserved_device_name(&stem) || is_windows_reserved_device_name(first_dot_prefix) {
+        stem = format!("_{stem}");
+        if stem.chars().count() > MAX_SAFE_DOWNLOAD_STEM_CHARS {
+            stem = stem.chars().take(MAX_SAFE_DOWNLOAD_STEM_CHARS).collect();
+        }
+    }
+
+    if chosen_ext.is_empty() {
+        stem
+    } else {
+        format!("{stem}.{chosen_ext}")
+    }
+}
+
+pub fn is_local_network_ip(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => {
+            let [a, b, c, _d] = v4.octets();
+            a == 0 // 0.0.0.0/8 ("this" network)
+                || a == 10 // 10.0.0.0/8 (RFC 1918)
+                || (a == 100 && (b & 0b1100_0000) == 64) // 100.64.0.0/10 (CGNAT)
+                || a == 127 // 127.0.0.0/8 (loopback)
+                || (a == 169 && b == 254) // 169.254.0.0/16 (link-local / cloud metadata)
+                || (a == 172 && (16..=31).contains(&b)) // 172.16.0.0/12 (RFC 1918)
+                || (a == 192 && b == 0 && c == 0) // 192.0.0.0/24 (IETF protocol assignments)
+                || (a == 192 && b == 168) // 192.168.0.0/16 (RFC 1918)
+                || (a == 198 && (b == 18 || b == 19)) // 198.18.0.0/15 (benchmarking)
+                || a >= 224 // >= 224.0.0.0 (multicast, reserved, broadcast)
+        }
+        std::net::IpAddr::V6(v6) => {
+            if v6.is_unspecified() || v6.is_loopback() || v6.is_multicast() {
+                return true;
+            }
+            if let Some(mapped_v4) = v6.to_ipv4_mapped() {
+                return is_local_network_ip(std::net::IpAddr::V4(mapped_v4));
+            }
+            let seg = v6.segments();
+            // ULA fc00::/7
+            if (seg[0] & 0xfe00) == 0xfc00 {
+                return true;
+            }
+            // Link-local fe80::/10
+            if (seg[0] & 0xffc0) == 0xfe80 {
+                return true;
+            }
+            // Deprecated site-local fec0::/10
+            if (seg[0] & 0xffc0) == 0xfec0 {
+                return true;
+            }
+            // IPv4-compatible ::/96
+            if seg[0..6] == [0; 6] {
+                let v4 = std::net::Ipv4Addr::new(
+                    (seg[6] >> 8) as u8,
+                    (seg[6] & 0xff) as u8,
+                    (seg[7] >> 8) as u8,
+                    (seg[7] & 0xff) as u8,
+                );
+                return is_local_network_ip(std::net::IpAddr::V4(v4));
+            }
+            // IPv4-translated ::ffff:0:0:0/96
+            if seg[0..4] == [0; 4] && seg[4] == 0xffff && seg[5] == 0 {
+                let v4 = std::net::Ipv4Addr::new(
+                    (seg[6] >> 8) as u8,
+                    (seg[6] & 0xff) as u8,
+                    (seg[7] >> 8) as u8,
+                    (seg[7] & 0xff) as u8,
+                );
+                return is_local_network_ip(std::net::IpAddr::V4(v4));
+            }
+            // NAT64 well-known prefix 64:ff9b::/96 -> inspect embedded IPv4
+            if seg[0] == 0x0064 && seg[1] == 0xff9b && seg[2..6] == [0; 4] {
+                let v4 = std::net::Ipv4Addr::new(
+                    (seg[6] >> 8) as u8,
+                    (seg[6] & 0xff) as u8,
+                    (seg[7] >> 8) as u8,
+                    (seg[7] & 0xff) as u8,
+                );
+                return is_local_network_ip(std::net::IpAddr::V4(v4));
+            }
+            // NAT64 local-use prefix 64:ff9b:1::/48
+            if seg[0] == 0x0064 && seg[1] == 0xff9b && seg[2] == 0x0001 {
+                return true;
+            }
+            // 6to4 2002::/16 -> inspect embedded IPv4
+            if seg[0] == 0x2002 {
+                let v4 = std::net::Ipv4Addr::new(
+                    (seg[1] >> 8) as u8,
+                    (seg[1] & 0xff) as u8,
+                    (seg[2] >> 8) as u8,
+                    (seg[2] & 0xff) as u8,
+                );
+                return is_local_network_ip(std::net::IpAddr::V4(v4));
+            }
+            // Teredo 2001:0000::/32 -> inspect server and inverted client IPv4
+            if seg[0] == 0x2001 && seg[1] == 0 {
+                let server_v4 = std::net::Ipv4Addr::new(
+                    (seg[2] >> 8) as u8,
+                    (seg[2] & 0xff) as u8,
+                    (seg[3] >> 8) as u8,
+                    (seg[3] & 0xff) as u8,
+                );
+                let client_v4 = std::net::Ipv4Addr::new(
+                    (!seg[6] >> 8) as u8,
+                    (!seg[6] & 0xff) as u8,
+                    (!seg[7] >> 8) as u8,
+                    (!seg[7] & 0xff) as u8,
+                );
+                return is_local_network_ip(std::net::IpAddr::V4(server_v4))
+                    || is_local_network_ip(std::net::IpAddr::V4(client_v4));
+            }
+            false
+        }
+    }
+}
+
+pub fn is_local_hostname(host: &str) -> bool {
+    let trimmed = host
+        .trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    if trimmed.is_empty() || trimmed.contains('%') {
+        return true;
+    }
+    if let Ok(ip) = trimmed.parse::<std::net::IpAddr>() {
+        return is_local_network_ip(ip);
+    }
+    if matches!(
+        trimmed.as_str(),
+        "localhost" | "local" | "home.arpa" | "internal" | "localdomain" | "lan" | "intranet"
+    ) || trimmed.ends_with(".localhost")
+        || trimmed.ends_with(".local")
+        || trimmed.ends_with(".home.arpa")
+        || trimmed.ends_with(".internal")
+        || trimmed.ends_with(".localdomain")
+        || trimmed.ends_with(".lan")
+        || trimmed.ends_with(".intranet")
+    {
+        return true;
+    }
+    if !trimmed.contains('.') {
+        return true;
+    }
+    if let Some(last_label) = trimmed.rsplit('.').next() {
+        if last_label.chars().all(|c| c.is_ascii_digit()) || last_label.starts_with("0x") {
+            return true;
+        }
+    }
+    false
+}
+
+fn percent_decode_lossy(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            let h1 = (bytes[i + 1] as char).to_digit(16);
+            let h2 = (bytes[i + 2] as char).to_digit(16);
+            if let (Some(a), Some(b)) = (h1, h2) {
+                out.push(((a << 4) | b) as u8);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn extract_extension_from_name(name: &str) -> Option<String> {
+    let cleaned = name.trim().trim_end_matches(['.', ' ']);
+    let dot = cleaned.rfind('.')?;
+    let ext = &cleaned[dot + 1..];
+    if !ext.is_empty() && ext.len() <= 16 && ext.chars().all(|c| c.is_ascii_alphanumeric()) {
+        Some(ext.to_ascii_lowercase())
+    } else {
+        None
+    }
+}
+
+fn extract_url_filename_and_ext(url: &tauri::Url) -> (Option<String>, Option<String>) {
+    let raw_seg = url
+        .path_segments()
+        .and_then(|mut segs| segs.rfind(|s| !s.is_empty()))
+        .map(percent_decode_lossy)
+        .filter(|s| !s.trim().is_empty());
+    let ext = raw_seg
+        .as_deref()
+        .and_then(extract_extension_from_name);
+    (raw_seg, ext)
+}
+
+fn has_blocked_executable_in_url(url: &tauri::Url) -> bool {
+    let (_, ext) = extract_url_filename_and_ext(url);
+    if ext.as_deref().is_some_and(is_blocked_executable_ext) {
+        return true;
+    }
+    for (k, v) in url.query_pairs() {
+        let key_lower = k.to_ascii_lowercase();
+        if matches!(
+            key_lower.as_str(),
+            "filename" | "file" | "download" | "name" | "attachment"
+        ) && extract_extension_from_name(&v)
+            .as_deref()
+            .is_some_and(is_blocked_executable_ext)
+        {
+            return true;
+        }
+    }
+    false
+}
+
+fn mime_to_extension(mime: &str) -> Option<&'static str> {
+    let essence = mime
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    match essence.as_str() {
+        "image/png" => Some("png"),
+        "image/jpeg" | "image/jpg" | "image/pjpeg" => Some("jpg"),
+        "image/webp" => Some("webp"),
+        "image/gif" => Some("gif"),
+        "image/bmp" | "image/x-ms-bmp" => Some("bmp"),
+        "image/x-icon" | "image/vnd.microsoft.icon" => Some("ico"),
+        "image/tiff" => Some("tiff"),
+        "image/avif" => Some("avif"),
+        "image/heic" => Some("heic"),
+        "image/heif" => Some("heif"),
+        "image/jxl" => Some("jxl"),
+        "image/svg+xml" => Some("svg"),
+        "application/pdf" => Some("pdf"),
+        "application/msword" => Some("doc"),
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => Some("docx"),
+        "application/vnd.ms-excel" => Some("xls"),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => Some("xlsx"),
+        "application/vnd.ms-powerpoint" => Some("ppt"),
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" => Some("pptx"),
+        "text/plain" => Some("txt"),
+        "text/markdown" => Some("md"),
+        "text/csv" => Some("csv"),
+        "application/json" => Some("json"),
+        "application/xml" | "text/xml" => Some("xml"),
+        "application/epub+zip" => Some("epub"),
+        "video/mp4" => Some("mp4"),
+        "video/webm" => Some("webm"),
+        "video/quicktime" => Some("mov"),
+        "video/x-matroska" => Some("mkv"),
+        "video/x-msvideo" => Some("avi"),
+        "audio/mpeg" | "audio/mp3" => Some("mp3"),
+        "audio/wav" | "audio/x-wav" | "audio/wave" => Some("wav"),
+        "audio/flac" => Some("flac"),
+        "audio/ogg" => Some("ogg"),
+        "audio/mp4" => Some("m4a"),
+        "application/zip" | "application/x-zip-compressed" => Some("zip"),
+        "application/x-7z-compressed" => Some("7z"),
+        "application/x-tar" => Some("tar"),
+        "application/gzip" | "application/x-gzip" => Some("gz"),
+        _ => None,
+    }
+}
+
+fn is_blocked_executable_mime(mime: &str) -> bool {
+    let essence = mime
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    matches!(
+        essence.as_str(),
+        "application/x-msdownload"
+            | "application/x-msdos-program"
+            | "application/x-dosexec"
+            | "application/x-msi"
+            | "application/vnd.microsoft.portable-executable"
+            | "application/x-bat"
+            | "application/x-powershell"
+            | "application/x-ms-shortcut"
+            | "text/vbscript"
+    )
+}
+
+fn is_html_mime(mime: &str) -> bool {
+    let essence = mime
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    matches!(essence.as_str(), "text/html" | "application/xhtml+xml")
+}
+
+fn is_executable_magic_bytes(bytes: &[u8]) -> bool {
+    bytes.starts_with(b"MZ") || bytes.starts_with(b"\x7fELF")
+}
+
+fn infer_extension_from_magic_bytes(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Some("png");
+    }
+    if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        return Some("jpg");
+    }
+    if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
+        return Some("webp");
+    }
+    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        return Some("gif");
+    }
+    if bytes.starts_with(b"BM") {
+        return Some("bmp");
+    }
+    if bytes.starts_with(&[0x00, 0x00, 0x01, 0x00]) {
+        return Some("ico");
+    }
+    if bytes.starts_with(b"II*\x00") || bytes.starts_with(b"MM\x00*") {
+        return Some("tiff");
+    }
+    if bytes.len() >= 12 && &bytes[4..8] == b"ftyp" {
+        let brand = &bytes[8..12];
+        if brand == b"avif" || brand == b"avis" {
+            return Some("avif");
+        }
+        if matches!(brand, b"heic" | b"heix" | b"hevc" | b"mif1" | b"msf1") {
+            return Some("heic");
+        }
+        if matches!(brand, b"M4A " | b"M4B ") {
+            return Some("m4a");
+        }
+        if brand == b"qt  " {
+            return Some("mov");
+        }
+        if matches!(brand, b"isom" | b"iso2" | b"mp41" | b"mp42" | b"M4V ") {
+            return Some("mp4");
+        }
+    }
+    if bytes.starts_with(b"%PDF-") {
+        return Some("pdf");
+    }
+    if bytes.starts_with(b"PK\x03\x04") {
+        return Some("zip");
+    }
+    if bytes.starts_with(&[0x37, 0x7A, 0xBC, 0xAF, 0x27, 0x1C]) {
+        return Some("7z");
+    }
+    if bytes.starts_with(&[0x52, 0x61, 0x72, 0x21, 0x1A, 0x07]) {
+        return Some("rar");
+    }
+    if bytes.starts_with(&[0x1F, 0x8B, 0x08]) {
+        return Some("gz");
+    }
+    if bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WAVE" {
+        return Some("wav");
+    }
+    if bytes.starts_with(b"fLaC") {
+        return Some("flac");
+    }
+    if bytes.starts_with(b"OggS") {
+        return Some("ogg");
+    }
+    if bytes.starts_with(b"ID3")
+        || (bytes.len() >= 2 && bytes[0] == 0xFF && (bytes[1] & 0xE0) == 0xE0)
+    {
+        return Some("mp3");
+    }
+    if bytes.starts_with(&[0x1A, 0x45, 0xDF, 0xA3]) {
+        return Some("mkv");
+    }
+    let trimmed_text = String::from_utf8_lossy(bytes);
+    let trimmed_start = trimmed_text.trim_start();
+    if trimmed_start.starts_with("<svg") || trimmed_start.starts_with("<?xml") && trimmed_start.contains("<svg") {
+        return Some("svg");
+    }
+    None
+}
+
+fn parse_data_image_uri(raw: &str) -> Option<(String, Vec<u8>, &'static str)> {
+    use base64::Engine;
+
+    let trimmed = raw.trim();
+    if trimmed.len() < "data:image/".len()
+        || !trimmed[..5].eq_ignore_ascii_case("data:")
+    {
+        return None;
+    }
+    let rest = &trimmed[5..];
+    let comma = rest.find(',')?;
+    let meta = &rest[..comma];
+    let payload = &rest[comma + 1..];
+
+    let mut parts = meta.split(';');
+    let mime = parts.next()?.trim().to_ascii_lowercase();
+    if !mime.starts_with("image/") {
+        return None;
+    }
+    let ext = mime_to_extension(&mime)?;
+    let is_base64 = parts.any(|p| p.trim().eq_ignore_ascii_case("base64"));
+    if !is_base64 {
+        return None;
+    }
+
+    // Cap raw base64 characters generously to cover 32 MiB binary before decoding.
+    let max_b64_len = (MAX_BROWSER_DATA_URI_BYTES / 3 + 2) * 4 + 4096;
+    if payload.len() > max_b64_len {
+        return None;
+    }
+    let compact: String = payload.chars().filter(|c| !c.is_ascii_whitespace()).collect();
+    if compact.is_empty() {
+        return None;
+    }
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(compact.as_bytes())
+        .ok()
+        .or_else(|| base64::engine::general_purpose::URL_SAFE.decode(compact.as_bytes()).ok())?;
+
+    if decoded.is_empty() || decoded.len() > MAX_BROWSER_DATA_URI_BYTES {
+        return None;
+    }
+    if is_executable_magic_bytes(&decoded) {
+        return None;
+    }
+    Some((mime, decoded, ext))
+}
+
+fn parse_data_image_header(raw: &str) -> Option<(String, &'static str)> {
+    let trimmed = raw.trim();
+    if trimmed.len() < "data:image/".len() || !trimmed[..5].eq_ignore_ascii_case("data:") {
+        return None;
+    }
+    let rest = &trimmed[5..];
+    let comma = rest.find(',')?;
+    let meta = &rest[..comma];
+    let payload = &rest[comma + 1..];
+    if payload.trim().is_empty() {
+        return None;
+    }
+    let mut parts = meta.split(';');
+    let mime = parts.next()?.trim().to_ascii_lowercase();
+    if !mime.starts_with("image/") {
+        return None;
+    }
+    let ext = mime_to_extension(&mime)?;
+    let is_base64 = parts.any(|p| p.trim().eq_ignore_ascii_case("base64"));
+    if !is_base64 {
+        return None;
+    }
+    Some((mime, ext))
+}
+
+fn html_unescape(raw: &str) -> String {
+    if !raw.contains('&') {
+        return raw.to_string();
+    }
+    let mut out = String::with_capacity(raw.len());
+    let mut rest = raw;
+    while let Some(amp) = rest.find('&') {
+        out.push_str(&rest[..amp]);
+        let after = &rest[amp..];
+        if let Some(semi) = after[..after.len().min(12)].find(';') {
+            let entity = &after[1..semi];
+            let replacement = match entity {
+                "amp" => Some('&'),
+                "lt" => Some('<'),
+                "gt" => Some('>'),
+                "quot" => Some('"'),
+                "apos" => Some('\''),
+                _ if entity.starts_with("#x") || entity.starts_with("#X") => {
+                    u32::from_str_radix(&entity[2..], 16)
+                        .ok()
+                        .and_then(char::from_u32)
+                }
+                _ if entity.starts_with('#') => entity[1..]
+                    .parse::<u32>()
+                    .ok()
+                    .and_then(char::from_u32),
+                _ => None,
+            };
+            if let Some(ch) = replacement {
+                out.push(ch);
+                rest = &after[semi + 1..];
+                continue;
+            }
+        }
+        out.push('&');
+        rest = &rest[amp + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+fn extract_cf_html_fragment_and_source(raw: &str) -> (&str, Option<String>) {
+    let mut start_frag: Option<usize> = None;
+    let mut end_frag: Option<usize> = None;
+    let mut source_url: Option<String> = None;
+    let mut header_end_offset: usize = 0;
+
+    let mut pos = 0usize;
+    for line in raw.split_inclusive('\n') {
+        let trimmed = line.trim_end_matches(['\r', '\n']);
+        if trimmed.is_empty() {
+            pos += line.len();
+            header_end_offset = pos;
+            break;
+        }
+        if trimmed.starts_with('<') {
+            break;
+        }
+        if let Some((key, val)) = trimmed.split_once(':') {
+            let k = key.trim();
+            let v = val.trim();
+            if k.eq_ignore_ascii_case("StartFragment") {
+                start_frag = v.parse::<usize>().ok();
+            } else if k.eq_ignore_ascii_case("EndFragment") {
+                end_frag = v.parse::<usize>().ok();
+            } else if k.eq_ignore_ascii_case("SourceURL") && !v.is_empty() {
+                source_url = Some(v.to_string());
+            } else if !k.eq_ignore_ascii_case("Version")
+                && !k.eq_ignore_ascii_case("StartHTML")
+                && !k.eq_ignore_ascii_case("EndHTML")
+                && !k.eq_ignore_ascii_case("StartSelection")
+                && !k.eq_ignore_ascii_case("EndSelection")
+            {
+                break;
+            }
+            pos += line.len();
+            header_end_offset = pos;
+        } else {
+            break;
+        }
+    }
+
+    let body = &raw[header_end_offset..];
+    if let Some(s_marker) = body.find("<!--StartFragment-->") {
+        let after_start = s_marker + "<!--StartFragment-->".len();
+        if let Some(e_rel) = body[after_start..].find("<!--EndFragment-->") {
+            return (&body[after_start..after_start + e_rel], source_url);
+        }
+    }
+
+    if let (Some(s), Some(e)) = (start_frag, end_frag) {
+        if s < e && e <= raw.len() && raw.is_char_boundary(s) && raw.is_char_boundary(e) {
+            return (&raw[s..e], source_url);
+        }
+    }
+
+    (body, source_url)
+}
+
+fn is_multi_paragraph_prose(fragment: &str) -> bool {
+    let lower = fragment.to_ascii_lowercase();
+    let p_count = lower
+        .match_indices("<p")
+        .filter(|(idx, _)| {
+            lower.as_bytes()
+                .get(idx + 2)
+                .is_some_and(|b| matches!(b, b'>' | b' ' | b'\t' | b'\r' | b'\n'))
+        })
+        .count();
+    if p_count >= 2 {
+        return true;
+    }
+
+    let mut visible_chars = 0usize;
+    let mut non_empty_lines = 0usize;
+    let mut current_line_has_text = false;
+    let mut i = 0usize;
+    let bytes = fragment.as_bytes();
+    while i < bytes.len() {
+        if bytes[i] == b'<' {
+            let tag_start = i + 1;
+            let Some(rel_end) = fragment[tag_start..].find('>') else {
+                break;
+            };
+            let tag_inner = fragment[tag_start..tag_start + rel_end].trim().to_ascii_lowercase();
+            let tag_name = tag_inner
+                .trim_start_matches('/')
+                .split(|c: char| c.is_whitespace() || c == '/')
+                .next()
+                .unwrap_or("");
+            if matches!(
+                tag_name,
+                "p" | "div" | "li" | "br" | "h1" | "h2" | "h3" | "h4" | "h5" | "h6" | "blockquote" | "tr"
+            ) && current_line_has_text
+            {
+                non_empty_lines += 1;
+                current_line_has_text = false;
+            }
+            i = tag_start + rel_end + 1;
+        } else {
+            let ch = fragment[i..].chars().next().unwrap_or(' ');
+            if ch == '\n' {
+                if current_line_has_text {
+                    non_empty_lines += 1;
+                    current_line_has_text = false;
+                }
+            } else if !ch.is_whitespace() {
+                current_line_has_text = true;
+                visible_chars += 1;
+            }
+            i += ch.len_utf8();
+        }
+    }
+    if current_line_has_text {
+        non_empty_lines += 1;
+    }
+
+    non_empty_lines >= 2 || visible_chars > 120
+}
+
+fn parse_html_img_src(tag_body: &str) -> Option<String> {
+    let bytes = tag_body.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        while i < bytes.len() && (bytes[i].is_ascii_whitespace() || bytes[i] == b'/') {
+            i += 1;
+        }
+        if i >= bytes.len() {
+            break;
+        }
+        let name_start = i;
+        while i < bytes.len()
+            && !bytes[i].is_ascii_whitespace()
+            && bytes[i] != b'='
+            && bytes[i] != b'>'
+            && bytes[i] != b'/'
+        {
+            i += 1;
+        }
+        let attr_name = tag_body[name_start..i].trim();
+        while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+            i += 1;
+        }
+        let attr_val = if i < bytes.len() && bytes[i] == b'=' {
+            i += 1;
+            while i < bytes.len() && bytes[i].is_ascii_whitespace() {
+                i += 1;
+            }
+            if i >= bytes.len() {
+                ""
+            } else if bytes[i] == b'"' || bytes[i] == b'\'' {
+                let quote = bytes[i];
+                i += 1;
+                let val_start = i;
+                while i < bytes.len() && bytes[i] != quote {
+                    i += 1;
+                }
+                let v = &tag_body[val_start..i];
+                if i < bytes.len() && bytes[i] == quote {
+                    i += 1;
+                }
+                v
+            } else {
+                let val_start = i;
+                while i < bytes.len() && !bytes[i].is_ascii_whitespace() && bytes[i] != b'>' {
+                    i += 1;
+                }
+                &tag_body[val_start..i]
+            }
+        } else {
+            ""
+        };
+        if attr_name.eq_ignore_ascii_case("src") {
+            let unescaped = html_unescape(attr_val).trim().to_string();
+            if !unescaped.is_empty() {
+                return Some(unescaped);
+            }
+        }
+    }
+    None
+}
+
+fn extract_single_img_src_from_html(fragment: &str) -> Option<String> {
+    let lower = fragment.to_ascii_lowercase();
+    let mut img_tags = Vec::new();
+    let mut search_from = 0usize;
+    while let Some(rel) = lower[search_from..].find("<img") {
+        let idx = search_from + rel;
+        let next_byte = lower.as_bytes().get(idx + 4).copied();
+        if next_byte.is_some_and(|b| b.is_ascii_whitespace() || b == b'>' || b == b'/') {
+            if let Some(end_rel) = fragment[idx + 4..].find('>') {
+                img_tags.push(&fragment[idx + 4..idx + 4 + end_rel]);
+                search_from = idx + 4 + end_rel + 1;
+                continue;
+            }
+        }
+        search_from = idx + 4;
+    }
+
+    if img_tags.len() != 1 {
+        return None;
+    }
+    parse_html_img_src(img_tags[0])
+}
+
+fn resolve_img_src_url(raw_src: &str, source_url: Option<&str>) -> Option<String> {
+    let trimmed = raw_src.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("data:") {
+        return lower.starts_with("data:image/").then(|| trimmed.to_string());
+    }
+    if lower.starts_with("http://") || lower.starts_with("https://") {
+        return Some(trimmed.to_string());
+    }
+    if lower.starts_with("javascript:")
+        || lower.starts_with("vbscript:")
+        || lower.starts_with("file:")
+        || lower.starts_with("blob:")
+        || lower.starts_with("ftp:")
+        || lower.starts_with("about:")
+        || lower.starts_with("chrome:")
+        || lower.starts_with("edge:")
+    {
+        return None;
+    }
+    if let Some(base_raw) = source_url {
+        if let Ok(base) = tauri::Url::parse(base_raw) {
+            if matches!(base.scheme(), "http" | "https") {
+                if let Ok(joined) = base.join(trimmed) {
+                    if matches!(joined.scheme(), "http" | "https") {
+                        return Some(joined.to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn extract_first_url_candidate(raw: &str) -> Option<&str> {
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        return Some(trimmed);
+    }
+    None
+}
+
+fn is_unsafe_browser_scheme(candidate: &str) -> bool {
+    let lower = candidate.trim().to_ascii_lowercase();
+    if lower.starts_with("http://") || lower.starts_with("https://") {
+        return false;
+    }
+    if lower.starts_with("data:") {
+        return !lower.starts_with("data:image/");
+    }
+    lower.starts_with("javascript:")
+        || lower.starts_with("vbscript:")
+        || lower.starts_with("file:")
+        || lower.starts_with("blob:")
+        || lower.starts_with("ftp:")
+        || lower.starts_with("about:")
+        || lower.starts_with("chrome:")
+        || lower.starts_with("edge:")
+        || lower.starts_with("ms-")
+}
+
+fn suggest_name_for_http_url(url: &tauri::Url, fallback_ext: &str) -> String {
+    let (raw_seg, _) = extract_url_filename_and_ext(url);
+    sanitize_download_filename(raw_seg.as_deref().unwrap_or("download"), fallback_ext)
+}
+
+pub fn parse_browser_drop_payload(
+    cf_html: Option<&str>,
+    url_text: Option<&str>,
+) -> Option<BrowserDragSource> {
+    if let Some(candidate) = url_text.and_then(extract_first_url_candidate) {
+        if is_unsafe_browser_scheme(candidate) {
+            return None;
+        }
+
+        if candidate.len() >= 11
+            && candidate[..5].eq_ignore_ascii_case("data:")
+            && !candidate.chars().any(char::is_whitespace)
+        {
+            if let Some((mime, ext)) = parse_data_image_header(candidate) {
+                return Some(BrowserDragSource::ImageDataUri {
+                    mime,
+                    raw_uri: candidate.to_string(),
+                    suggested_name: sanitize_download_filename("image", ext),
+                });
+            }
+            return None;
+        }
+
+        if !candidate.chars().any(char::is_whitespace) {
+            if let Ok(parsed) = tauri::Url::parse(candidate) {
+                if matches!(parsed.scheme(), "http" | "https") && parsed.host_str().is_some() {
+                    if has_blocked_executable_in_url(&parsed) {
+                        return None;
+                    }
+                    let (_, ext_opt) = extract_url_filename_and_ext(&parsed);
+                    if let Some(ext) = ext_opt {
+                        if BROWSER_IMAGE_EXTENSIONS.contains(&ext.as_str()) {
+                            return Some(BrowserDragSource::RemoteImageUrl {
+                                suggested_name: suggest_name_for_http_url(&parsed, &ext),
+                                url: candidate.to_string(),
+                            });
+                        }
+                        if BROWSER_EXPLICIT_FILE_EXTENSIONS.contains(&ext.as_str()) {
+                            return Some(BrowserDragSource::RemoteFileUrl {
+                                suggested_name: suggest_name_for_http_url(&parsed, &ext),
+                                url: candidate.to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let html_raw = cf_html?;
+    let (fragment, source_url) = extract_cf_html_fragment_and_source(html_raw);
+    if is_multi_paragraph_prose(fragment) {
+        return None;
+    }
+    let raw_src = extract_single_img_src_from_html(fragment)?;
+    let resolved_src = resolve_img_src_url(&raw_src, source_url.as_deref())?;
+
+    if resolved_src.len() >= 11 && resolved_src[..5].eq_ignore_ascii_case("data:") {
+        let (mime, ext) = parse_data_image_header(&resolved_src)?;
+        return Some(BrowserDragSource::ImageDataUri {
+            mime,
+            raw_uri: resolved_src,
+            suggested_name: sanitize_download_filename("image", ext),
+        });
+    }
+
+    let parsed = tauri::Url::parse(&resolved_src).ok()?;
+    if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none() {
+        return None;
+    }
+    if has_blocked_executable_in_url(&parsed) {
+        return None;
+    }
+    let (_, ext_opt) = extract_url_filename_and_ext(&parsed);
+    let fallback_ext = ext_opt.as_deref().unwrap_or("png");
+    Some(BrowserDragSource::RemoteImageUrl {
+        suggested_name: suggest_name_for_http_url(&parsed, fallback_ext),
+        url: resolved_src,
+    })
+}
+
+fn parse_content_disposition_filename(header_val: &str) -> Option<String> {
+    let mut fallback_filename: Option<String> = None;
+    for part in header_val.split(';') {
+        let trimmed = part.trim();
+        if let Some((k, v)) = trimmed.split_once('=') {
+            let key = k.trim();
+            if key.eq_ignore_ascii_case("filename*") {
+                let raw_val = v.trim().trim_matches('"');
+                let encoded = raw_val
+                    .split_once("''")
+                    .map(|(_, right)| right)
+                    .unwrap_or(raw_val);
+                let decoded = percent_decode_lossy(encoded);
+                let clean = decoded.trim();
+                if !clean.is_empty() {
+                    return Some(clean.to_string());
+                }
+            } else if key.eq_ignore_ascii_case("filename") {
+                let raw_val = v.trim().trim_matches('"');
+                let decoded = percent_decode_lossy(raw_val);
+                let clean = decoded.trim();
+                if !clean.is_empty() {
+                    fallback_filename = Some(clean.to_string());
+                }
+            }
+        }
+    }
+    fallback_filename
+}
+
+fn unique_download_path(downloads_dir: &Path, filename: &str) -> PathBuf {
+    let candidate = downloads_dir.join(filename);
+    if !candidate.exists() {
+        return candidate;
+    }
+    let path_ref = Path::new(filename);
+    let stem = path_ref
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("download");
+    let ext = path_ref.extension().and_then(|s| s.to_str()).unwrap_or("");
+    for idx in 1..=9999u32 {
+        let next_name = if ext.is_empty() {
+            format!("{stem}_{idx}")
+        } else {
+            format!("{stem}_{idx}.{ext}")
+        };
+        let p = downloads_dir.join(next_name);
+        if !p.exists() {
+            return p;
+        }
+    }
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    if ext.is_empty() {
+        downloads_dir.join(format!("{stem}_{nanos}"))
+    } else {
+        downloads_dir.join(format!("{stem}_{nanos}.{ext}"))
+    }
+}
+
+async fn validate_and_resolve_remote_url(
+    raw_url: &str,
+) -> Result<(tauri::Url, String, Vec<std::net::SocketAddr>), String> {
+    let url = tauri::Url::parse(raw_url)
+        .map_err(|e| format!("INVALID_URL: Invalid remote URL: {e}"))?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err("INVALID_URL: Only HTTP and HTTPS URLs are allowed".to_string());
+    }
+    let host = url
+        .host_str()
+        .filter(|h| !h.is_empty())
+        .ok_or_else(|| "INVALID_URL: Remote URL has no hostname".to_string())?
+        .to_string();
+
+    if is_local_hostname(&host) {
+        return Err("UNSAFE_URL: Local or private network hostnames are blocked".to_string());
+    }
+    if has_blocked_executable_in_url(&url) {
+        return Err(
+            "BLOCKED_FILE_TYPE: Executable files from browsers cannot be converted".to_string(),
+        );
+    }
+
+    let port = url
+        .port_or_known_default()
+        .ok_or_else(|| "INVALID_URL: Remote URL has no valid port".to_string())?;
+
+    let bare_host = host.trim_start_matches('[').trim_end_matches(']');
+    if let Ok(ip) = bare_host.parse::<std::net::IpAddr>() {
+        if is_local_network_ip(ip) {
+            return Err("UNSAFE_URL: Local or private network IPs are blocked".to_string());
+        }
+        return Ok((url, host, vec![std::net::SocketAddr::new(ip, port)]));
+    }
+
+    let addrs: Vec<std::net::SocketAddr> = tokio::net::lookup_host((bare_host, port))
+        .await
+        .map_err(|e| format!("NETWORK_ERROR: Failed to resolve host {bare_host}: {e}"))?
+        .collect();
+    if addrs.is_empty() {
+        return Err(format!("NETWORK_ERROR: Host {bare_host} resolved to no addresses"));
+    }
+    for addr in &addrs {
+        if is_local_network_ip(addr.ip()) {
+            return Err(
+                "UNSAFE_URL: Remote host resolves to a blocked local or private IP".to_string(),
+            );
+        }
+    }
+    Ok((url, host, addrs))
+}
+
+#[tauri::command]
+pub async fn converter_fetch_browser_asset(
+    app: AppHandle,
+    url: String,
+) -> Result<String, String> {
+    if !get_converter_drag_config().browser_drag {
+        return Err(
+            "BROWSER_DRAG_DISABLED: Browser drag-to-convert is disabled in settings".to_string(),
+        );
+    }
+
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return Err("INVALID_URL: Empty browser asset URL".to_string());
+    }
+
+    let paths = resolve_converter_paths(&app)?;
+    std::fs::create_dir_all(&paths.downloads_dir)
+        .map_err(|e| format!("Failed to prepare converter downloads folder: {e}"))?;
+
+    if trimmed.len() >= 5 && trimmed[..5].eq_ignore_ascii_case("data:") {
+        let (_mime, bytes, ext) = parse_data_image_uri(trimmed).ok_or_else(|| {
+            "INVALID_URL: Only valid base64 data:image/* URIs up to 32 MiB are supported"
+                .to_string()
+        })?;
+        let final_ext = infer_extension_from_magic_bytes(&bytes).unwrap_or(ext);
+        if is_blocked_executable_ext(final_ext) {
+            return Err("BLOCKED_FILE_TYPE: Blocked executable payload".to_string());
+        }
+        let filename = sanitize_download_filename("browser_image", final_ext);
+        let dest_path = unique_download_path(&paths.downloads_dir, &filename);
+        let dest_clone = dest_path.clone();
+        tokio::task::spawn_blocking(move || -> Result<(), String> {
+            let mut f = std::fs::File::create(&dest_clone)
+                .map_err(|e| format!("Disk write error creating {}: {e}", dest_clone.display()))?;
+            f.write_all(&bytes)
+                .map_err(|e| format!("Disk write error saving {}: {e}", dest_clone.display()))?;
+            f.flush()
+                .map_err(|e| format!("Disk flush error saving {}: {e}", dest_clone.display()))?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| format!("Failed to save data URI image: {e}"))??;
+        return Ok(dest_path.to_string_lossy().to_string());
+    }
+
+    let mut current_url = trimmed.to_string();
+    let mut final_url: Option<tauri::Url> = None;
+    let mut final_resp: Option<reqwest::Response> = None;
+
+    for hop in 0..=MAX_BROWSER_REDIRECTS {
+        let (parsed_url, host, resolved_addrs) = validate_and_resolve_remote_url(&current_url).await?;
+        let mut builder = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(Duration::from_secs(15))
+            .read_timeout(Duration::from_secs(30))
+            .user_agent(BROWSER_USER_AGENT);
+        let bare_host = host.trim_start_matches('[').trim_end_matches(']');
+        if bare_host.parse::<std::net::IpAddr>().is_err() {
+            builder = builder.resolve_to_addrs(bare_host, &resolved_addrs);
+        }
+        let client = builder
+            .build()
+            .map_err(|e| format!("NETWORK_ERROR: HTTP client initialization failed: {e}"))?;
+
+        let resp = client
+            .get(parsed_url.as_str())
+            .send()
+            .await
+            .map_err(|e| format!("NETWORK_ERROR: Failed to fetch remote asset: {e}"))?;
+
+        if resp.status().is_redirection() {
+            if hop >= MAX_BROWSER_REDIRECTS {
+                return Err("TOO_MANY_REDIRECTS: Remote URL exceeded maximum redirects".to_string());
+            }
+            let location = resp
+                .headers()
+                .get(reqwest::header::LOCATION)
+                .and_then(|v| v.to_str().ok())
+                .ok_or_else(|| "DOWNLOAD_FAILED: Redirect response missing Location header".to_string())?;
+            let next_url = parsed_url
+                .join(location.trim())
+                .map_err(|e| format!("INVALID_URL: Invalid redirect location: {e}"))?;
+            current_url = next_url.to_string();
+            continue;
+        }
+
+        if !resp.status().is_success() {
+            return Err(format!(
+                "DOWNLOAD_FAILED: Remote server returned HTTP {}",
+                resp.status()
+            ));
+        }
+
+        final_url = Some(parsed_url);
+        final_resp = Some(resp);
+        break;
+    }
+
+    let parsed_url = final_url
+        .ok_or_else(|| "DOWNLOAD_FAILED: Failed to resolve remote asset".to_string())?;
+    let resp = final_resp
+        .ok_or_else(|| "DOWNLOAD_FAILED: Failed to fetch remote asset".to_string())?;
+
+    if let Some(len) = resp.content_length() {
+        if len > MAX_BROWSER_DOWNLOAD_BYTES {
+            return Err("FILE_TOO_LARGE: Remote browser asset exceeds the 256 MB limit".to_string());
+        }
+    }
+
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string);
+    if let Some(ref ct) = content_type {
+        if is_blocked_executable_mime(ct) {
+            return Err(
+                "BLOCKED_FILE_TYPE: Executable files from browsers cannot be converted"
+                    .to_string(),
+            );
+        }
+        if is_html_mime(ct) {
+            return Err(
+                "UNEXPECTED_HTML_RESPONSE: Link returned an HTML web page instead of a downloadable asset"
+                    .to_string(),
+            );
+        }
+    }
+
+    let disposition_name = resp
+        .headers()
+        .get(reqwest::header::CONTENT_DISPOSITION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(parse_content_disposition_filename);
+    if let Some(ref cd_name) = disposition_name {
+        if extract_extension_from_name(cd_name)
+            .as_deref()
+            .is_some_and(is_blocked_executable_ext)
+        {
+            return Err(
+                "BLOCKED_FILE_TYPE: Executable files from browsers cannot be converted"
+                    .to_string(),
+            );
+        }
+    }
+
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let part_path = paths
+        .downloads_dir
+        .join(format!("browser_dl_{}_{}.part", std::process::id(), nanos));
+
+    let mut magic_head: Vec<u8> = Vec::with_capacity(64);
+    let mut total_bytes: u64 = 0;
+
+    {
+        let mut out_file = std::fs::File::create(&part_path)
+            .map_err(|e| format!("Failed to create temporary download file: {e}"))?;
+        let mut stream = resp.bytes_stream();
+
+        while let Some(chunk_res) = stream.next().await {
+            let chunk = match chunk_res {
+                Ok(c) => c,
+                Err(e) => {
+                    drop(out_file);
+                    let _ = std::fs::remove_file(&part_path);
+                    return Err(format!("NETWORK_ERROR: Stream interrupted: {e}"));
+                }
+            };
+            total_bytes = total_bytes.saturating_add(chunk.len() as u64);
+            if total_bytes > MAX_BROWSER_DOWNLOAD_BYTES {
+                drop(out_file);
+                let _ = std::fs::remove_file(&part_path);
+                return Err(
+                    "FILE_TOO_LARGE: Remote browser asset exceeds the 256 MB limit".to_string(),
+                );
+            }
+            if magic_head.len() < 64 {
+                let take = (64 - magic_head.len()).min(chunk.len());
+                magic_head.extend_from_slice(&chunk[..take]);
+            }
+            if total_bytes == chunk.len() as u64 && is_executable_magic_bytes(&magic_head) {
+                drop(out_file);
+                let _ = std::fs::remove_file(&part_path);
+                return Err(
+                    "BLOCKED_FILE_TYPE: Executable binary payload cannot be converted".to_string(),
+                );
+            }
+            if let Err(e) = out_file.write_all(&chunk) {
+                drop(out_file);
+                let _ = std::fs::remove_file(&part_path);
+                return Err(format!("Disk write error saving browser asset: {e}"));
+            }
+        }
+        if let Err(e) = out_file.flush() {
+            drop(out_file);
+            let _ = std::fs::remove_file(&part_path);
+            return Err(format!("Disk flush error saving browser asset: {e}"));
+        }
+    }
+
+    if total_bytes == 0 {
+        let _ = std::fs::remove_file(&part_path);
+        return Err("DOWNLOAD_FAILED: Remote browser asset was empty".to_string());
+    }
+    if is_executable_magic_bytes(&magic_head) {
+        let _ = std::fs::remove_file(&part_path);
+        return Err(
+            "BLOCKED_FILE_TYPE: Executable binary payload cannot be converted".to_string(),
+        );
+    }
+
+    let (url_name, url_ext) = extract_url_filename_and_ext(&parsed_url);
+    let cd_ext = disposition_name
+        .as_deref()
+        .and_then(extract_extension_from_name);
+    let inferred_ext = cd_ext
+        .clone()
+        .or(url_ext.clone())
+        .or_else(|| content_type.as_deref().and_then(mime_to_extension).map(str::to_string))
+        .or_else(|| infer_extension_from_magic_bytes(&magic_head).map(str::to_string))
+        .unwrap_or_else(|| "bin".to_string());
+
+    if is_blocked_executable_ext(&inferred_ext) {
+        let _ = std::fs::remove_file(&part_path);
+        return Err(
+            "BLOCKED_FILE_TYPE: Executable files from browsers cannot be converted".to_string(),
+        );
+    }
+
+    let raw_name = disposition_name
+        .as_deref()
+        .or(url_name.as_deref())
+        .unwrap_or("browser_asset");
+    let final_filename = sanitize_download_filename(raw_name, &inferred_ext);
+    if extract_extension_from_name(&final_filename)
+        .as_deref()
+        .is_some_and(is_blocked_executable_ext)
+    {
+        let _ = std::fs::remove_file(&part_path);
+        return Err(
+            "BLOCKED_FILE_TYPE: Executable files from browsers cannot be converted".to_string(),
+        );
+    }
+
+    let dest_path = unique_download_path(&paths.downloads_dir, &final_filename);
+    if let Err(e) = std::fs::rename(&part_path, &dest_path) {
+        let _ = std::fs::remove_file(&part_path);
+        return Err(format!("Failed to finalize downloaded browser asset: {e}"));
+    }
+
+    Ok(dest_path.to_string_lossy().to_string())
+}
 
 struct ConverterTargetStore(
     #[allow(dead_code)] Vec<isize>,
@@ -3476,6 +4868,10 @@ unsafe impl Send for ConverterTargetStore {}
 static CONVERTER_DROP_TARGETS: Mutex<Option<ConverterTargetStore>> = Mutex::new(None);
 static CF_INETURL_W: OnceLock<u16> = OnceLock::new();
 static CF_INETURL_A: OnceLock<u16> = OnceLock::new();
+static CF_HTML_FORMAT: OnceLock<u16> = OnceLock::new();
+static CF_FILEDESCRIPTOR_W: OnceLock<u16> = OnceLock::new();
+static CF_FILECONTENTS_FORMAT: OnceLock<u16> = OnceLock::new();
+static CF_TEXT_URI_LIST: OnceLock<u16> = OnceLock::new();
 
 fn cf_ineturl_w() -> u16 {
     *CF_INETURL_W.get_or_init(|| unsafe {
@@ -3493,8 +4889,47 @@ fn cf_ineturl_a() -> u16 {
     })
 }
 
+fn cf_html_format() -> u16 {
+    *CF_HTML_FORMAT.get_or_init(|| unsafe {
+        windows::Win32::System::DataExchange::RegisterClipboardFormatW(windows::core::w!(
+            "HTML Format"
+        )) as u16
+    })
+}
+
+fn cf_filedescriptor_w() -> u16 {
+    *CF_FILEDESCRIPTOR_W.get_or_init(|| unsafe {
+        windows::Win32::System::DataExchange::RegisterClipboardFormatW(windows::core::w!(
+            "FileGroupDescriptorW"
+        )) as u16
+    })
+}
+
+fn cf_filecontents_format() -> u16 {
+    *CF_FILECONTENTS_FORMAT.get_or_init(|| unsafe {
+        windows::Win32::System::DataExchange::RegisterClipboardFormatW(windows::core::w!(
+            "FileContents"
+        )) as u16
+    })
+}
+
+fn cf_text_uri_list() -> u16 {
+    *CF_TEXT_URI_LIST.get_or_init(|| unsafe {
+        windows::Win32::System::DataExchange::RegisterClipboardFormatW(windows::core::w!(
+            "text/uri-list"
+        )) as u16
+    })
+}
+
+struct VirtualFileDescriptor {
+    index: usize,
+    raw_name: String,
+    expected_size: Option<u64>,
+}
+
 struct ConverterDragPayload {
     paths: Vec<String>,
+    virtual_names: Vec<String>,
     urls: Vec<String>,
     is_browser_drag: bool,
 }
@@ -3599,11 +5034,12 @@ impl ConverterDropTarget {
         bytes
     }
 
-    unsafe fn extract_hglobal_utf16(
+    unsafe fn extract_hglobal_utf16_capped(
         data: &windows::Win32::System::Com::IDataObject,
         cf: u16,
+        max_units: usize,
     ) -> Option<String> {
-        let bytes = Self::read_hglobal_bytes(data, cf, MAX_URL_UNITS * 2)?;
+        let bytes = Self::read_hglobal_bytes(data, cf, max_units.saturating_mul(2))?;
         let mut units = Vec::with_capacity(bytes.len() / 2);
         for &pair in bytes.as_chunks::<2>().0 {
             let unit = u16::from_le_bytes(pair);
@@ -3615,13 +5051,301 @@ impl ConverterDropTarget {
         (!units.is_empty()).then(|| String::from_utf16_lossy(&units))
     }
 
+    unsafe fn extract_hglobal_utf16(
+        data: &windows::Win32::System::Com::IDataObject,
+        cf: u16,
+    ) -> Option<String> {
+        Self::extract_hglobal_utf16_capped(data, cf, MAX_URL_UNITS)
+    }
+
+    unsafe fn extract_hglobal_utf8(
+        data: &windows::Win32::System::Com::IDataObject,
+        cf: u16,
+        max_bytes: usize,
+    ) -> Option<String> {
+        let bytes = Self::read_hglobal_bytes(data, cf, max_bytes)?;
+        let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
+        (end > 0).then(|| String::from_utf8_lossy(&bytes[..end]).into_owned())
+    }
+
     unsafe fn extract_hglobal_ansi(
         data: &windows::Win32::System::Com::IDataObject,
         cf: u16,
     ) -> Option<String> {
-        let bytes = Self::read_hglobal_bytes(data, cf, MAX_URL_UNITS)?;
-        let end = bytes.iter().position(|&b| b == 0).unwrap_or(bytes.len());
-        (end > 0).then(|| String::from_utf8_lossy(&bytes[..end]).into_owned())
+        Self::extract_hglobal_utf8(data, cf, MAX_URL_UNITS)
+    }
+
+    unsafe fn extract_cf_html(data: &windows::Win32::System::Com::IDataObject) -> Option<String> {
+        let cf = cf_html_format();
+        if cf == 0 {
+            return None;
+        }
+        Self::extract_hglobal_utf8(data, cf, MAX_CF_HTML_BYTES)
+    }
+
+    unsafe fn extract_raw_url_candidate(
+        data: &windows::Win32::System::Com::IDataObject,
+    ) -> Option<String> {
+        use windows::Win32::System::Ole::CF_UNICODETEXT;
+
+        let cf_w = cf_ineturl_w();
+        if cf_w != 0 {
+            if let Some(raw) = Self::extract_hglobal_utf16_capped(data, cf_w, MAX_DATA_URI_UNITS) {
+                if !raw.trim().is_empty() {
+                    return Some(raw);
+                }
+            }
+        }
+        let cf_a = cf_ineturl_a();
+        if cf_a != 0 {
+            if let Some(raw) = Self::extract_hglobal_utf8(data, cf_a, MAX_CF_HTML_BYTES) {
+                if !raw.trim().is_empty() {
+                    return Some(raw);
+                }
+            }
+        }
+        let cf_uri = cf_text_uri_list();
+        if cf_uri != 0 {
+            if let Some(raw) = Self::extract_hglobal_utf8(data, cf_uri, MAX_URL_UNITS) {
+                if !raw.trim().is_empty() {
+                    return Some(raw);
+                }
+            }
+        }
+        if let Some(raw) =
+            Self::extract_hglobal_utf16_capped(data, CF_UNICODETEXT.0, MAX_DATA_URI_UNITS)
+        {
+            if !raw.trim().is_empty() {
+                return Some(raw);
+            }
+        }
+        None
+    }
+
+    unsafe fn extract_virtual_descriptors(
+        data: &windows::Win32::System::Com::IDataObject,
+    ) -> Vec<VirtualFileDescriptor> {
+        use windows::Win32::Storage::FileSystem::FILE_ATTRIBUTE_DIRECTORY;
+        use windows::Win32::UI::Shell::{FILEDESCRIPTORW, FILEGROUPDESCRIPTORW, FD_ATTRIBUTES, FD_FILESIZE};
+
+        let cf = cf_filedescriptor_w();
+        if cf == 0 {
+            return Vec::new();
+        }
+        const MAX_VIRTUAL_ITEMS: usize = 64;
+        let max_bytes =
+            std::mem::size_of::<u32>() + MAX_VIRTUAL_ITEMS * std::mem::size_of::<FILEDESCRIPTORW>();
+        let Some(bytes) = Self::read_hglobal_bytes(data, cf, max_bytes) else {
+            return Vec::new();
+        };
+        if bytes.len() < std::mem::size_of::<u32>() {
+            return Vec::new();
+        }
+        let c_items = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
+        if c_items == 0 {
+            return Vec::new();
+        }
+        let fgd_offset = std::mem::offset_of!(FILEGROUPDESCRIPTORW, fgd);
+        let entry_size = std::mem::size_of::<FILEDESCRIPTORW>();
+        let capped = c_items.min(MAX_VIRTUAL_ITEMS);
+        let mut out = Vec::new();
+        for idx in 0..capped {
+            let start = fgd_offset + idx * entry_size;
+            let end = start + entry_size;
+            if end > bytes.len() {
+                break;
+            }
+            let desc = std::ptr::read_unaligned(bytes[start..end].as_ptr() as *const FILEDESCRIPTORW);
+            if (desc.dwFlags & FD_ATTRIBUTES.0 as u32) != 0
+                && (desc.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY.0) != 0
+            {
+                continue;
+            }
+            let c_file_name = desc.cFileName;
+            let name_len = c_file_name
+                .iter()
+                .position(|&c| c == 0)
+                .unwrap_or(c_file_name.len());
+            let raw_name = String::from_utf16_lossy(&c_file_name[..name_len])
+                .trim()
+                .to_string();
+            if raw_name.is_empty() {
+                continue;
+            }
+            if extract_extension_from_name(&raw_name)
+                .as_deref()
+                .is_some_and(is_blocked_executable_ext)
+            {
+                continue;
+            }
+            let expected_size = if (desc.dwFlags & FD_FILESIZE.0 as u32) != 0 {
+                Some(((desc.nFileSizeHigh as u64) << 32) | (desc.nFileSizeLow as u64))
+            } else {
+                None
+            };
+            if expected_size.is_some_and(|sz| sz > MAX_BROWSER_DOWNLOAD_BYTES) {
+                continue;
+            }
+            out.push(VirtualFileDescriptor {
+                index: idx,
+                raw_name,
+                expected_size,
+            });
+        }
+        out
+    }
+
+    unsafe fn materialize_single_virtual_file(
+        data: &windows::Win32::System::Com::IDataObject,
+        desc: &VirtualFileDescriptor,
+        total_items: usize,
+        downloads_dir: &Path,
+        fallback_ext: &str,
+    ) -> Option<String> {
+        use windows::Win32::System::Com::{
+            DVASPECT_CONTENT, FORMATETC, TYMED_HGLOBAL, TYMED_ISTREAM,
+        };
+        use windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+        use windows::Win32::System::Ole::ReleaseStgMedium;
+
+        let cf = cf_filecontents_format();
+        if cf == 0 {
+            return None;
+        }
+        let mut format = FORMATETC {
+            cfFormat: cf,
+            ptd: std::ptr::null_mut(),
+            dwAspect: DVASPECT_CONTENT.0,
+            lindex: desc.index as i32,
+            tymed: (TYMED_ISTREAM.0 | TYMED_HGLOBAL.0) as u32,
+        };
+        let mut medium = match data.GetData(&format) {
+            Ok(m) => m,
+            Err(_) if total_items == 1 && desc.index == 0 => {
+                format.lindex = -1;
+                data.GetData(&format).ok()?
+            }
+            Err(_) => return None,
+        };
+
+        std::fs::create_dir_all(downloads_dir).ok()?;
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let part_path = downloads_dir.join(format!("virtual_{}_{}_{}.part", std::process::id(), desc.index, nanos));
+
+        let mut magic_head: Vec<u8> = Vec::with_capacity(64);
+        let mut total_written: u64 = 0;
+        let max_allowed = desc
+            .expected_size
+            .map(|sz| sz.min(MAX_BROWSER_DOWNLOAD_BYTES))
+            .unwrap_or(MAX_BROWSER_DOWNLOAD_BYTES);
+
+        let write_ok = if medium.tymed == TYMED_HGLOBAL.0 as u32 && !medium.u.hGlobal.0.is_null() {
+            let ptr = GlobalLock(medium.u.hGlobal) as *const u8;
+            let ok = if !ptr.is_null() {
+                let sz = GlobalSize(medium.u.hGlobal) as u64;
+                if sz > 0 && sz <= max_allowed {
+                    let slice = std::slice::from_raw_parts(ptr, sz as usize);
+                    let take = slice.len().min(64);
+                    magic_head.extend_from_slice(&slice[..take]);
+                    if is_executable_magic_bytes(&magic_head) {
+                        false
+                    } else if let Ok(mut f) = std::fs::File::create(&part_path) {
+                        total_written = sz;
+                        f.write_all(slice).is_ok() && f.flush().is_ok()
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+            let _ = GlobalUnlock(medium.u.hGlobal);
+            ok
+        } else if medium.tymed == TYMED_ISTREAM.0 as u32 {
+            if let Some(stream) = medium.u.pstm.as_ref() {
+                if let Ok(mut f) = std::fs::File::create(&part_path) {
+                    let mut buf = [0u8; 65536];
+                    let mut ok = true;
+                    loop {
+                        let mut read_bytes = 0u32;
+                        let hr = stream.Read(
+                            buf.as_mut_ptr() as *mut _,
+                            buf.len() as u32,
+                            Some(&mut read_bytes),
+                        );
+                        if hr.is_err() {
+                            ok = false;
+                            break;
+                        }
+                        if read_bytes == 0 {
+                            break;
+                        }
+                        let chunk = &buf[..read_bytes as usize];
+                        total_written = total_written.saturating_add(chunk.len() as u64);
+                        if total_written > max_allowed {
+                            ok = false;
+                            break;
+                        }
+                        if magic_head.len() < 64 {
+                            let take = (64 - magic_head.len()).min(chunk.len());
+                            magic_head.extend_from_slice(&chunk[..take]);
+                        }
+                        if is_executable_magic_bytes(&magic_head) {
+                            ok = false;
+                            break;
+                        }
+                        if f.write_all(chunk).is_err() {
+                            ok = false;
+                            break;
+                        }
+                    }
+                    ok && total_written > 0 && f.flush().is_ok()
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        ReleaseStgMedium(&mut medium);
+
+        if !write_ok || total_written == 0 {
+            let _ = std::fs::remove_file(&part_path);
+            return None;
+        }
+
+        let name_ext = extract_extension_from_name(&desc.raw_name);
+        let magic_ext = infer_extension_from_magic_bytes(&magic_head).map(str::to_string);
+        let chosen_ext = name_ext
+            .or(magic_ext)
+            .unwrap_or_else(|| fallback_ext.to_string());
+        if is_blocked_executable_ext(&chosen_ext) {
+            let _ = std::fs::remove_file(&part_path);
+            return None;
+        }
+
+        let clean_name = sanitize_download_filename(&desc.raw_name, &chosen_ext);
+        if extract_extension_from_name(&clean_name)
+            .as_deref()
+            .is_some_and(is_blocked_executable_ext)
+        {
+            let _ = std::fs::remove_file(&part_path);
+            return None;
+        }
+        let dest = unique_download_path(downloads_dir, &clean_name);
+        if std::fs::rename(&part_path, &dest).is_err() {
+            let _ = std::fs::remove_file(&part_path);
+            return None;
+        }
+        Some(dest.to_string_lossy().to_string())
     }
 
     unsafe fn extract_urls(data: &windows::Win32::System::Com::IDataObject) -> Vec<String> {
@@ -3666,11 +5390,86 @@ impl ConverterDropTarget {
     }
 
     unsafe fn extract_payload(
+        &self,
         data: &windows::Win32::System::Com::IDataObject,
-    ) -> (Vec<String>, Vec<String>) {
-        let paths = Self::extract_files(data);
-        let urls = Self::extract_urls(data);
-        (paths, urls)
+        materialize_virtual: bool,
+    ) -> ConverterDragPayload {
+        let mut paths = Self::extract_files(data);
+        let cf_html = Self::extract_cf_html(data);
+        let raw_url_text = Self::extract_raw_url_candidate(data);
+        let descriptors = if paths.is_empty() {
+            Self::extract_virtual_descriptors(data)
+        } else {
+            Vec::new()
+        };
+
+        let is_browser_source = CONVERTER_DRAG_IS_BROWSER.load(Ordering::Relaxed)
+            || cf_html.is_some()
+            || !descriptors.is_empty();
+
+        let parsed_browser = if paths.is_empty() {
+            parse_browser_drop_payload(cf_html.as_deref(), raw_url_text.as_deref())
+        } else {
+            None
+        };
+
+        let mut urls = Vec::new();
+        let fallback_ext = match &parsed_browser {
+            Some(BrowserDragSource::ImageDataUri { raw_uri, suggested_name, .. }) => {
+                urls.push(raw_uri.clone());
+                extract_extension_from_name(suggested_name).unwrap_or_else(|| "png".to_string())
+            }
+            Some(BrowserDragSource::RemoteImageUrl { url, suggested_name }) => {
+                urls.push(url.clone());
+                extract_extension_from_name(suggested_name).unwrap_or_else(|| "png".to_string())
+            }
+            Some(BrowserDragSource::RemoteFileUrl { url, suggested_name }) => {
+                urls.push(url.clone());
+                extract_extension_from_name(suggested_name).unwrap_or_else(|| "bin".to_string())
+            }
+            None => {
+                if paths.is_empty() && !is_browser_source {
+                    urls = Self::extract_urls(data);
+                }
+                "png".to_string()
+            }
+        };
+
+        let mut virtual_names = Vec::new();
+        if paths.is_empty() && !descriptors.is_empty() {
+            if materialize_virtual {
+                if let Ok(conv_paths) = resolve_converter_paths(&self.app) {
+                    for desc in &descriptors {
+                        if let Some(saved) = Self::materialize_single_virtual_file(
+                            data,
+                            desc,
+                            descriptors.len(),
+                            &conv_paths.downloads_dir,
+                            &fallback_ext,
+                        ) {
+                            paths.push(saved);
+                        }
+                    }
+                    if !paths.is_empty() {
+                        urls.clear();
+                    }
+                }
+            } else {
+                for desc in &descriptors {
+                    let item_ext = extract_extension_from_name(&desc.raw_name)
+                        .unwrap_or_else(|| fallback_ext.clone());
+                    virtual_names.push(sanitize_download_filename(&desc.raw_name, &item_ext));
+                }
+            }
+        }
+
+        let is_browser_drag = is_browser_source || (paths.is_empty() && !urls.is_empty());
+        ConverterDragPayload {
+            paths,
+            virtual_names,
+            urls,
+            is_browser_drag,
+        }
     }
 }
 
@@ -3700,12 +5499,21 @@ impl windows::Win32::System::Ole::IDropTarget_Impl for ConverterDropTarget_Impl 
             return Ok(());
         }
 
-        let (paths, urls) = pdata
+        let payload = pdata
             .as_ref()
-            .map(|data| unsafe { ConverterDropTarget::extract_payload(data) })
-            .unwrap_or_default();
+            .map(|data| unsafe { self.extract_payload(data, false) })
+            .unwrap_or(ConverterDragPayload {
+                paths: Vec::new(),
+                virtual_names: Vec::new(),
+                urls: Vec::new(),
+                is_browser_drag: false,
+            });
 
-        if paths.is_empty() && urls.is_empty() {
+        let browser_allowed = get_converter_drag_config().browser_drag;
+        let has_any = !payload.paths.is_empty()
+            || !payload.virtual_names.is_empty()
+            || !payload.urls.is_empty();
+        if !has_any || (payload.is_browser_drag && payload.paths.is_empty() && !browser_allowed) {
             unsafe {
                 *self.enter_valid.get() = false;
                 *self.cursor_effect.get() = DROPEFFECT_NONE;
@@ -3720,18 +5528,19 @@ impl windows::Win32::System::Ole::IDropTarget_Impl for ConverterDropTarget_Impl 
         }
 
         let (x, y) = crate::services::screen_to_radial_css(pt.x, pt.y);
-        let is_browser_drag = CONVERTER_DRAG_IS_BROWSER.load(Ordering::Relaxed)
-            || (paths.is_empty() && !urls.is_empty());
+        let display_paths = if !payload.paths.is_empty() {
+            payload.paths.clone()
+        } else {
+            payload.virtual_names.clone()
+        };
+        let open_urls = payload.urls.clone();
+        let is_browser_drag = payload.is_browser_drag;
 
         unsafe {
             *self.enter_valid.get() = true;
             *self.cursor_effect.get() = DROPEFFECT_COPY;
             *self.last_css_pos.get() = Some((x, y));
-            *self.cached_payload.get() = Some(ConverterDragPayload {
-                paths: paths.clone(),
-                urls: urls.clone(),
-                is_browser_drag,
-            });
+            *self.cached_payload.get() = Some(payload);
             if !effect.is_null() {
                 *effect = DROPEFFECT_COPY;
             }
@@ -3744,8 +5553,8 @@ impl windows::Win32::System::Ole::IDropTarget_Impl for ConverterDropTarget_Impl 
             serde_json::json!({
                 "x": x,
                 "y": y,
-                "paths": paths,
-                "urls": urls,
+                "paths": display_paths,
+                "urls": open_urls,
                 "isBrowserDrag": is_browser_drag,
             }),
         );
@@ -3841,25 +5650,36 @@ impl windows::Win32::System::Ole::IDropTarget_Impl for ConverterDropTarget_Impl 
             *self.last_css_pos.get() = None;
         }
         let cached = unsafe { (*self.cached_payload.get()).take() };
-        let (mut paths, mut urls) = pdata
+        let extracted = pdata
             .as_ref()
-            .map(|data| unsafe { ConverterDropTarget::extract_payload(data) })
-            .unwrap_or_default();
+            .map(|data| unsafe { self.extract_payload(data, true) });
 
-        let is_browser_drag = if paths.is_empty() && urls.is_empty() {
-            if let Some(cached_payload) = cached {
-                paths = cached_payload.paths;
-                urls = cached_payload.urls;
-                cached_payload.is_browser_drag
-            } else {
-                CONVERTER_DRAG_IS_BROWSER.load(Ordering::Relaxed)
+        let (paths, urls, is_browser_drag) = match extracted {
+            Some(p) if !p.paths.is_empty() || !p.urls.is_empty() => {
+                (p.paths, p.urls, p.is_browser_drag)
             }
-        } else {
-            CONVERTER_DRAG_IS_BROWSER.load(Ordering::Relaxed)
-                || (paths.is_empty() && !urls.is_empty())
+            _ => {
+                if let Some(cached_payload) = cached {
+                    // Never forward unmaterialized `virtual_names` as real file paths.
+                    (
+                        cached_payload.paths,
+                        cached_payload.urls,
+                        cached_payload.is_browser_drag,
+                    )
+                } else {
+                    (
+                        Vec::new(),
+                        Vec::new(),
+                        CONVERTER_DRAG_IS_BROWSER.load(Ordering::Relaxed),
+                    )
+                }
+            }
         };
 
-        if paths.is_empty() && urls.is_empty() {
+        let browser_allowed = get_converter_drag_config().browser_drag;
+        if (paths.is_empty() && urls.is_empty())
+            || (is_browser_drag && paths.is_empty() && !browser_allowed)
+        {
             unsafe {
                 *self.cursor_effect.get() = DROPEFFECT_NONE;
                 if !effect.is_null() {
@@ -5372,5 +7192,198 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  Filee-2.5.0-wi
         assert_eq!(parsed.crop, None);
 
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn parse_browser_drop_payload_extracts_img_and_rejects_unsafe() {
+        let cf_html = concat!(
+            "Version:0.9\r\n",
+            "StartHTML:0000000105\r\n",
+            "EndHTML:0000000216\r\n",
+            "StartFragment:0000000139\r\n",
+            "EndFragment:0000000182\r\n",
+            "<html><body>\r\n",
+            "<!--StartFragment--><img src=\"https://cdn.example.com/pic.png\"><!--EndFragment-->\r\n",
+            "</body></html>"
+        );
+        assert_eq!(
+            parse_browser_drop_payload(Some(cf_html), None),
+            Some(BrowserDragSource::RemoteImageUrl {
+                url: "https://cdn.example.com/pic.png".to_string(),
+                suggested_name: "pic.png".to_string(),
+            })
+        );
+
+        let relative_cf_html = concat!(
+            "Version:0.9\r\n",
+            "StartHTML:0000000149\r\n",
+            "EndHTML:0000000213\r\n",
+            "StartFragment:0000000163\r\n",
+            "EndFragment:0000000197\r\n",
+            "SourceURL:https://cdn.example.com/gallery/\r\n",
+            "<html><body>\r\n",
+            "<img src=\"/media/hero.webp?w=800\">\r\n",
+            "</body></html>"
+        );
+        assert_eq!(
+            parse_browser_drop_payload(Some(relative_cf_html), None),
+            Some(BrowserDragSource::RemoteImageUrl {
+                url: "https://cdn.example.com/media/hero.webp?w=800".to_string(),
+                suggested_name: "hero.webp".to_string(),
+            })
+        );
+
+        let escaped_img = r#"<img src="https://cdn.example.com/pic.png?w=800&amp;q=90">"#;
+        assert_eq!(
+            parse_browser_drop_payload(Some(escaped_img), Some("https://example.com/article.html")),
+            Some(BrowserDragSource::RemoteImageUrl {
+                url: "https://cdn.example.com/pic.png?w=800&q=90".to_string(),
+                suggested_name: "pic.png".to_string(),
+            })
+        );
+
+        let wrapped_pdf = r#"<a href="https://example.com/report.pdf"><img src="https://cdn.example.com/thumb.png"></a>"#;
+        assert_eq!(
+            parse_browser_drop_payload(Some(wrapped_pdf), Some("https://example.com/report.pdf")),
+            Some(BrowserDragSource::RemoteFileUrl {
+                url: "https://example.com/report.pdf".to_string(),
+                suggested_name: "report.pdf".to_string(),
+            })
+        );
+
+        let data_uri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+        assert_eq!(
+            parse_browser_drop_payload(None, Some(data_uri)),
+            Some(BrowserDragSource::ImageDataUri {
+                mime: "image/png".to_string(),
+                raw_uri: data_uri.to_string(),
+                suggested_name: "image.png".to_string(),
+            })
+        );
+
+        assert_eq!(
+            parse_browser_drop_payload(None, Some("https://example.com/report.pdf")),
+            Some(BrowserDragSource::RemoteFileUrl {
+                url: "https://example.com/report.pdf".to_string(),
+                suggested_name: "report.pdf".to_string(),
+            })
+        );
+
+        let prose_html = "<p>First paragraph of selected article text.</p><p>Second paragraph with <img src=\"https://cdn.example.com/icon.png\"> inline.</p>";
+        assert_eq!(parse_browser_drop_payload(Some(prose_html), None), None);
+
+        assert_eq!(parse_browser_drop_payload(None, Some("javascript:alert(1)")), None);
+        assert_eq!(parse_browser_drop_payload(None, Some("vbscript:msgbox(1)")), None);
+        assert_eq!(parse_browser_drop_payload(None, Some("blob:https://example.com/1234")), None);
+        assert_eq!(parse_browser_drop_payload(None, Some("file:///C:/Windows/win.ini")), None);
+        assert_eq!(parse_browser_drop_payload(None, Some("https://example.com/setup.exe")), None);
+        assert_eq!(
+            parse_browser_drop_payload(Some(r#"<img src="https://example.com/setup.exe">"#), None),
+            None
+        );
+    }
+
+    #[test]
+    fn sanitize_download_filename_strips_traversal_and_reserved() {
+        let con_clean = sanitize_download_filename(r"../../evil\..\CON.png", "png");
+        assert!(!con_clean.contains('/'));
+        assert!(!con_clean.contains('\\'));
+        assert!(!con_clean.contains(".."));
+        assert!(!con_clean.eq_ignore_ascii_case("CON.png"));
+        assert!(con_clean.ends_with(".png"));
+
+        let nul_clean = sanitize_download_filename("NUL", "pdf");
+        assert!(!nul_clean.eq_ignore_ascii_case("NUL.pdf"));
+        assert!(nul_clean.ends_with(".pdf"));
+
+        let chars_clean = sanitize_download_filename(r#"bad<name>:with"chars|?*here.jpg"#, "png");
+        assert!(!chars_clean.chars().any(|c| matches!(c, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*')));
+        assert!(chars_clean.ends_with(".jpg"));
+
+        let fallback = sanitize_download_filename("../../", "webp");
+        assert!(!fallback.is_empty());
+        assert!(!fallback.contains(".."));
+        assert!(fallback.ends_with(".webp"));
+
+        let long_name = format!("{}.png", "a".repeat(300));
+        let truncated = sanitize_download_filename(&long_name, "png");
+        assert!(truncated.len() <= 160);
+        assert!(truncated.ends_with(".png"));
+    }
+
+    #[test]
+    fn is_local_network_ip_blocks_private_loopback_and_mapped_v6() {
+        use std::net::IpAddr;
+
+        for raw in [
+            "127.0.0.1",
+            "0.0.0.0",
+            "10.0.0.5",
+            "172.16.0.1",
+            "192.168.1.1",
+            "169.254.169.254",
+            "100.64.0.1",
+            "224.0.0.1",
+            "::1",
+            "::ffff:127.0.0.1",
+            "fe80::1",
+            "fc00::1",
+            "ff02::1",
+            "64:ff9b::127.0.0.1",
+            "64:ff9b:1::1",
+        ] {
+            let ip: IpAddr = raw.parse().unwrap();
+            assert!(is_local_network_ip(ip), "expected local/blocked IP: {raw}");
+        }
+
+        for raw in ["93.184.216.34", "1.1.1.1", "2606:2800:220:1:248:1893:25c8:1946"] {
+            let ip: IpAddr = raw.parse().unwrap();
+            assert!(!is_local_network_ip(ip), "expected public IP: {raw}");
+        }
+
+        assert!(is_local_hostname("localhost"));
+        assert!(is_local_hostname("sub.localhost."));
+        assert!(is_local_hostname("printer.local"));
+        assert!(is_local_hostname("router.home.arpa"));
+        assert!(is_local_hostname("api.internal"));
+        assert!(!is_local_hostname("example.com"));
+        assert!(!is_local_hostname("cdn.example.com"));
+    }
+
+    #[test]
+    fn browser_asset_helpers_infer_magic_mime_and_block_executables() {
+        assert_eq!(
+            infer_extension_from_magic_bytes(b"\x89PNG\r\n\x1a\nrest"),
+            Some("png")
+        );
+        assert_eq!(
+            infer_extension_from_magic_bytes(&[0xFF, 0xD8, 0xFF, 0xE0]),
+            Some("jpg")
+        );
+        assert_eq!(
+            infer_extension_from_magic_bytes(b"RIFF\x00\x00\x00\x00WEBP"),
+            Some("webp")
+        );
+        assert_eq!(infer_extension_from_magic_bytes(b"%PDF-1.7"), Some("pdf"));
+        assert!(is_executable_magic_bytes(b"MZ\x90\x00"));
+        assert!(!is_executable_magic_bytes(b"BM\x00\x00"));
+
+        assert_eq!(
+            parse_content_disposition_filename(r#"attachment; filename="quarterly%20report.pdf""#),
+            Some("quarterly report.pdf".to_string())
+        );
+        assert_eq!(
+            parse_content_disposition_filename("attachment; filename*=UTF-8''my%20photo.webp"),
+            Some("my photo.webp".to_string())
+        );
+
+        let data_uri = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+        let (mime, bytes, ext) = parse_data_image_uri(data_uri).expect("valid data png");
+        assert_eq!(mime, "image/png");
+        assert_eq!(ext, "png");
+        assert!(bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
+
+        assert!(parse_data_image_uri("data:text/html;base64,PHNjcmlwdD4=").is_none());
+        assert!(parse_data_image_uri("data:image/png;base64,TVqQAAMAAAAEAAAA").is_none());
     }
 }

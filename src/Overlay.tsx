@@ -740,6 +740,9 @@ function OverlayApp() {
 	const [converterEnabled, setConverterEnabled] = useState(
 		() => localStorage.getItem("zenith-converter-enabled") !== "false"
 	);
+	const [converterBrowserDrag, setConverterBrowserDrag] = useState(
+		() => localStorage.getItem("zenith-converter-browser-drag") !== "false"
+	);
 	const [converterOutputMode, setConverterOutputMode] = useState<"next-to-source" | "folder">(() =>
 		localStorage.getItem("zenith-converter-output-mode") === "folder"
 			? "folder"
@@ -873,6 +876,9 @@ function OverlayApp() {
 				}));
 				if (settings["zenith-converter-enabled"] !== undefined) {
 					setConverterEnabled(settings["zenith-converter-enabled"] !== "false");
+				}
+				if (settings["zenith-converter-browser-drag"] !== undefined) {
+					setConverterBrowserDrag(settings["zenith-converter-browser-drag"] !== "false");
 				}
 				if (settings["zenith-converter-output-mode"] !== undefined) {
 					setConverterOutputMode(
@@ -1129,6 +1135,7 @@ function OverlayApp() {
 				hoverSoundId: String(v || prev.hoverSoundId) as RadialWheelConfig["hoverSoundId"]
 			})),
 		"zenith-converter-enabled": setConverterEnabled,
+		"zenith-converter-browser-drag": setConverterBrowserDrag,
 		"zenith-converter-output-mode": (v: unknown) =>
 			setConverterOutputMode(v === "folder" ? "folder" : "next-to-source"),
 		"zenith-converter-output-folder": (v: unknown) =>
@@ -1427,6 +1434,7 @@ function OverlayApp() {
 			{/* Drag-to-Donut File Converter Overlay */}
 			<ConverterDonut
 				enabled={converterEnabled}
+				browserDragEnabled={converterBrowserDrag}
 				outputMode={converterOutputMode}
 				outputFolder={converterOutputFolder}
 				suppressed={mode === "splash" || mode === "updating" || mode === "radial"}

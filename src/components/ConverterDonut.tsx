@@ -47,6 +47,8 @@ import {
 	buildConvertRequestFromOption,
 	buildCustomMatcherInputs,
 	DEFAULT_PRESET_CATALOG,
+	EXTENSION_CATEGORY,
+	extractExtension,
 	matchFormatsForPaths
 } from "../converter/formats";
 import type {
@@ -81,6 +83,7 @@ export type ConverterPhase = "idle" | "donut" | "checking" | "install" | "crop" 
 
 export interface ConverterDonutProps {
 	enabled: boolean;
+	browserDragEnabled?: boolean;
 	outputMode: "next-to-source" | "folder";
 	outputFolder: string;
 	suppressed: boolean;
@@ -170,7 +173,7 @@ interface JobState {
 	option: TargetOption;
 	inputs: string[];
 	dropPoint: { x: number; y: number };
-	status: "checking" | "converting" | "done" | "error" | "cancelled";
+	status: "checking" | "downloading" | "converting" | "done" | "error" | "cancelled";
 	fraction: number;
 	outputs: string[];
 	error: string | null;
@@ -238,8 +241,86 @@ function formatTransferAmount(bytes: number): string {
 	return `${Math.max(0, Math.round(bytes / 1000))} KB`;
 }
 
+function isBrowserAssetUrl(value: string): boolean {
+	const trimmed = value.trim();
+	return /^https?:\/\//i.test(trimmed) || /^data:image\//i.test(trimmed);
+}
+
+function dataImageMimeToExt(raw: string): string {
+	const m = raw.trim().match(/^data:(image\/[a-z0-9.+-]+)/i);
+	const mime = m ? m[1].toLowerCase() : "image/png";
+	switch (mime) {
+		case "image/jpeg":
+		case "image/jpg":
+		case "image/pjpeg":
+			return "jpg";
+		case "image/webp":
+			return "webp";
+		case "image/gif":
+			return "gif";
+		case "image/bmp":
+		case "image/x-ms-bmp":
+			return "bmp";
+		case "image/x-icon":
+		case "image/vnd.microsoft.icon":
+			return "ico";
+		case "image/tiff":
+			return "tiff";
+		case "image/avif":
+			return "avif";
+		case "image/heic":
+			return "heic";
+		case "image/heif":
+			return "heif";
+		case "image/svg+xml":
+			return "svg";
+		default:
+			return "png";
+	}
+}
+
+function formatBrowserFetchError(
+	err: unknown,
+	donutCopy: {
+		invalidRemoteUrl: string;
+		blockedFileType: string;
+		downloadFailed: string;
+	}
+): string {
+	const raw = err instanceof Error ? err.message : String(err);
+	if (raw.startsWith("UNSAFE_URL:") || raw.startsWith("INVALID_URL:")) {
+		return donutCopy.invalidRemoteUrl;
+	}
+	if (raw.startsWith("BLOCKED_FILE_TYPE:")) {
+		return donutCopy.blockedFileType;
+	}
+	return cleanErrorMessage(raw) || donutCopy.downloadFailed;
+}
+
 function extractBaseName(path: string): string {
 	const trimmed = path.trim();
+	if (/^data:image\//i.test(trimmed)) {
+		return `image.${dataImageMimeToExt(trimmed)}`;
+	}
+	if (/^https?:\/\//i.test(trimmed)) {
+		try {
+			const parsed = new URL(trimmed);
+			const seg = parsed.pathname
+				.split("/")
+				.filter((s) => s.length > 0)
+				.pop();
+			if (seg) {
+				try {
+					return decodeURIComponent(seg);
+				} catch {
+					return seg;
+				}
+			}
+			return parsed.hostname || trimmed;
+		} catch {
+			// Fall through to path parsing below.
+		}
+	}
 	const withoutQuery = trimmed.split(/[?#]/)[0];
 	const idx = Math.max(withoutQuery.lastIndexOf("/"), withoutQuery.lastIndexOf("\\"));
 	const base = idx >= 0 ? withoutQuery.slice(idx + 1) : withoutQuery;
@@ -252,16 +333,39 @@ function parentDirectory(path: string): string {
 	return path.slice(0, idx);
 }
 
-function resolveMatchInputs(paths: string[], urls: string[]): string[] {
+function resolveMatchInputs(paths: string[], urls: string[], isBrowserDrag = false): string[] {
 	if (paths.length > 0) return paths;
 	if (urls.length === 0) return [];
 	return urls
 		.map((raw) => {
+			const trimmed = raw.trim();
+			if (/^data:image\//i.test(trimmed)) {
+				return `browser-image.${dataImageMimeToExt(trimmed)}`;
+			}
 			try {
-				const parsed = new URL(raw);
-				return parsed.pathname && parsed.pathname !== "/" ? parsed.pathname : raw.split(/[?#]/)[0];
+				const parsed = new URL(trimmed);
+				const pathname = parsed.pathname && parsed.pathname !== "/" ? parsed.pathname : "";
+				const pathExt = pathname ? extractExtension(pathname) : "";
+				if (pathExt && pathExt in EXTENSION_CATEGORY) {
+					return pathname;
+				}
+				for (const paramKey of ["format", "fm", "ext", "type"]) {
+					const paramVal = parsed.searchParams.get(paramKey)?.trim().toLowerCase();
+					if (
+						paramVal &&
+						paramVal !== "html" &&
+						paramVal !== "htm" &&
+						paramVal in EXTENSION_CATEGORY
+					) {
+						return `browser-asset.${paramVal}`;
+					}
+				}
+				if (isBrowserDrag) {
+					return "browser-image.png";
+				}
+				return pathname || trimmed.split(/[?#]/)[0];
 			} catch {
-				return raw.split(/[?#]/)[0];
+				return trimmed.split(/[?#]/)[0];
 			}
 		})
 		.filter((s) => s.trim().length > 0);
@@ -571,6 +675,7 @@ DonutSlice.displayName = "DonutSlice";
 
 export function ConverterDonut({
 	enabled,
+	browserDragEnabled = true,
 	outputMode,
 	outputFolder,
 	suppressed,
@@ -622,6 +727,8 @@ export function ConverterDonut({
 
 	const enabledRef = useRef(enabled);
 	enabledRef.current = enabled;
+	const browserDragEnabledRef = useRef(browserDragEnabled);
+	browserDragEnabledRef.current = browserDragEnabled;
 	const suppressedRef = useRef(suppressed);
 	suppressedRef.current = suppressed;
 	const outputModeRef = useRef(outputMode);
@@ -1284,8 +1391,13 @@ export function ConverterDonut({
 	);
 
 	const commitSlice = useCallback(
-		async (option: TargetOption, inputs: string[], dropPoint: { x: number; y: number }) => {
-			if (inputs.length === 0) {
+		async (
+			option: TargetOption,
+			inputs: string[],
+			dropPoint: { x: number; y: number },
+			isBrowserSession = false
+		) => {
+			if (inputs.length === 0 || (isBrowserSession && !browserDragEnabledRef.current)) {
 				dismissWheelOrInstall();
 				return;
 			}
@@ -1294,18 +1406,89 @@ export function ConverterDonut({
 			setActiveIndex(null);
 			setIsCenterActive(false);
 
+			let resolvedInputs = inputs;
+			const hasBrowserUrls = inputs.some(isBrowserAssetUrl);
+			if (hasBrowserUrls) {
+				if (!browserDragEnabledRef.current) {
+					await releaseOverlayLock();
+					return;
+				}
+				clearCheckingState();
+				setInstallPrompt(null);
+				const fetchJobId = `fetch-${Date.now()}-${++jobSeqRef.current}`;
+				activeJobIdRef.current = fetchJobId;
+				const displayInputs = inputs.map((item) => extractBaseName(item));
+				setJobState({
+					jobId: fetchJobId,
+					option,
+					inputs: displayInputs,
+					dropPoint,
+					status: "downloading",
+					fraction: 0,
+					outputs: [],
+					error: null
+				});
+				await releaseOverlayLock();
+				if (sessionGenRef.current !== myGen) return;
+
+				const fetchedPaths: string[] = [];
+				try {
+					for (let i = 0; i < inputs.length; i += 1) {
+						const item = inputs[i];
+						if (isBrowserAssetUrl(item)) {
+							const localPath = await invoke<string>("converter_fetch_browser_asset", {
+								url: item
+							});
+							if (sessionGenRef.current !== myGen) return;
+							fetchedPaths.push(localPath);
+						} else {
+							fetchedPaths.push(item);
+						}
+						if (inputs.length > 1) {
+							setJobState((prev) =>
+								prev && prev.jobId === fetchJobId && prev.status === "downloading"
+									? { ...prev, fraction: (i + 1) / inputs.length }
+									: prev
+							);
+						}
+					}
+				} catch (err) {
+					if (sessionGenRef.current !== myGen) return;
+					const errMsg = formatBrowserFetchError(err, c.donut);
+					setJobState((prev) =>
+						prev && prev.jobId === fetchJobId
+							? { ...prev, status: "error", error: errMsg }
+							: prev
+					);
+					emitJobFinished(fetchJobId, "error", option, displayInputs, [], errMsg);
+					return;
+				}
+				if (sessionGenRef.current !== myGen) return;
+				if (activeJobIdRef.current === fetchJobId) {
+					activeJobIdRef.current = null;
+				}
+				resolvedInputs = fetchedPaths;
+			}
+
 			if (option.actionKind === "crop") {
 				clearCheckingState();
 				setInstallPrompt(null);
 				setJobState((prev) => (prev && prev.status === "converting" ? prev : null));
 				invoke("converter_set_overlay_open", { open: true }).catch(() => {});
-				setCropSession({ option, inputs, dropPoint });
+				setCropSession({ option, inputs: resolvedInputs, dropPoint });
 				return;
 			}
 
-			await runPreflightAndConvert(option, inputs, dropPoint, myGen);
+			await runPreflightAndConvert(option, resolvedInputs, dropPoint, myGen);
 		},
-		[clearCheckingState, dismissWheelOrInstall, runPreflightAndConvert]
+		[
+			c.donut,
+			clearCheckingState,
+			dismissWheelOrInstall,
+			emitJobFinished,
+			releaseOverlayLock,
+			runPreflightAndConvert
+		]
 	);
 
 	const runCropBatches = useCallback(
@@ -1515,7 +1698,12 @@ export function ConverterDonut({
 				return;
 			}
 			const { x, y, paths, urls, isBrowserDrag } = ev.payload;
-			const matchInputs = resolveMatchInputs(paths ?? [], urls ?? []);
+			const isBrowser = Boolean(isBrowserDrag) || ((paths ?? []).length === 0 && (urls ?? []).length > 0);
+			if (isBrowser && !browserDragEnabledRef.current) {
+				releaseOverlayLock();
+				return;
+			}
+			const matchInputs = resolveMatchInputs(paths ?? [], urls ?? [], isBrowser);
 			if (matchInputs.length === 0) {
 				releaseOverlayLock();
 				return;
@@ -1588,7 +1776,7 @@ export function ConverterDonut({
 							? ws.paths
 							: ws.urls;
 
-			commitSlice(chosen, inputs, dropPt);
+			commitSlice(chosen, inputs, dropPt, Boolean(ev.payload.isBrowserDrag || ws.isBrowserDrag));
 		});
 
 		const unClose = listen("converter-donut-close", () => {
@@ -1724,7 +1912,7 @@ export function ConverterDonut({
 				if (ws && idx !== null && slices[idx]) {
 					e.preventDefault();
 					const inputs = ws.paths.length > 0 ? ws.paths : ws.urls;
-					commitSlice(slices[idx], inputs, lastPointerRef.current ?? center);
+					commitSlice(slices[idx], inputs, lastPointerRef.current ?? center, ws.isBrowserDrag);
 				}
 			}
 		};
@@ -1755,7 +1943,13 @@ export function ConverterDonut({
 			window.clearTimeout(autoDismissTimerRef.current);
 			autoDismissTimerRef.current = null;
 		}
-		if (!jobState || jobState.status === "converting" || jobState.status === "checking" || ringHovered) {
+		if (
+			!jobState ||
+			jobState.status === "converting" ||
+			jobState.status === "checking" ||
+			jobState.status === "downloading" ||
+			ringHovered
+		) {
 			return;
 		}
 		const delay =
@@ -1779,7 +1973,13 @@ export function ConverterDonut({
 	const handleCancelJob = useCallback(() => {
 		if (!jobState) return;
 		const id = jobState.jobId;
-		if (jobState.status === "converting") {
+		if (jobState.status === "downloading") {
+			sessionGenRef.current += 1;
+			setJobState((prev) =>
+				prev && prev.jobId === id ? { ...prev, status: "cancelled", error: null } : prev
+			);
+			emitJobFinished(id, "cancelled", jobState.option, jobState.inputs, []);
+		} else if (jobState.status === "converting") {
 			if (jobState.cropGroupId) {
 				cancelledCropGroupsRef.current.add(jobState.cropGroupId);
 				if (cancelledCropGroupsRef.current.size > 64) {
@@ -2128,7 +2328,12 @@ export function ConverterDonut({
 												wheelSession.paths.length > 0
 													? wheelSession.paths
 													: wheelSession.urls;
-											commitSlice(opt, inputs, lastPointerRef.current ?? centerPos);
+											commitSlice(
+												opt,
+												inputs,
+												lastPointerRef.current ?? centerPos,
+												wheelSession.isBrowserDrag
+											);
 										}}
 									/>
 								);
@@ -2351,7 +2556,9 @@ export function ConverterDonut({
 							<svg
 								className={`zn-conv-ring-svg${
 									activeRingJob.status === "checking" ||
-									(activeRingJob.status === "converting" && activeRingJob.fraction <= 0.01)
+									((activeRingJob.status === "converting" ||
+										activeRingJob.status === "downloading") &&
+										activeRingJob.fraction <= 0.01)
 										? " is-indeterminate"
 										: ""
 								}`}
@@ -2369,14 +2576,17 @@ export function ConverterDonut({
 										activeRingJob.status === "done"
 											? 0
 											: activeRingJob.status === "checking" ||
-												  (activeRingJob.status === "converting" &&
+												  ((activeRingJob.status === "converting" ||
+														activeRingJob.status === "downloading") &&
 														activeRingJob.fraction <= 0.01)
 												? PROGRESS_RING_CIRCUMFERENCE * 0.72
 												: PROGRESS_RING_CIRCUMFERENCE *
 													(1 - Math.max(0.04, Math.min(1, activeRingJob.fraction)))
 									}
 									style={
-										activeRingJob.status === "converting" || activeRingJob.status === "checking"
+										activeRingJob.status === "converting" ||
+										activeRingJob.status === "checking" ||
+										activeRingJob.status === "downloading"
 											? { stroke: accentColor }
 											: undefined
 									}
@@ -2391,6 +2601,9 @@ export function ConverterDonut({
 									<X size={13} strokeWidth={2.3} />
 								) : activeRingJob.status === "checking" ? (
 									"..."
+								) : activeRingJob.status === "downloading" &&
+									  activeRingJob.fraction <= 0.01 ? (
+									<Download size={13} strokeWidth={2.2} />
 								) : (
 									`${Math.round(activeRingJob.fraction * 100)}%`
 								)}
@@ -2406,15 +2619,17 @@ export function ConverterDonut({
 							<div className="zn-conv-ring-sub">
 								{activeRingJob.status === "checking"
 									? c.donut.checkingRuntime
-									: activeRingJob.status === "converting"
-										? c.donut.convertingTitle
-										: activeRingJob.status === "done"
-											? `✓ ${c.donut.doneTitle} · ${c.donut.doneOutputsCount(
-													Math.max(1, activeRingJob.outputs.length)
-												)}`
-											: activeRingJob.status === "cancelled"
-												? c.donut.cancelledTitle
-												: activeRingJob.error || c.donut.failedTitle}
+									: activeRingJob.status === "downloading"
+										? c.donut.downloadingAsset
+										: activeRingJob.status === "converting"
+											? c.donut.convertingTitle
+											: activeRingJob.status === "done"
+												? `✓ ${c.donut.doneTitle} · ${c.donut.doneOutputsCount(
+														Math.max(1, activeRingJob.outputs.length)
+													)}`
+												: activeRingJob.status === "cancelled"
+													? c.donut.cancelledTitle
+													: activeRingJob.error || c.donut.failedTitle}
 							</div>
 						</div>
 
@@ -2445,12 +2660,16 @@ export function ConverterDonut({
 									}
 								}}
 								title={
-									activeRingJob.status === "converting" || activeRingJob.status === "checking"
+									activeRingJob.status === "converting" ||
+									activeRingJob.status === "checking" ||
+									activeRingJob.status === "downloading"
 										? c.donut.cancelJob
 										: c.donut.dismiss
 								}
 								aria-label={
-									activeRingJob.status === "converting" || activeRingJob.status === "checking"
+									activeRingJob.status === "converting" ||
+									activeRingJob.status === "checking" ||
+									activeRingJob.status === "downloading"
 										? c.donut.cancelJob
 										: c.donut.dismiss
 								}
