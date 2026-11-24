@@ -23,6 +23,7 @@ import {
 	RotateCcw,
 	Bell,
 	BellOff,
+	EyeOff,
 	VolumeX,
 	Check
 } from "lucide-react";
@@ -42,6 +43,11 @@ interface NotchTabProps {
 	setNotchModeValue: (mode: string) => void;
 	notchEdgeDelay: number;
 	handleNotchEdgeDelayChange: (val: number) => void;
+	notchWorkDelay: string;
+	toggleNotchWorkNever: () => void;
+	handleNotchWorkDelayChange: (ms: number) => void;
+	notchPosition: "left" | "center" | "right";
+	setNotchPositionValue: (pos: "left" | "center" | "right") => void;
 	notchDisplay: string;
 	setNotchDisplayValue: (val: string) => void;
 	displays: DisplayInfo[];
@@ -115,6 +121,11 @@ export function NotchTab({
 	setNotchModeValue,
 	notchEdgeDelay,
 	handleNotchEdgeDelayChange,
+	notchWorkDelay,
+	toggleNotchWorkNever,
+	handleNotchWorkDelayChange,
+	notchPosition,
+	setNotchPositionValue,
 	notchDisplay,
 	setNotchDisplayValue,
 	displays,
@@ -308,11 +319,12 @@ export function NotchTab({
 					>
 						<option value="fixed">{n.modeFixed}</option>
 						<option value="smart">{n.modeSmart}</option>
+						<option value="work">{n.modeWork}</option>
 						<option value="peek">{n.modePeek}</option>
 					</ZenithSelect>
 				</SettingRow>
 
-				{notchMode !== "fixed" && (
+				{(notchMode === "smart" || notchMode === "peek") && (
 					<SettingRow
 						icon={Timer}
 						label={n.peekDelay}
@@ -329,6 +341,67 @@ export function NotchTab({
 						/>
 					</SettingRow>
 				)}
+
+				{notchMode === "work" && (
+					<>
+						<SettingRow
+							icon={EyeOff}
+							label={n.workNeverReveal}
+							desc={n.workNeverRevealDesc}
+						>
+							<label className="toggle-switch">
+								<input
+									type="checkbox"
+									checked={notchWorkDelay === "never"}
+									onChange={toggleNotchWorkNever}
+								/>
+								<span className="slider"></span>
+							</label>
+						</SettingRow>
+
+						{notchWorkDelay !== "never" && (() => {
+							const parsed = parseInt(notchWorkDelay, 10);
+							const numericWorkDelay = Number.isFinite(parsed)
+								? Math.min(5000, Math.max(500, parsed))
+								: 2000;
+							const secText =
+								numericWorkDelay % 1000 === 0
+									? String(numericWorkDelay / 1000)
+									: (numericWorkDelay / 1000).toFixed(1);
+							return (
+								<SettingRow
+									icon={Timer}
+									label={n.workDelay}
+									desc={n.workDelaySec(secText)}
+								>
+									<input
+										type="range"
+										min="500"
+										max="5000"
+										step="500"
+										value={numericWorkDelay}
+										onChange={(e) => handleNotchWorkDelayChange(parseInt(e.target.value, 10))}
+										className="settings-slider"
+									/>
+								</SettingRow>
+							);
+						})()}
+					</>
+				)}
+
+				<SettingRow icon={PanelTop} label={n.notchPosition} desc={n.notchPositionDesc}>
+					<ZenithSelect
+						className="settings-select"
+						value={notchPosition}
+						onChange={(e) =>
+							setNotchPositionValue(e.target.value as "left" | "center" | "right")
+						}
+					>
+						<option value="center">{n.positionCenter}</option>
+						<option value="left">{n.positionLeft}</option>
+						<option value="right">{n.positionRight}</option>
+					</ZenithSelect>
+				</SettingRow>
 
 				<SettingRow
 					icon={PanelTop}

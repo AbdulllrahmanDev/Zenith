@@ -2773,13 +2773,59 @@ pub fn get_active_notch_monitors(app: &AppHandle) -> Vec<(i32, i32, i32, i32)> {
     resolve_active_monitors_cached(app, "zenith-notch-display", &CACHED_NOTCH_MONITORS)
 }
 
-/// Top-edge hover-intent delay in milliseconds. `0` disables the gate so the
-/// notch reveals the moment the band is touched (the pre-fix behavior).
-fn top_edge_dwell_ms(app_handle: &AppHandle) -> i64 {
-    crate::utils::get_setting_str(app_handle, "zenith-notch-edge-delay")
-        .and_then(|s| s.parse::<i64>().ok())
-        .unwrap_or(TOP_EDGE_DWELL_MS)
-        .clamp(0, 2000)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TopEdgePolicy {
+    DisabledFixed,
+    Dwell {
+        dwell_ms: i64,
+        allow_ceiling_instant: bool,
+    },
+    NeverReveal,
+}
+
+const WORK_MODE_DEFAULT_DWELL_MS: i64 = 2000;
+
+/// Resolve top-edge reveal behavior for the notch from its mode and delay settings.
+/// - `fixed` (or unset): always visible via AppBar, top-edge reveal disabled.
+/// - `work`: hides behind maximized/overlapping windows; either never reveals over
+///   full windows (`work_delay == "never"`) or requires holding at the top edge for
+///   `work_delay` ms (default 2000ms) with no ceiling instant-reveal bypass.
+/// - `smart` / `peek` / other: uses `edge_delay` ms (default 200ms, 0..=2000) and
+///   keeps the 2px ceiling slam shortcut.
+pub(crate) fn resolve_top_edge_policy(
+    notch_mode: Option<&str>,
+    edge_delay: Option<&str>,
+    work_delay: Option<&str>,
+) -> TopEdgePolicy {
+    match notch_mode.map(str::trim) {
+        None | Some("") | Some("fixed") => TopEdgePolicy::DisabledFixed,
+        Some("work") => {
+            if work_delay
+                .map(str::trim)
+                .is_some_and(|v| v.eq_ignore_ascii_case("never"))
+            {
+                return TopEdgePolicy::NeverReveal;
+            }
+            let dwell_ms = work_delay
+                .and_then(|s| s.trim().parse::<i64>().ok())
+                .unwrap_or(WORK_MODE_DEFAULT_DWELL_MS)
+                .clamp(0, 10_000);
+            TopEdgePolicy::Dwell {
+                dwell_ms,
+                allow_ceiling_instant: false,
+            }
+        }
+        Some(_) => {
+            let dwell_ms = edge_delay
+                .and_then(|s| s.trim().parse::<i64>().ok())
+                .unwrap_or(TOP_EDGE_DWELL_MS)
+                .clamp(0, 2000);
+            TopEdgePolicy::Dwell {
+                dwell_ms,
+                allow_ceiling_instant: true,
+            }
+        }
+    }
 }
 
 fn in_top_edge_band_with(
@@ -2807,7 +2853,17 @@ fn top_edge_armed_for(
     cursor: windows::Win32::Foundation::POINT,
     now: i64,
     scale: f64,
+    policy: TopEdgePolicy,
 ) -> bool {
+    if matches!(
+        policy,
+        TopEdgePolicy::DisabledFixed | TopEdgePolicy::NeverReveal
+    ) {
+        MH_TOP_EDGE_ENTER_MS.store(0, Ordering::Relaxed);
+        MH_TOP_EDGE_ARMED.store(false, Ordering::Relaxed);
+        return false;
+    }
+
     let monitors = get_active_notch_monitors(app_handle);
     if !in_top_edge_band_with(&monitors, cursor, scale) {
         MH_TOP_EDGE_ENTER_MS.store(0, Ordering::Relaxed);
@@ -2817,11 +2873,19 @@ fn top_edge_armed_for(
     if MH_TOP_EDGE_ARMED.load(Ordering::Relaxed) {
         return true;
     }
-    let dwell_ms = top_edge_dwell_ms(app_handle);
-    // Instant reveal when slammed against the top ceiling (within 2px of screen top)
-    let is_at_ceiling = monitors
-        .iter()
-        .any(|&(_, mon_y, _, _)| cursor.y <= mon_y + (2.0 * scale) as i32);
+    let TopEdgePolicy::Dwell {
+        dwell_ms,
+        allow_ceiling_instant,
+    } = policy
+    else {
+        return false;
+    };
+    // Instant reveal when slammed against the top ceiling (within 2px of screen top),
+    // disabled in work mode so accidental ceiling hits don't bypass the reveal timer.
+    let is_at_ceiling = allow_ceiling_instant
+        && monitors
+            .iter()
+            .any(|&(_, mon_y, _, _)| cursor.y <= mon_y + (2.0 * scale) as i32);
     if dwell_ms <= 0 || is_at_ceiling {
         MH_TOP_EDGE_ARMED.store(true, Ordering::Relaxed);
         return true;
@@ -2892,7 +2956,15 @@ fn update_main_interaction(
 
     let notch_rect = NOTCH_RECT.lock().ok().and_then(|g| *g);
     let notch_mode = get_setting_str(app_handle, "zenith-notch-mode");
-    let is_fixed = notch_mode_reserves_work_area(notch_mode.as_deref());
+    let edge_delay = get_setting_str(app_handle, "zenith-notch-edge-delay");
+    let work_delay = get_setting_str(app_handle, "zenith-notch-work-delay");
+    let top_policy = resolve_top_edge_policy(
+        notch_mode.as_deref(),
+        edge_delay.as_deref(),
+        work_delay.as_deref(),
+    );
+    let is_fixed = matches!(top_policy, TopEdgePolicy::DisabledFixed);
+    let is_work_mode = notch_mode.as_deref().map(str::trim) == Some("work");
     let notch_visible = NOTCH_IS_VISIBLE.load(Ordering::Relaxed);
 
     let notch_hwnds = match crate::state::NOTCH_HWNDS.lock() {
@@ -2921,11 +2993,9 @@ fn update_main_interaction(
         let in_mon_x = cursor.x >= mon_rc.left && cursor.x <= mon_rc.right;
         let at_top_edge = in_mon_x && cursor.y <= (mon_rc.top + (TOP_EDGE_BAND_PX * scale) as i32);
 
-        let edge_armed = if is_fixed {
-            false
-        } else {
-            at_top_edge && top_edge_armed_for(app_handle, cursor, now, scale)
-        };
+        let edge_armed = !is_fixed
+            && top_edge_armed_for(app_handle, cursor, now, scale, top_policy)
+            && at_top_edge;
 
         let notch_rect = crate::state::NOTCH_RECTS
             .lock()
@@ -2942,6 +3012,13 @@ fn update_main_interaction(
         let mut is_click_interactive = false;
         let mut in_notch_rect = false;
         let mut in_top_span = false;
+
+        let work_never_hidden =
+            is_work_mode && !notch_visible && top_policy == TopEdgePolicy::NeverReveal;
+        let work_waiting_dwell = is_work_mode
+            && !notch_visible
+            && matches!(top_policy, TopEdgePolicy::Dwell { .. })
+            && !edge_armed;
 
         if let Some(r) = notch_rect {
             let pad_x = (50.0 * scale) as i32;
@@ -2961,11 +3038,13 @@ fn update_main_interaction(
             let edge_pad = (160.0 * scale) as i32;
             in_top_span = at_top_edge && cursor.x >= rx - edge_pad && cursor.x <= rx + rw + edge_pad;
 
-            let hover_active = in_notch_rect || edge_armed || in_top_span;
-            if (notch_visible || hover_active) && (in_notch_rect || in_top_span) {
-                is_click_interactive = true;
+            if !work_never_hidden && !work_waiting_dwell {
+                let hover_active = in_notch_rect || edge_armed || in_top_span;
+                if (notch_visible || hover_active) && (in_notch_rect || in_top_span) {
+                    is_click_interactive = true;
+                }
             }
-            if drag_held && (in_notch_rect || in_top_span) {
+            if !work_never_hidden && drag_held && (in_notch_rect || in_top_span) {
                 is_click_interactive = true;
             }
         }
@@ -4251,9 +4330,12 @@ pub fn register_appbar(window: tauri::WebviewWindow) {
         let m_pos = monitor.position();
         let hwnd = window.hwnd().unwrap();
         let scale = monitor.scale_factor();
-        let zenith_scale = crate::utils::get_zenith_scale(window.app_handle());
+        let zenith_scale =
+            crate::utils::notch_scale_for(crate::utils::get_zenith_scale(window.app_handle()), &monitor);
         let ph = ((420.0 * zenith_scale) * scale) as i32;
-        let pr = ((40.0 * zenith_scale) * scale) as i32; // Scale the reserved top screen space
+        // Scale the reserved top screen space; a floating notch sits lower.
+        let reserved = crate::utils::notch_reserved_height(crate::utils::notch_floating(window.app_handle()));
+        let pr = ((reserved * zenith_scale) * scale) as i32;
 
         unsafe {
             use windows::Win32::Foundation::RECT;
@@ -4386,7 +4468,8 @@ fn set_main_appbar_reservation(main_win: tauri::WebviewWindow, reserve: bool) {
             let m_pos = monitor.position();
             let m_size = monitor.size();
             let scale = monitor.scale_factor();
-            let zenith_scale = crate::utils::get_zenith_scale(main_win.app_handle());
+            let zenith_scale =
+                crate::utils::notch_scale_for(crate::utils::get_zenith_scale(main_win.app_handle()), &monitor);
             let target_height = (420.0 * zenith_scale * scale) as i32;
             unsafe {
                 use windows::Win32::UI::WindowsAndMessaging::{
@@ -5306,8 +5389,8 @@ fn recover_from_webview_failure(handle: &AppHandle) {
 mod tests {
     use super::{
         is_helper_name, is_launchable_entry, is_primary_monitor, is_start_menu_process_path,
-        notch_mode_reserves_work_area, pack_cursor, process_exe_name, trim_thumbnail_cache,
-        unpack_cursor, win_number_index,
+        notch_mode_reserves_work_area, pack_cursor, process_exe_name, resolve_top_edge_policy,
+        trim_thumbnail_cache, unpack_cursor, win_number_index, TopEdgePolicy,
     };
 
     #[test]
@@ -5371,11 +5454,63 @@ mod tests {
     fn only_fixed_notch_mode_reserves_the_work_area() {
         assert!(notch_mode_reserves_work_area(Some("fixed")));
         assert!(!notch_mode_reserves_work_area(Some("smart")));
+        assert!(!notch_mode_reserves_work_area(Some("work")));
         assert!(!notch_mode_reserves_work_area(Some("peek")));
         // Legacy alias for smart
         assert!(!notch_mode_reserves_work_area(Some("auto-hide")));
         // Unset defaults to fixed, matching SETTINGS.md
         assert!(notch_mode_reserves_work_area(None));
+    }
+
+    #[test]
+    fn resolve_top_edge_policy_handles_work_mode_defaults_never_and_smart() {
+        assert_eq!(
+            resolve_top_edge_policy(Some("fixed"), Some("200"), Some("2000")),
+            TopEdgePolicy::DisabledFixed
+        );
+        assert_eq!(
+            resolve_top_edge_policy(None, None, None),
+            TopEdgePolicy::DisabledFixed
+        );
+        assert_eq!(
+            resolve_top_edge_policy(Some("smart"), None, None),
+            TopEdgePolicy::Dwell {
+                dwell_ms: 200,
+                allow_ceiling_instant: true,
+            }
+        );
+        assert_eq!(
+            resolve_top_edge_policy(Some("peek"), Some("3500"), None),
+            TopEdgePolicy::Dwell {
+                dwell_ms: 2000,
+                allow_ceiling_instant: true,
+            }
+        );
+        assert_eq!(
+            resolve_top_edge_policy(Some("work"), None, None),
+            TopEdgePolicy::Dwell {
+                dwell_ms: 2000,
+                allow_ceiling_instant: false,
+            }
+        );
+        assert_eq!(
+            resolve_top_edge_policy(Some("work"), Some("200"), Some("3500")),
+            TopEdgePolicy::Dwell {
+                dwell_ms: 3500,
+                allow_ceiling_instant: false,
+            }
+        );
+        assert_eq!(
+            resolve_top_edge_policy(Some("work"), Some("200"), Some("never")),
+            TopEdgePolicy::NeverReveal
+        );
+        assert_eq!(
+            resolve_top_edge_policy(Some("work"), None, Some("99999")),
+            TopEdgePolicy::Dwell {
+                dwell_ms: 10_000,
+                allow_ceiling_instant: false,
+            }
+        );
     }
 
     #[test]

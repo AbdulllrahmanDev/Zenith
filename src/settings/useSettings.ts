@@ -191,6 +191,21 @@ export function useSettings() {
 		const val = localStorage.getItem("zenith-notch-edge-delay");
 		return val !== null ? parseInt(val) : 200;
 	});
+	const [notchWorkDelay, setNotchWorkDelay] = useState(() => {
+		const val = localStorage.getItem("zenith-notch-work-delay");
+		if (val && val.trim().toLowerCase() === "never") return "never";
+		const parsed = val !== null ? parseInt(val, 10) : 2000;
+		return Number.isFinite(parsed) ? String(Math.min(5000, Math.max(500, parsed))) : "2000";
+	});
+	const [notchWorkLastDelayMs, setNotchWorkLastDelayMs] = useState(() => {
+		const val = localStorage.getItem("zenith-notch-work-delay");
+		const parsed = val !== null ? parseInt(val, 10) : 2000;
+		return Number.isFinite(parsed) ? Math.min(5000, Math.max(500, parsed)) : 2000;
+	});
+	const [notchPosition, setNotchPosition] = useState<"left" | "center" | "right">(() => {
+		const val = localStorage.getItem("zenith-notch-position");
+		return val === "left" || val === "right" ? val : "center";
+	});
 	const [displays, setDisplays] = useState<DisplayInfo[]>([]);
 	const [notchDisplay, setNotchDisplay] = useState(
 		() => localStorage.getItem("zenith-notch-display") || "primary"
@@ -557,6 +572,20 @@ export function useSettings() {
 
 			apply(getVal("zenith-notch-mode"), setNotchMode, (v) => (v === "auto-hide" ? "smart" : v));
 			apply(getVal("zenith-notch-edge-delay"), setNotchEdgeDelay, parseInt);
+			const rawWorkDelay = getVal("zenith-notch-work-delay");
+			if (typeof rawWorkDelay === "string") {
+				if (rawWorkDelay.trim().toLowerCase() === "never") {
+					setNotchWorkDelay("never");
+				} else {
+					const parsed = parseInt(rawWorkDelay, 10);
+					const clamped = Number.isFinite(parsed) ? Math.min(5000, Math.max(500, parsed)) : 2000;
+					setNotchWorkLastDelayMs(clamped);
+					setNotchWorkDelay(String(clamped));
+				}
+			}
+			apply(getVal("zenith-notch-position"), setNotchPosition, (v) =>
+				v === "left" || v === "right" ? v : "center"
+			);
 			apply(getVal("zenith-dock-mode"), setDockMode, (v) => (v === "auto-hide" ? "smart" : v));
 			apply(getVal("zenith-dock-edge-delay"), setDockEdgeDelay, parseInt);
 			apply(getVal("zenith-notch-display"), setNotchDisplay, (v) => v);
@@ -822,6 +851,18 @@ export function useSettings() {
 		"zenith-dock-edge-delay": setDockEdgeDelay,
 		"zenith-notch-mode": setNotchMode,
 		"zenith-notch-edge-delay": setNotchEdgeDelay,
+		"zenith-notch-work-delay": (v: unknown) => {
+			if (typeof v === "string" && v.trim().toLowerCase() === "never") {
+				setNotchWorkDelay("never");
+				return;
+			}
+			const parsed = typeof v === "number" ? v : parseInt(String(v), 10);
+			const clamped = Number.isFinite(parsed) ? Math.min(5000, Math.max(500, Math.round(parsed))) : 2000;
+			setNotchWorkLastDelayMs(clamped);
+			setNotchWorkDelay(String(clamped));
+		},
+		"zenith-notch-position": (v: unknown) =>
+			setNotchPosition(v === "left" || v === "right" ? v : "center"),
 		"zenith-dock-enabled": setDockEnabled,
 		"zenith-dock-icon-only": setDockIconOnly,
 		"zenith-dock-separator-enabled": setDockSeparatorEnabled,
@@ -1625,6 +1666,30 @@ export function useSettings() {
 		saveSetting("zenith-notch-edge-delay", val.toString());
 	};
 
+	const toggleNotchWorkNever = () => {
+		if (notchWorkDelay === "never") {
+			const next = String(notchWorkLastDelayMs);
+			setNotchWorkDelay(next);
+			saveSetting("zenith-notch-work-delay", next);
+		} else {
+			setNotchWorkDelay("never");
+			saveSetting("zenith-notch-work-delay", "never");
+		}
+	};
+
+	const handleNotchWorkDelayChange = (ms: number) => {
+		const clamped = Math.min(5000, Math.max(500, Math.round(ms)));
+		setNotchWorkLastDelayMs(clamped);
+		const next = String(clamped);
+		setNotchWorkDelay(next);
+		saveSettingDebounced("zenith-notch-work-delay", next);
+	};
+
+	const setNotchPositionValue = (pos: "left" | "center" | "right") => {
+		setNotchPosition(pos);
+		saveSetting("zenith-notch-position", pos);
+	};
+
 	const handleThresholdChange = (val: number) => {
 		setLowBatteryThreshold(val);
 		saveSetting("zenith-low-battery-threshold", val.toString());
@@ -2009,6 +2074,11 @@ export function useSettings() {
 		setNotchModeValue,
 		notchEdgeDelay,
 		handleNotchEdgeDelayChange,
+		notchWorkDelay,
+		toggleNotchWorkNever,
+		handleNotchWorkDelayChange,
+		notchPosition,
+		setNotchPositionValue,
 		notchDisplay,
 		setNotchDisplayValue,
 		displays,

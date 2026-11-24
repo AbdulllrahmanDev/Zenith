@@ -37,10 +37,13 @@ export function clipToWindow(rect: RegionRect, width: number, height: number): R
 	return { x: left, y: top, width: right - left, height: bottom - top };
 }
 
+export type NotchPosition = "left" | "center" | "right";
+
 /**
  * The notch pill's box in window CSS px, from the size and offset it is
- * animating toward. The pill is centered horizontally and hangs from the top
- * edge; `pad` covers its shadow and the edge flares beside it.
+ * animating toward. The pill hangs from the top edge horizontally aligned by
+ * `position` (centered by default, or inset `edgeInset` CSS px from the left/right
+ * monitor edges); `pad` covers its shadow and the edge flares beside it.
  */
 export function notchPillBox(
 	windowWidth: number,
@@ -48,11 +51,19 @@ export function notchPillBox(
 	targetY: number,
 	targetWidth: number,
 	targetHeight: number,
-	pad: number
+	pad: number,
+	position: NotchPosition = "center",
+	edgeInset = 24
 ): RegionRect {
 	const width = targetWidth * scale;
+	const baseX =
+		position === "left"
+			? edgeInset * scale
+			: position === "right"
+				? windowWidth - width - edgeInset * scale
+				: (windowWidth - width) / 2;
 	return {
-		x: (windowWidth - width) / 2 - pad * scale,
+		x: baseX - pad * scale,
 		y: targetY * scale,
 		width: width + pad * 2 * scale,
 		height: targetHeight * scale + pad * scale

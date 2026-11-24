@@ -1346,6 +1346,42 @@ pub fn get_zenith_scale(_app: &tauri::AppHandle) -> f64 {
         .unwrap_or(1.0)
 }
 
+/// Automatic size factor for the notch on a display of the given logical
+/// (DPI-independent) size. A 1920x1080 logical display gets the base size,
+/// smaller displays shrink it and larger ones grow it, within limits. Must
+/// stay in sync with `notchScreenFactor` in `src/notchScale.ts`.
+pub fn notch_screen_factor(logical_width: f64, logical_height: f64) -> f64 {
+    const BASE: f64 = 1.12;
+    if !(logical_width > 0.0 && logical_height > 0.0) {
+        return BASE;
+    }
+    let ratio = (logical_width / 1920.0).min(logical_height / 1080.0);
+    let factor = BASE * ratio.sqrt().clamp(0.85, 1.25);
+    (factor * 100.0).round() / 100.0
+}
+
+/// The notch's full scale on `monitor`: the user's `zenith-scale` times the
+/// automatic display factor.
+pub fn notch_scale_for(zenith_scale: f64, monitor: &tauri::Monitor) -> f64 {
+    let sf = monitor.scale_factor();
+    let size = monitor.size();
+    zenith_scale * notch_screen_factor(size.width as f64 / sf, size.height as f64 / sf)
+}
+
+/// Whether the notch floats below the top edge (`zenith-notch-floating`, on by default).
+pub fn notch_floating(app: &tauri::AppHandle) -> bool {
+    get_setting_str(app, "zenith-notch-floating").as_deref() != Some("false")
+}
+
+/// Height in CSS px of the top strip the notch reserves in fixed mode.
+pub fn notch_reserved_height(floating: bool) -> f64 {
+    if floating {
+        50.0
+    } else {
+        40.0
+    }
+}
+
 /// Read any string value from the settings cache. Returns None if the key is absent.
 pub fn get_setting_str(_app: &tauri::AppHandle, key: &str) -> Option<String> {
     let cache = crate::state::SETTINGS_CACHE.get()?;
@@ -1595,9 +1631,23 @@ pub fn capture_hwnd_to_base64(hwnd: HWND, max_width: u32, max_height: u32) -> Op
 mod tests {
     use super::{
         click_through_style, expand_env_vars, is_placed_rect, marker_contents, moved_squirrel_exe,
-        newest_squirrel_folder, parse_marker_pid, parse_marker_rect, parse_marker_secondaries,
-        parse_marker_state, relaunch_executable,
+        newest_squirrel_folder, notch_screen_factor, parse_marker_pid, parse_marker_rect,
+        parse_marker_secondaries, parse_marker_state, relaunch_executable,
     };
+
+    #[test]
+    fn notch_factor_follows_display_size() {
+        assert_eq!(notch_screen_factor(1920.0, 1080.0), 1.12);
+        // Small laptop: shrinks, but not below the floor.
+        assert_eq!(notch_screen_factor(1366.0, 768.0), 0.95);
+        // 1440p: grows.
+        assert_eq!(notch_screen_factor(2560.0, 1440.0), 1.29);
+        // Ultrawide is limited by its height.
+        assert_eq!(notch_screen_factor(3440.0, 1440.0), 1.29);
+        // Very large displays are capped.
+        assert_eq!(notch_screen_factor(3840.0, 2160.0), 1.4);
+        assert_eq!(notch_screen_factor(0.0, 0.0), 1.12);
+    }
 
     #[test]
     fn picks_the_newest_squirrel_version_by_number() {

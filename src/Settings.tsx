@@ -281,6 +281,11 @@ function SettingsApp() {
 							setNotchModeValue={settings.setNotchModeValue}
 							notchEdgeDelay={settings.notchEdgeDelay}
 							handleNotchEdgeDelayChange={settings.handleNotchEdgeDelayChange}
+							notchWorkDelay={settings.notchWorkDelay}
+							toggleNotchWorkNever={settings.toggleNotchWorkNever}
+							handleNotchWorkDelayChange={settings.handleNotchWorkDelayChange}
+							notchPosition={settings.notchPosition}
+							setNotchPositionValue={settings.setNotchPositionValue}
 							notchDisplay={settings.notchDisplay}
 							setNotchDisplayValue={settings.setNotchDisplayValue}
 							displays={settings.displays}

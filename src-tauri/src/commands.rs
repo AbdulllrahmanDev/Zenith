@@ -516,7 +516,7 @@ pub async fn change_notch_mode(app: AppHandle, mode: String) {
             let m_pos = monitor.position();
             let m_size = monitor.size();
             let scale = monitor.scale_factor();
-            let zenith_scale = crate::utils::get_zenith_scale(&app);
+            let zenith_scale = crate::utils::notch_scale_for(crate::utils::get_zenith_scale(&app), &monitor);
             let target_height = (420.0 * zenith_scale * scale) as u32;
             let _ = main_win.set_position(tauri::PhysicalPosition::new(m_pos.x, m_pos.y));
             let _ = main_win.set_size(tauri::PhysicalSize::new(m_size.width, target_height));
@@ -602,7 +602,8 @@ fn position_notch_window(win: &tauri::WebviewWindow, monitor: &tauri::Monitor, z
     let m_pos = monitor.position();
     let m_size = monitor.size();
     let scale = monitor.scale_factor();
-    let target_height = (420.0 * zenith_scale * scale) as u32;
+    let notch_scale = crate::utils::notch_scale_for(zenith_scale, monitor);
+    let target_height = (420.0 * notch_scale * scale) as u32;
     let _ = win.set_position(tauri::PhysicalPosition::new(m_pos.x, m_pos.y));
     let _ = win.set_size(tauri::PhysicalSize::new(m_size.width, target_height));
     let _ = win.show();
@@ -3679,18 +3680,23 @@ pub async fn close_window(hwnd: isize) {
 }
 
 fn re_register_appbars(app: &AppHandle, settings: &HashMap<String, serde_json::Value>) {
-    // Reconcile the notch from the live mode: a scale change alters the
-    // reserved strip height, and peek/smart must never hold a reservation.
-    crate::services::reconcile_main_appbar(app);
-    if let Some(dock_win) = app.get_webview_window("dock") {
-        let is_fixed = settings
-            .get("zenith-dock-mode")
-            .map(|v| v.as_str() == Some("fixed"))
-            .unwrap_or(false);
-        if is_fixed {
-            crate::services::register_dock_appbar(dock_win);
+    // Offload AppBar lock + Win32 calls off the UI thread so synchronous callers
+    // like save_setting / import_settings never ABBA-deadlock against worker threads.
+    let app_clone = app.clone();
+    let dock_is_fixed = settings
+        .get("zenith-dock-mode")
+        .map(|v| v.as_str() == Some("fixed"))
+        .unwrap_or(false);
+    tauri::async_runtime::spawn_blocking(move || {
+        // Reconcile the notch from the live mode: a scale change alters the
+        // reserved strip height, and peek/smart/work must never hold a reservation.
+        crate::services::reconcile_main_appbar(&app_clone);
+        if dock_is_fixed {
+            if let Some(dock_win) = app_clone.get_webview_window("dock") {
+                crate::services::register_dock_appbar(dock_win);
+            }
         }
-    }
+    });
 }
 
 #[tauri::command]
@@ -3732,7 +3738,7 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
 
     if key == "zenith-language" || key == "bloom-language" {
         apply_language(&app, value.as_str());
-    } else if key == "zenith-scale" || key == "bloom-scale" {
+    } else if key == "zenith-scale" || key == "bloom-scale" || key == "zenith-notch-floating" {
         re_register_appbars(&app, &settings);
     } else if key == "zenith-notch-mode" || key == "bloom-notch-mode" {
         let mode_val = settings
@@ -3740,7 +3746,10 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
             .or_else(|| settings.get("bloom-notch-mode"))
             .and_then(|v| v.as_str());
         let reserve = crate::services::notch_mode_reserves_work_area(mode_val);
-        crate::services::apply_main_appbar_mode(&app, reserve);
+        let app_clone = app.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            crate::services::apply_main_appbar_mode(&app_clone, reserve);
+        });
     } else if key == "zenith-notch-display"
         || key == "bloom-notch-display"
         || key == "zenith-dock-display"

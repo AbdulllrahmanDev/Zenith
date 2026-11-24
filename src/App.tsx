@@ -11,8 +11,11 @@ import {
 	createRegionSender,
 	measureElements,
 	notchPillBox,
+	onPixelRatioChange,
+	type NotchPosition,
 	type RegionRect
 } from "./windowRegion";
+import { currentNotchScreenFactor } from "./notchScale";
 import "./App.css";
 import { initTheme } from "./theme";
 import {
@@ -537,9 +540,22 @@ function App() {
 	const isOpenRef = useRef(false);
 	isOpenRef.current = isOpen;
 	const [isReady, setIsReady] = useState(false);
-	const [scale, setScale] = useState(() =>
+	const [userScale, setScale] = useState(() =>
 		parseFloat(localStorage.getItem("zenith-scale") || "1.0")
 	);
+	// The notch grows and shrinks with its display on top of the user's
+	// scale; the backend sizes the window with the same factor.
+	const [screenFactor, setScreenFactor] = useState(currentNotchScreenFactor);
+	useEffect(() => {
+		const update = () => setScreenFactor(currentNotchScreenFactor());
+		window.addEventListener("resize", update);
+		const stopRatio = onPixelRatioChange(update);
+		return () => {
+			window.removeEventListener("resize", update);
+			stopRatio();
+		};
+	}, []);
+	const scale = userScale * screenFactor;
 	const [timeFormat24h, setTimeFormat24h] = useState(
 		() => localStorage.getItem("zenith-time-format-24h") === "true"
 	);
@@ -581,6 +597,20 @@ function App() {
 		if (raw === "auto-hide") return "smart";
 		return raw;
 	});
+	const [notchWorkDelay, setNotchWorkDelay] = useState(() => {
+		const val = localStorage.getItem("zenith-notch-work-delay");
+		if (val && val.trim().toLowerCase() === "never") return "never";
+		const parsed = val !== null ? parseInt(val, 10) : 2000;
+		return Number.isFinite(parsed) ? String(Math.min(10000, Math.max(500, parsed))) : "2000";
+	});
+	const [notchPosition, setNotchPosition] = useState<NotchPosition>(() => {
+		const val = localStorage.getItem("zenith-notch-position");
+		return val === "left" || val === "right" ? val : "center";
+	});
+	const notchWorkDelayRef = useRef(notchWorkDelay);
+	notchWorkDelayRef.current = notchWorkDelay;
+	const isOverlappedRef = useRef(false);
+	const isWorkNeverOverlappedRef = useRef(false);
 
 	useEffect(() => {
 		if (isReady && prevChargingRef.current !== null && prevChargingRef.current !== isCharging) {
@@ -809,12 +839,19 @@ function App() {
 	const appliedDock = useRef<{ enabled: boolean; mode: string } | null>(null);
 	const appliedNotchMode = useRef<string | null>(null);
 
-	const isAnyInteraction = isHovered || isNotchHovered || isEdgeHovered || eventPeek || notchTranslationOpen;
+	const NOTCH_EDGE_INSET = 24;
+	isOverlappedRef.current = isOverlapped;
+	const isWorkNeverOverlapped =
+		notchMode === "work" && notchWorkDelay === "never" && isOverlapped;
+	isWorkNeverOverlappedRef.current = isWorkNeverOverlapped;
+	const effectiveEdgeHovered = isEdgeHovered && !isWorkNeverOverlapped;
+	const isAnyInteraction =
+		isHovered || isNotchHovered || effectiveEdgeHovered || eventPeek || notchTranslationOpen;
 	const isHidden =
 		!startupAnimating &&
 		!showAthanBanner &&
 		!notchTranslationOpen &&
-		notchMode === "smart" &&
+		(notchMode === "smart" || notchMode === "work") &&
 		isOverlapped &&
 		interactionState === "none";
 
@@ -861,7 +898,12 @@ function App() {
 				if (tb.visible && tb.y >= 0) {
 					const targetW = tb.width * scale;
 					const targetH = tb.height * scale;
-					const targetLeft = (window.innerWidth - targetW) / 2;
+					const targetLeft =
+						notchPosition === "left"
+							? NOTCH_EDGE_INSET * scale
+							: notchPosition === "right"
+								? window.innerWidth - targetW - NOTCH_EDGE_INSET * scale
+								: (window.innerWidth - targetW) / 2;
 					const targetTop = tb.y * scale;
 					left = Math.min(left, targetLeft);
 					top = Math.min(Math.max(0, top), targetTop);
@@ -895,7 +937,7 @@ function App() {
 			window.removeEventListener("resize", updateRect);
 			observer.disconnect();
 		};
-	}, [isExpanded, isHidden, windowLabel, scale]);
+	}, [isExpanded, isHidden, windowLabel, scale, notchPosition]);
 
 	useEffect(() => {
 		if (!windowLabel) return;
@@ -1248,6 +1290,21 @@ function App() {
 					setNotchMode(mapped);
 				}
 
+				const nWorkDelay = getVal("zenith-notch-work-delay", "2000");
+				if (nWorkDelay) {
+					if (nWorkDelay.trim().toLowerCase() === "never") {
+						setNotchWorkDelay("never");
+					} else {
+						const parsed = parseInt(nWorkDelay, 10);
+						setNotchWorkDelay(
+							Number.isFinite(parsed) ? String(Math.min(10000, Math.max(500, parsed))) : "2000"
+						);
+					}
+				}
+
+				const nPos = getVal("zenith-notch-position", "center");
+				setNotchPosition(nPos === "left" || nPos === "right" ? nPos : "center");
+
 				if (windowLabel === "main") {
 					const firstRun = localStorage.getItem("zenith-first-run") === null;
 					if (firstRun) {
@@ -1325,12 +1382,20 @@ function App() {
 				if (payload.target && payload.target !== windowLabel) {
 					return;
 				}
+				if (payload.hovered && isWorkNeverOverlappedRef.current) {
+					setIsEdgeHovered(false);
+					return;
+				}
 				setIsEdgeHovered(payload.hovered);
 				if (payload.hovered) {
 					releaseDeferredRef.current = false;
 					setIsHovered(true);
 				}
 			} else {
+				if (payload && isWorkNeverOverlappedRef.current) {
+					setIsEdgeHovered(false);
+					return;
+				}
 				setIsEdgeHovered(payload);
 				if (payload) {
 					releaseDeferredRef.current = false;
@@ -1388,6 +1453,18 @@ function App() {
 			"zenith-dock-enabled": setDockEnabled,
 			"zenith-dock-mode": setDockMode,
 			"zenith-notch-mode": setNotchMode,
+			"zenith-notch-work-delay": (v: unknown) => {
+				if (typeof v === "string" && v.trim().toLowerCase() === "never") {
+					setNotchWorkDelay("never");
+					return;
+				}
+				const parsed = typeof v === "number" ? v : parseInt(String(v), 10);
+				setNotchWorkDelay(
+					Number.isFinite(parsed) ? String(Math.min(10000, Math.max(500, Math.round(parsed)))) : "2000"
+				);
+			},
+			"zenith-notch-position": (v: unknown) =>
+				setNotchPosition(v === "left" || v === "right" ? v : "center"),
 			"zenith-status-widgets": (value) => {
 				try {
 					const parsed = JSON.parse(value);
@@ -1497,7 +1574,12 @@ function App() {
 						const wasInitialSync = !initialSystemSyncDone.current;
 						initialSystemSyncDone.current = true;
 						if (wasInitialSync) {
-							if (notchMode === "peek" || notchMode === "smart") {
+							if (
+								notchMode === "peek" ||
+								notchMode === "smart" ||
+								(notchMode === "work" &&
+									!(notchWorkDelayRef.current === "never" && isOverlappedRef.current))
+							) {
 								triggerEventPeek(4000);
 							}
 							settleTimer = window.setTimeout(() => {
@@ -2131,7 +2213,7 @@ function App() {
 			setNotchTranslationRemainingPct(100);
 			setIsOpen(true);
 			setNotchPanelMode("translator");
-			if (notchMode === "peek" || notchMode === "smart") {
+			if (notchMode === "peek" || notchMode === "smart" || notchMode === "work") {
 				triggerEventPeek(p.status === "loading" ? 15000 : nextTimeout * 1000);
 			}
 		})
@@ -3047,17 +3129,19 @@ function App() {
 	);
 
 	const toggleNotchModeSetting = useCallback(
-		async (e: React.MouseEvent) => {
+		(e: React.MouseEvent) => {
 			e.stopPropagation();
-			const nextMode = notchMode === "fixed" ? "smart" : notchMode === "smart" ? "peek" : "fixed";
+			const nextMode =
+				notchMode === "fixed"
+					? "smart"
+					: notchMode === "smart"
+						? "work"
+						: notchMode === "work"
+							? "peek"
+							: "fixed";
 			setNotchMode(nextMode);
 			localStorage.setItem("zenith-notch-mode", nextMode);
 			invoke("save_setting", { key: "zenith-notch-mode", value: nextMode }).catch(console.error);
-			try {
-				await invoke("change_notch_mode", { mode: nextMode });
-			} catch (err) {
-				console.error("Failed to change notch mode:", err);
-			}
 		},
 		[notchMode]
 	);
@@ -3371,7 +3455,9 @@ function App() {
 		pillTargetY,
 		pillTargetWidth,
 		pillTargetHeight,
-		24
+		24,
+		notchPosition,
+		NOTCH_EDGE_INSET
 	);
 
 	// Clip the notch window to what it draws (see window_region.rs): outside
@@ -3389,10 +3475,12 @@ function App() {
 		isHovered,
 		isOpen,
 		notchPanelMode,
+		notchPosition,
 		pillTargetY,
 		pillTargetWidth,
 		pillTargetHeight,
 		scale,
+		notchFloating,
 		settingsCornersEnabled,
 		statusTooltip?.id,
 		mediaInfo.has_media,
@@ -3403,6 +3491,85 @@ function App() {
 		notchTranslation?.status,
 		notchTranslation?.text
 	]);
+
+	const renderShelfBubble = (clustered: boolean) =>
+		showShelfBubble ? (
+			<motion.button
+				key="shelf-bubble"
+				ref={shelfBubbleRef}
+				type="button"
+				className={`activity-bubble shelf-bubble ${isHovered ? "expanded" : ""} ${notchFloating ? "is-floating" : ""}`}
+				aria-label={nu.shelfBubbleAria(shelfItems.length)}
+				style={clustered ? undefined : { right: "100%", marginRight: 8 }}
+				initial={
+					clustered
+						? { opacity: 0, scale: 0.4, x: notchPosition === "left" ? -16 : 16 }
+						: { opacity: 0, scale: 0.4, x: 28 }
+				}
+				animate={{ opacity: 1, scale: 1, x: 0 }}
+				exit={
+					clustered
+						? { opacity: 0, scale: 0.4, x: notchPosition === "left" ? -16 : 16 }
+						: { opacity: 0, scale: 0.4, x: 28 }
+				}
+				transition={{
+					type: "spring",
+					stiffness: 400,
+					damping: 31,
+					opacity: { duration: 0.15 }
+				}}
+				onAnimationComplete={() => reportNotchRect.current()}
+				onClick={(e) => {
+					e.stopPropagation();
+					setIsHovered(true);
+					openNotch("shelf");
+				}}
+			>
+				<Inbox size={notchFloating ? 13 : 12} strokeWidth={2.4} />
+				<span>{shelfItems.length}</span>
+			</motion.button>
+		) : null;
+
+	const renderMusicBubble = (clustered: boolean) =>
+		showMusicBubble ? (
+			<motion.button
+				key="music-bubble"
+				ref={musicBubbleRef}
+				type="button"
+				className={`activity-bubble ${isHovered ? "expanded" : ""} ${notchFloating ? "is-floating" : ""}`}
+				aria-label={nu.musicBubbleAria(mediaInfo.title)}
+				style={clustered ? undefined : { left: "100%", marginLeft: 8 }}
+				initial={
+					clustered
+						? { opacity: 0, scale: 0.4, x: notchPosition === "left" ? -16 : 16 }
+						: { opacity: 0, scale: 0.4, x: -28 }
+				}
+				animate={{ opacity: 1, scale: 1, x: 0 }}
+				exit={
+					clustered
+						? { opacity: 0, scale: 0.4, x: notchPosition === "left" ? -16 : 16 }
+						: { opacity: 0, scale: 0.4, x: -28 }
+				}
+				transition={{
+					type: "spring",
+					stiffness: 400,
+					damping: 31,
+					opacity: { duration: 0.15 }
+				}}
+				onAnimationComplete={() => reportNotchRect.current()}
+				onClick={(e) => {
+					e.stopPropagation();
+					setIsHovered(true);
+					openNotch("music");
+				}}
+			>
+				{settingsAlbumArtEnabled && albumArtUrl ? (
+					<img src={albumArtUrl} alt="" draggable={false} />
+				) : (
+					<Music size={14} strokeWidth={2.2} />
+				)}
+			</motion.button>
+		) : null;
 
 	return (
 		<div className="screen" style={{ overflow: "hidden" }}>
@@ -3431,10 +3598,16 @@ function App() {
 					zoom: scale,
 					width: "100%",
 					display: "flex",
-					justifyContent: "center",
 					position: "relative"
 				}}
 			>
+				<div
+					className="notch-anchor"
+					style={{
+						marginLeft: notchPosition === "left" ? NOTCH_EDGE_INSET : "auto",
+						marginRight: notchPosition === "right" ? NOTCH_EDGE_INSET : "auto"
+					}}
+				>
 				<motion.div
 					ref={notchRef}
 					className={`zenith-notch ${isHovered ? "expanded" : ""} ${isImpacted ? "is-impacted" : ""} ${isDragHovering ? "drag-hover" : ""} ${notchPanelMode === "translator" && notchTranslation ? "is-translator" : ""}`}
@@ -4297,7 +4470,9 @@ function App() {
 																? t.notch.modeFixed
 																: notchMode === "smart"
 																	? t.notch.modeSmart
-																	: t.notch.modePeek}
+																	: notchMode === "work"
+																		? t.notch.modeWork
+																		: t.notch.modePeek}
 														</span>
 													</div>
 												</div>
@@ -4845,73 +5020,30 @@ function App() {
 						)}
 					</AnimatePresence>
 				</motion.div>
-				{/* The shelf's items, as a bubble on the left of the collapsed pill */}
-				<AnimatePresence onExitComplete={() => reportNotchRect.current()}>
-					{showShelfBubble && (
-						<motion.button
-							key="shelf-bubble"
-							ref={shelfBubbleRef}
-							type="button"
-							className={`activity-bubble shelf-bubble ${isHovered ? "expanded" : ""}`}
-							aria-label={nu.shelfBubbleAria(shelfItems.length)}
-							// Anchored at the pill's centre, offset past its left edge.
-							style={{ right: "50%" }}
-							initial={{ opacity: 0, scale: 0.4, x: 28, marginRight: getDynamicWidth() / 2 + 8 }}
-							animate={{ opacity: 1, scale: 1, x: 0, marginRight: getDynamicWidth() / 2 + 8 }}
-							exit={{ opacity: 0, scale: 0.4, x: 28 }}
-							transition={{
-								type: "spring",
-								stiffness: 400,
-								damping: 31,
-								opacity: { duration: 0.15 }
-							}}
-							onAnimationComplete={() => reportNotchRect.current()}
-							onClick={(e) => {
-								e.stopPropagation();
-								setIsHovered(true);
-								openNotch("shelf");
-							}}
-						>
-							<Inbox size={12} strokeWidth={2.4} />
-							<span>{shelfItems.length}</span>
-						</motion.button>
-					)}
-				</AnimatePresence>
-				{/* Music in its own bubble while a timer holds the collapsed pill */}
-				<AnimatePresence onExitComplete={() => reportNotchRect.current()}>
-					{showMusicBubble && (
-						<motion.button
-							key="music-bubble"
-							ref={musicBubbleRef}
-							type="button"
-							className={`activity-bubble ${isHovered ? "expanded" : ""}`}
-							aria-label={nu.musicBubbleAria(mediaInfo.title)}
-							// Anchored at the pill's centre, offset past its right edge.
-							style={{ left: "50%" }}
-							initial={{ opacity: 0, scale: 0.4, x: -28, marginLeft: getDynamicWidth() / 2 + 8 }}
-							animate={{ opacity: 1, scale: 1, x: 0, marginLeft: getDynamicWidth() / 2 + 8 }}
-							exit={{ opacity: 0, scale: 0.4, x: -28 }}
-							transition={{
-								type: "spring",
-								stiffness: 400,
-								damping: 31,
-								opacity: { duration: 0.15 }
-							}}
-							onAnimationComplete={() => reportNotchRect.current()}
-							onClick={(e) => {
-								e.stopPropagation();
-								setIsHovered(true);
-								openNotch("music");
-							}}
-						>
-							{settingsAlbumArtEnabled && albumArtUrl ? (
-								<img src={albumArtUrl} alt="" draggable={false} />
-							) : (
-								<Music size={14} strokeWidth={2.2} />
-							)}
-						</motion.button>
-					)}
-				</AnimatePresence>
+				{notchPosition === "center" ? (
+					<>
+						{/* The shelf's items, as a bubble on the left of the collapsed pill */}
+						<AnimatePresence onExitComplete={() => reportNotchRect.current()}>
+							{renderShelfBubble(false)}
+						</AnimatePresence>
+						{/* Music in its own bubble while a timer holds the collapsed pill */}
+						<AnimatePresence onExitComplete={() => reportNotchRect.current()}>
+							{renderMusicBubble(false)}
+						</AnimatePresence>
+					</>
+				) : (
+					<div
+						className={`activity-bubble-cluster ${
+							notchPosition === "left" ? "is-right" : "is-left"
+						} ${notchFloating ? "is-floating" : ""}`}
+					>
+						<AnimatePresence onExitComplete={() => reportNotchRect.current()}>
+							{renderShelfBubble(true)}
+							{renderMusicBubble(true)}
+						</AnimatePresence>
+					</div>
+				)}
+				</div>
 			</div>
 		</div>
 	);
