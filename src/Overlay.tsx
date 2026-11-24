@@ -750,6 +750,7 @@ function OverlayApp() {
 	);
 	const [converterPhase, setConverterPhase] = useState<ConverterPhase>("idle");
 	const converterLockRef = useRef(false);
+	const converterForceRegionRef = useRef(false);
 
 	const resetHideTimeout = useCallback(() => {
 		// Keep the notch pinned while the mixer panel is open; it closes on
@@ -1295,6 +1296,9 @@ function OverlayApp() {
 		setConverterPhase(nextPhase);
 		const isLocked =
 			nextPhase === "donut" || nextPhase === "checking" || nextPhase === "install";
+		if (converterLockRef.current && !isLocked) {
+			converterForceRegionRef.current = true;
+		}
 		converterLockRef.current = isLocked;
 		if (isLocked) {
 			if (timeoutRef.current) {
@@ -1307,12 +1311,17 @@ function OverlayApp() {
 		}
 	}, []);
 
-	const handleConverterRegionInvalidate = useCallback(() => {
-		sendOverlayRegion(computeOverlayRegionRects());
-	}, [computeOverlayRegionRects, sendOverlayRegion]);
+	const handleConverterRegionInvalidate = useCallback(
+		(force = false) => {
+			sendOverlayRegion(computeOverlayRegionRects(), force);
+		},
+		[computeOverlayRegionRects, sendOverlayRegion]
+	);
 
 	useEffect(() => {
-		sendOverlayRegion(computeOverlayRegionRects());
+		const force = converterForceRegionRef.current;
+		converterForceRegionRef.current = false;
+		sendOverlayRegion(computeOverlayRegionRects(), force);
 	});
 
 	return (

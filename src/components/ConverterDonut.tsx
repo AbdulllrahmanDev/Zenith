@@ -76,7 +76,7 @@ export interface ConverterDonutProps {
 	outputFolder: string;
 	suppressed: boolean;
 	onPhaseChange?: (phase: ConverterPhase) => void;
-	onRegionInvalidate?: () => void;
+	onRegionInvalidate?: (force?: boolean) => void;
 }
 
 interface DonutOpenPayload {
@@ -610,7 +610,7 @@ export function ConverterDonut({
 	const releaseOverlayLock = useCallback(async () => {
 		await invoke("converter_set_overlay_open", { open: false }).catch(() => {});
 		requestAnimationFrame(() => {
-			onRegionInvalidateRef.current?.();
+			onRegionInvalidateRef.current?.(true);
 		});
 	}, []);
 
@@ -1248,10 +1248,10 @@ export function ConverterDonut({
 				setInstallPrompt(null);
 				setActiveIndex(null);
 				setIsCenterActive(false);
-				requestAnimationFrame(() => {
-					onRegionInvalidateRef.current?.();
-				});
 			}
+			requestAnimationFrame(() => {
+				onRegionInvalidateRef.current?.(true);
+			});
 		});
 
 		const unProgress = listen<ConverterProgressPayload>("converter-progress", (ev) => {
