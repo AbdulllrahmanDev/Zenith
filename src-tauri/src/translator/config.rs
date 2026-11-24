@@ -327,7 +327,7 @@ pub fn parse_card_pos(raw: &str) -> Option<(i32, i32)> {
     None
 }
 
-pub fn translator_root_dir(app: &AppHandle) -> PathBuf {
+pub fn ai_root_dir(app: &AppHandle) -> PathBuf {
     app.path()
         .app_config_dir()
         .unwrap_or_else(|_| {
@@ -336,15 +336,28 @@ pub fn translator_root_dir(app: &AppHandle) -> PathBuf {
                 .unwrap_or_else(std::env::temp_dir)
                 .join("io.github.abdulllrahmandev.zenith")
         })
-        .join("translator")
+        .join("ai")
+}
+
+pub fn ai_models_dir(app: &AppHandle) -> PathBuf {
+    ai_root_dir(app).join("models")
+}
+
+pub fn ai_runtime_dir(app: &AppHandle) -> PathBuf {
+    ai_root_dir(app).join("runtime")
+}
+
+#[allow(dead_code)]
+pub fn translator_root_dir(app: &AppHandle) -> PathBuf {
+    ai_root_dir(app)
 }
 
 pub fn translator_models_dir(app: &AppHandle) -> PathBuf {
-    translator_root_dir(app).join("models")
+    ai_models_dir(app)
 }
 
 pub fn translator_runtime_dir(app: &AppHandle) -> PathBuf {
-    translator_root_dir(app).join("runtime")
+    ai_runtime_dir(app)
 }
 
 /// Migrate existing settings from `%APPDATA%/AntigravityTranslator/config.json` once

@@ -8,7 +8,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use super::config::{
     translator_models_dir, translator_runtime_dir, LLAMA_RUNTIME_APPROX_MB,
@@ -62,6 +62,16 @@ fn download_mutex() -> &'static Mutex<LocalDownloadStatus> {
 }
 
 pub fn resolve_model_path(app: &AppHandle) -> Option<PathBuf> {
+    if let Ok(base) = app.path().app_config_dir() {
+        let ai_path = base.join("ai").join("models").join(LOCAL_MODEL_FILENAME);
+        if is_valid_file(&ai_path, MIN_VALID_MODEL_BYTES) {
+            return Some(ai_path);
+        }
+        let root_models = base.join("models").join(LOCAL_MODEL_FILENAME);
+        if is_valid_file(&root_models, MIN_VALID_MODEL_BYTES) {
+            return Some(root_models);
+        }
+    }
     let zenith_path = translator_models_dir(app).join(LOCAL_MODEL_FILENAME);
     if is_valid_file(&zenith_path, MIN_VALID_MODEL_BYTES) {
         return Some(zenith_path);
@@ -79,15 +89,46 @@ pub fn resolve_model_path(app: &AppHandle) -> Option<PathBuf> {
 }
 
 pub fn runtime_server_exe(app: &AppHandle) -> PathBuf {
-    translator_runtime_dir(app).join("llama-server.exe")
+    let ai_exe = translator_runtime_dir(app).join("llama-server.exe");
+    if ai_exe.is_file() {
+        return ai_exe;
+    }
+    if let Some(appdata) = std::env::var_os("APPDATA") {
+        let legacy = PathBuf::from(appdata)
+            .join("io.github.abdulllrahmandev.zenith")
+            .join("translator")
+            .join("runtime")
+            .join("llama-server.exe");
+        if legacy.is_file() {
+            return legacy;
+        }
+    }
+    ai_exe
 }
 
 pub fn is_runtime_ready(app: &AppHandle) -> bool {
     let dir = translator_runtime_dir(app);
-    dir.join("llama-server.exe").is_file()
+    if dir.join("llama-server.exe").is_file()
         && dir.join("llama.dll").is_file()
         && dir.join("ggml.dll").is_file()
         && dir.join("ggml-base.dll").is_file()
+    {
+        return true;
+    }
+    if let Some(appdata) = std::env::var_os("APPDATA") {
+        let legacy_dir = PathBuf::from(appdata)
+            .join("io.github.abdulllrahmandev.zenith")
+            .join("translator")
+            .join("runtime");
+        if legacy_dir.join("llama-server.exe").is_file()
+            && legacy_dir.join("llama.dll").is_file()
+            && legacy_dir.join("ggml.dll").is_file()
+            && legacy_dir.join("ggml-base.dll").is_file()
+        {
+            return true;
+        }
+    }
+    false
 }
 
 fn is_valid_file(path: &Path, min_bytes: u64) -> bool {
@@ -471,8 +512,9 @@ pub async fn ensure_server_running(app: &AppHandle) -> Result<u16, String> {
         .map(|n| n.get().saturating_sub(1).clamp(1, 6))
         .unwrap_or(2);
 
+    let exe_dir = exe.parent().unwrap_or(&runtime_dir);
     let child = Command::new(&exe)
-        .current_dir(&runtime_dir)
+        .current_dir(exe_dir)
         .args([
             "-m",
             &model_path.to_string_lossy(),
