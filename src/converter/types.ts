@@ -144,6 +144,13 @@ export interface WatchRule {
 	enabled: boolean;
 }
 
+export interface WatchRuleStatus {
+	id: string;
+	running: boolean;
+	converted_count: number;
+	last_error: string | null;
+}
+
 export interface ConverterState {
 	profiles: ToolbarProfileState[];
 	presets: ConverterPresetConfig[];

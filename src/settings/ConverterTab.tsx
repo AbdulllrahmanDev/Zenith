@@ -34,6 +34,7 @@ import {
 	Menu,
 	Music,
 	Package,
+	Pencil,
 	PenTool,
 	Plus,
 	Power,
@@ -73,7 +74,9 @@ import type {
 	IsoFilesystem,
 	RecentConversion,
 	TargetOption,
-	ToolbarProfileState
+	ToolbarProfileState,
+	WatchRule,
+	WatchRuleStatus
 } from "../converter/types";
 import "./ConverterTab.css";
 
@@ -93,7 +96,7 @@ export interface ConverterTabProps {
 	converterOutputFolder: string;
 	handleConverterOutputFolderChange: (v: string) => void;
 	converterExplorerMenu: boolean;
-	toggleConverterExplorerMenu: () => void;
+	toggleConverterExplorerMenu?: () => void;
 }
 
 interface DropJobState {
@@ -128,6 +131,39 @@ const EMPTY_CONVERTER_STATE: ConverterState = {
 	recent: [],
 	watch_rules: []
 };
+
+const WATCH_UNSUPPORTED_PRESET_IDS = new Set([
+	"pdf-edit",
+	"crop-video",
+	"pdf-nup",
+	"rotate",
+	"flip",
+	"extract",
+	"zip-all",
+	"merge-pdf",
+	"merge-images",
+	"merge-videos",
+	"merge-audio",
+	"translate"
+]);
+
+function isWatchSupportedPresetId(id: string): boolean {
+	return !id.startsWith("tool-") && !WATCH_UNSUPPORTED_PRESET_IDS.has(id);
+}
+
+function createEmptyWatchDraft(): WatchRule {
+	return {
+		id: `watch-${Date.now()}`,
+		folder: "",
+		target_format: "pdf",
+		preset_id: "to-pdf",
+		output_folder: "",
+		recursive: false,
+		move_originals: false,
+		keep_dates: false,
+		enabled: true
+	};
+}
 
 function formatPackSize(bytes: number): string {
 	if (!Number.isFinite(bytes) || bytes <= 0) return "0 MB";
@@ -251,8 +287,7 @@ export function ConverterTab({
 	handleConverterOutputModeChange,
 	converterOutputFolder,
 	handleConverterOutputFolderChange,
-	converterExplorerMenu,
-	toggleConverterExplorerMenu
+	converterExplorerMenu
 }: ConverterTabProps) {
 	const { t, dir } = useI18n();
 	const c = t.converter;
@@ -309,13 +344,25 @@ export function ConverterTab({
 	selectedPresetIdRef.current = selectedPresetId;
 	const presetEditorRef = useRef<HTMLDivElement | null>(null);
 
-	// Settings Drop Zone & History state
+	// Settings Drop Zone, Watch Folders & History state
 	const [queuedFiles, setQueuedFiles] = useState<string[]>([]);
 	const [isDropOver, setIsDropOver] = useState(false);
 	const [dropJob, setDropJob] = useState<DropJobState | null>(null);
 	const [pendingDropInstall, setPendingDropInstall] = useState<PendingDropInstall | null>(null);
 	const [historyError, setHistoryError] = useState<string | null>(null);
 	const [clearingHistory, setClearingHistory] = useState(false);
+
+	const [explorerMenuBusy, setExplorerMenuBusy] = useState(false);
+	const [explorerMenuError, setExplorerMenuError] = useState<string | null>(null);
+
+	const [watchStatuses, setWatchStatuses] = useState<Record<string, WatchRuleStatus>>({});
+	const [watchSaving, setWatchSaving] = useState(false);
+	const [watchError, setWatchError] = useState<string | null>(null);
+	const [watchEditorOpen, setWatchEditorOpen] = useState(false);
+	const [watchEditingId, setWatchEditingId] = useState<string | null>(null);
+	const [watchDraft, setWatchDraft] = useState<WatchRule>(createEmptyWatchDraft);
+	const [watchTargetMode, setWatchTargetMode] = useState<"preset" | "custom">("preset");
+	const [watchCustomFormat, setWatchCustomFormat] = useState<string>("");
 
 	const dropJobSeqRef = useRef(0);
 	const activeDropJobIdRef = useRef<string | null>(null);
@@ -379,9 +426,18 @@ export function ConverterTab({
 		let unlistenCore: (() => void) | undefined;
 		let unlistenEngine: (() => void) | undefined;
 		let unlistenState: (() => void) | undefined;
+		let unlistenWatch: (() => void) | undefined;
 
 		refreshStatusAndPacks();
 		loadState();
+		invoke<WatchRuleStatus[]>("converter_get_watch_statuses")
+			.then((list) => {
+				if (cancelled) return;
+				const next: Record<string, WatchRuleStatus> = {};
+				for (const item of list) next[item.id] = item;
+				setWatchStatuses(next);
+			})
+			.catch(() => {});
 
 		listen<CoreInstallProgressEvent>("converter-core-progress", (ev) => {
 			if (cancelled) return;
@@ -420,6 +476,20 @@ export function ConverterTab({
 			})
 			.catch(() => {});
 
+		listen<WatchRuleStatus[]>("converter-watch-status", (ev) => {
+			if (cancelled) return;
+			const next: Record<string, WatchRuleStatus> = {};
+			for (const item of ev.payload) {
+				next[item.id] = item;
+			}
+			setWatchStatuses(next);
+		})
+			.then((fn) => {
+				if (cancelled) fn();
+				else unlistenWatch = fn;
+			})
+			.catch(() => {});
+
 		return () => {
 			cancelled = true;
 			if (saveStatusTimerRef.current !== null) {
@@ -431,6 +501,7 @@ export function ConverterTab({
 			unlistenCore?.();
 			unlistenEngine?.();
 			unlistenState?.();
+			unlistenWatch?.();
 		};
 	}, [loadState, refreshStatusAndPacks]);
 
@@ -1233,6 +1304,204 @@ export function ConverterTab({
 			setHistoryError(cleanErrorMessage(e));
 		} finally {
 			setClearingHistory(false);
+		}
+	};
+
+	const handleToggleExplorerMenu = async () => {
+		if (explorerMenuBusy) return;
+		const next = !converterExplorerMenu;
+		setExplorerMenuBusy(true);
+		setExplorerMenuError(null);
+		try {
+			const applied = await invoke<boolean>("converter_toggle_explorer_menu", {
+				enabled: next
+			});
+			try {
+				localStorage.setItem("zenith-converter-explorer-menu", String(applied));
+			} catch {
+				// Ignore localStorage failures.
+			}
+		} catch (e) {
+			setExplorerMenuError(cleanErrorMessage(e));
+		} finally {
+			setExplorerMenuBusy(false);
+		}
+	};
+
+	const watchTargetGroups = useMemo(() => {
+		const savedIds = new Set<string>();
+		const savedOptions: { id: string; label: string; targetFormat: string; isBuiltInOverride: boolean }[] = [];
+		for (const p of converterState.presets) {
+			const id = p.id.trim();
+			const fmt = p.target_format.trim().replace(/^\./, "").toLowerCase();
+			if (!id || !fmt || !isWatchSupportedPresetId(id)) continue;
+			savedIds.add(id);
+			const builtIn = DEFAULT_PRESET_CATALOG[id];
+			const isBuiltInOverride = Boolean(builtIn && fmt !== builtIn.format.toLowerCase());
+			savedOptions.push({
+				id,
+				label: `${p.name.trim() || builtIn?.label || id} (${fmt === "*" ? "*" : fmt.toUpperCase()})`,
+				targetFormat: fmt,
+				isBuiltInOverride
+			});
+		}
+
+		const builtInOptions: { id: string; label: string; targetFormat: string }[] = [];
+		for (const [id, opt] of Object.entries(DEFAULT_PRESET_CATALOG)) {
+			if (savedIds.has(id) || !isWatchSupportedPresetId(id)) continue;
+			const fmtLabel =
+				opt.format === "*"
+					? "*"
+					: opt.format === "*audio"
+						? "AUDIO"
+						: opt.format.toUpperCase();
+			builtInOptions.push({
+				id,
+				label:
+					opt.label.toUpperCase() === fmtLabel
+						? opt.label
+						: `${opt.label} (${fmtLabel})`,
+				targetFormat: opt.format
+			});
+		}
+
+		return { savedOptions, builtInOptions };
+	}, [converterState.presets]);
+
+	const applyWatchStatuses = (list: WatchRuleStatus[]) => {
+		const next: Record<string, WatchRuleStatus> = {};
+		for (const item of list) {
+			next[item.id] = item;
+		}
+		setWatchStatuses(next);
+	};
+
+	const persistWatchRules = async (nextRules: WatchRule[]): Promise<boolean> => {
+		setWatchSaving(true);
+		setWatchError(null);
+		try {
+			const statuses = await invoke<WatchRuleStatus[]>("converter_save_watch_rules", {
+				rules: nextRules
+			});
+			applyWatchStatuses(statuses);
+			setConverterState((prev) => ({ ...prev, watch_rules: nextRules }));
+			return true;
+		} catch (e) {
+			setWatchError(cleanErrorMessage(e));
+			return false;
+		} finally {
+			setWatchSaving(false);
+		}
+	};
+
+	const handleOpenNewWatchForm = () => {
+		setWatchDraft(createEmptyWatchDraft());
+		setWatchEditingId(null);
+		setWatchTargetMode("preset");
+		setWatchCustomFormat("");
+		setWatchError(null);
+		setWatchEditorOpen(true);
+	};
+
+	const handleEditWatchRule = (rule: WatchRule) => {
+		const hasPreset = Boolean(
+			rule.preset_id &&
+				(watchTargetGroups.savedOptions.some((o) => o.id === rule.preset_id) ||
+					watchTargetGroups.builtInOptions.some((o) => o.id === rule.preset_id))
+		);
+		setWatchDraft({ ...rule });
+		setWatchEditingId(rule.id);
+		setWatchTargetMode(hasPreset ? "preset" : "custom");
+		setWatchCustomFormat(hasPreset ? "" : rule.target_format);
+		setWatchError(null);
+		setWatchEditorOpen(true);
+	};
+
+	const handleBrowseWatchFolder = async (field: "folder" | "output_folder") => {
+		try {
+			const { open: openDialog } = await import("@tauri-apps/plugin-dialog");
+			const selected = await openDialog({
+				directory: true,
+				multiple: false
+			});
+			if (typeof selected === "string" && selected.trim()) {
+				setWatchDraft((prev) => ({
+					...prev,
+					[field]: selected.trim()
+				}));
+			}
+		} catch (e) {
+			setWatchError(cleanErrorMessage(e));
+		}
+	};
+
+	const handleSaveWatchDraft = async () => {
+		if (watchSaving) return;
+		const folder = watchDraft.folder.trim();
+		if (!folder) {
+			setWatchError(c.history.watchValidationFolder);
+			return;
+		}
+
+		let targetFormat = watchDraft.target_format.trim().replace(/^\./, "").toLowerCase();
+		let presetId: string | null = watchDraft.preset_id?.trim() || null;
+
+		if (watchTargetMode === "custom") {
+			targetFormat = watchCustomFormat.trim().replace(/^\./, "").toLowerCase();
+			presetId = null;
+			if (!targetFormat) {
+				setWatchError(c.history.watchValidationTarget);
+				return;
+			}
+		} else {
+			if (!presetId && !targetFormat) {
+				setWatchError(c.history.watchValidationTarget);
+				return;
+			}
+			if (presetId) {
+				const savedOpt = watchTargetGroups.savedOptions.find((o) => o.id === presetId);
+				if (savedOpt?.isBuiltInOverride) {
+					targetFormat = savedOpt.targetFormat;
+					presetId = null;
+				}
+			}
+		}
+
+		const nextRule: WatchRule = {
+			...watchDraft,
+			folder,
+			target_format: targetFormat,
+			preset_id: presetId,
+			output_folder: watchDraft.output_folder.trim()
+		};
+
+		const existing = converterState.watch_rules;
+		const nextRules = watchEditingId
+			? existing.map((r) => (r.id === watchEditingId ? nextRule : r))
+			: [...existing, nextRule];
+
+		const ok = await persistWatchRules(nextRules);
+		if (ok) {
+			setWatchEditorOpen(false);
+			setWatchEditingId(null);
+		}
+	};
+
+	const handleToggleWatchRule = async (ruleId: string) => {
+		if (watchSaving) return;
+		const nextRules = converterState.watch_rules.map((r) =>
+			r.id === ruleId ? { ...r, enabled: !r.enabled } : r
+		);
+		await persistWatchRules(nextRules);
+	};
+
+	const handleDeleteWatchRule = async (ruleId: string) => {
+		if (watchSaving) return;
+		const nextRules = converterState.watch_rules.filter((r) => r.id !== ruleId);
+		const ok = await persistWatchRules(nextRules);
+		if (ok && watchEditingId === ruleId) {
+			setWatchEditorOpen(false);
+			setWatchEditingId(null);
 		}
 	};
 
@@ -2541,18 +2810,446 @@ export function ConverterTab({
 					)}
 				</div>
 
-				{/* Watch Folders Placeholder (wired in Task 10) */}
-				<div className="zn-watch-placeholder-card">
-					<div className="zn-watch-placeholder-left">
-						<div className="zn-watch-placeholder-icon">
-							<FolderSync size={16} strokeWidth={1.7} />
-						</div>
+				{/* Watch Folders */}
+				<div className="zn-converter-section-card">
+					<div className="zn-converter-section-head">
 						<div className="zn-converter-section-title-col">
-							<div className="zn-converter-section-title">{c.history.watchTitle}</div>
+							<div className="zn-converter-section-title">
+								<FolderSync size={15} strokeWidth={1.8} />
+								<span>{c.history.watchTitle}</span>
+								<span className="zn-conv-slice-count-pill">
+									{converterState.watch_rules.length}
+								</span>
+							</div>
 							<div className="zn-converter-section-desc">{c.history.watchDesc}</div>
 						</div>
+						<div className="zn-converter-section-actions">
+							<button
+								type="button"
+								className="settings-btn zn-converter-primary-btn"
+								disabled={watchSaving}
+								onClick={handleOpenNewWatchForm}
+							>
+								<Plus size={12} />
+								<span>{c.history.watchAdd}</span>
+							</button>
+						</div>
 					</div>
-					<span className="zn-converter-empty-badge">{c.comingSoonBadge}</span>
+
+					{watchError && (
+						<div className="zn-converter-error-banner" role="alert">
+							<AlertCircle size={13} />
+							<span>{watchError}</span>
+						</div>
+					)}
+
+					{watchEditorOpen && (
+						<div className="zn-watch-editor-card">
+							<div className="zn-preset-form-grid">
+								<div className="zn-preset-field full-span">
+									<label className="zn-preset-field-label" htmlFor="zn-watch-folder-input">
+										{c.history.watchFolderLabel}
+									</label>
+									<div className="zn-converter-folder-control">
+										<input
+											id="zn-watch-folder-input"
+											type="text"
+											dir="ltr"
+											className="settings-text-input zn-watch-path-input"
+											value={watchDraft.folder}
+											placeholder={c.history.watchFolderPlaceholder}
+											onChange={(e) =>
+												setWatchDraft((prev) => ({
+													...prev,
+													folder: e.target.value
+												}))
+											}
+										/>
+										<button
+											type="button"
+											className="settings-btn"
+											onClick={() => handleBrowseWatchFolder("folder")}
+										>
+											{t.common.browseDots}
+										</button>
+									</div>
+								</div>
+
+								<div className="zn-preset-field">
+									<span className="zn-preset-field-label">
+										{c.history.watchTargetLabel}
+									</span>
+									<ZenithSelect
+										className="settings-select"
+										value={
+											watchTargetMode === "custom"
+												? "__custom__"
+												: watchDraft.preset_id || "to-pdf"
+										}
+										onChange={(e) => {
+											const val = e.target.value;
+											if (val === "__custom__") {
+												setWatchTargetMode("custom");
+												setWatchCustomFormat((prev) =>
+													prev || (watchDraft.target_format !== "*" ? watchDraft.target_format : "webp")
+												);
+											} else {
+												setWatchTargetMode("preset");
+												const savedMatch = watchTargetGroups.savedOptions.find(
+													(o) => o.id === val
+												);
+												const builtInMatch = watchTargetGroups.builtInOptions.find(
+													(o) => o.id === val
+												);
+												setWatchDraft((prev) => ({
+													...prev,
+													preset_id: val,
+													target_format:
+														savedMatch?.targetFormat ??
+														builtInMatch?.targetFormat ??
+														prev.target_format
+												}));
+											}
+										}}
+									>
+										{watchTargetGroups.savedOptions.length > 0 && (
+											<optgroup label={c.history.watchPresetGroupSaved}>
+												{watchTargetGroups.savedOptions.map((opt) => (
+													<option key={`w-s-${opt.id}`} value={opt.id}>
+														{opt.label}
+													</option>
+												))}
+											</optgroup>
+										)}
+										<optgroup label={c.history.watchPresetGroupBuiltIn}>
+											{watchTargetGroups.builtInOptions.map((opt) => (
+												<option key={`w-b-${opt.id}`} value={opt.id}>
+													{opt.label}
+												</option>
+											))}
+										</optgroup>
+										<option value="__custom__">
+											{c.history.watchTargetCustomOption}
+										</option>
+									</ZenithSelect>
+								</div>
+
+								{watchTargetMode === "custom" ? (
+									<div className="zn-preset-field">
+										<label
+											className="zn-preset-field-label"
+											htmlFor="zn-watch-custom-fmt"
+										>
+											{c.presets.targetFormatLabel}
+										</label>
+										<input
+											id="zn-watch-custom-fmt"
+											type="text"
+											dir="ltr"
+											className="settings-text-input"
+											value={watchCustomFormat}
+											placeholder={c.history.watchCustomFormatPlaceholder}
+											onChange={(e) => setWatchCustomFormat(e.target.value)}
+										/>
+									</div>
+								) : (
+									<div className="zn-preset-field">
+										<label
+											className="zn-preset-field-label"
+											htmlFor="zn-watch-out-input"
+										>
+											{c.history.watchOutputLabel}
+										</label>
+										<div className="zn-converter-folder-control">
+											<input
+												id="zn-watch-out-input"
+												type="text"
+												dir="ltr"
+												className="settings-text-input zn-watch-path-input"
+												value={watchDraft.output_folder}
+												placeholder={c.history.watchOutputPlaceholder}
+												onChange={(e) =>
+													setWatchDraft((prev) => ({
+														...prev,
+														output_folder: e.target.value
+													}))
+												}
+											/>
+											<button
+												type="button"
+												className="settings-btn"
+												onClick={() => handleBrowseWatchFolder("output_folder")}
+											>
+												{t.common.browseDots}
+											</button>
+										</div>
+									</div>
+								)}
+
+								{watchTargetMode === "custom" && (
+									<div className="zn-preset-field full-span">
+										<label
+											className="zn-preset-field-label"
+											htmlFor="zn-watch-out-input-custom"
+										>
+											{c.history.watchOutputLabel}
+										</label>
+										<div className="zn-converter-folder-control">
+											<input
+												id="zn-watch-out-input-custom"
+												type="text"
+												dir="ltr"
+												className="settings-text-input zn-watch-path-input"
+												value={watchDraft.output_folder}
+												placeholder={c.history.watchOutputPlaceholder}
+												onChange={(e) =>
+													setWatchDraft((prev) => ({
+														...prev,
+														output_folder: e.target.value
+													}))
+												}
+											/>
+											<button
+												type="button"
+												className="settings-btn"
+												onClick={() => handleBrowseWatchFolder("output_folder")}
+											>
+												{t.common.browseDots}
+											</button>
+										</div>
+									</div>
+								)}
+
+								<div className="zn-preset-field full-span">
+									<div className="zn-preset-toggles">
+										<div className="zn-preset-toggle-row">
+											<span className="zn-preset-toggle-title">
+												{c.history.watchRecursive}
+											</span>
+											<label className="toggle-switch">
+												<input
+													type="checkbox"
+													checked={watchDraft.recursive}
+													onChange={(e) =>
+														setWatchDraft((prev) => ({
+															...prev,
+															recursive: e.target.checked
+														}))
+													}
+												/>
+												<span className="slider" />
+											</label>
+										</div>
+										<div className="zn-preset-toggle-row">
+											<span className="zn-preset-toggle-title">
+												{c.history.watchMoveOriginals}
+											</span>
+											<label className="toggle-switch">
+												<input
+													type="checkbox"
+													checked={watchDraft.move_originals}
+													onChange={(e) =>
+														setWatchDraft((prev) => ({
+															...prev,
+															move_originals: e.target.checked
+														}))
+													}
+												/>
+												<span className="slider" />
+											</label>
+										</div>
+										<div className="zn-preset-toggle-row">
+											<span className="zn-preset-toggle-title">
+												{c.history.watchKeepDates}
+											</span>
+											<label className="toggle-switch">
+												<input
+													type="checkbox"
+													checked={watchDraft.keep_dates}
+													onChange={(e) =>
+														setWatchDraft((prev) => ({
+															...prev,
+															keep_dates: e.target.checked
+														}))
+													}
+												/>
+												<span className="slider" />
+											</label>
+										</div>
+										<div className="zn-preset-toggle-row">
+											<span className="zn-preset-toggle-title">
+												{c.history.watchEnabledLabel}
+											</span>
+											<label className="toggle-switch">
+												<input
+													type="checkbox"
+													checked={watchDraft.enabled}
+													onChange={(e) =>
+														setWatchDraft((prev) => ({
+															...prev,
+															enabled: e.target.checked
+														}))
+													}
+												/>
+												<span className="slider" />
+											</label>
+										</div>
+									</div>
+								</div>
+							</div>
+
+							<div className="zn-preset-footer">
+								<div />
+								<div className="zn-preset-footer-group">
+									<button
+										type="button"
+										className="settings-btn"
+										disabled={watchSaving}
+										onClick={() => {
+											setWatchEditorOpen(false);
+											setWatchEditingId(null);
+											setWatchError(null);
+										}}
+									>
+										<span>{c.history.watchCancel}</span>
+									</button>
+									<button
+										type="button"
+										className="settings-btn zn-converter-primary-btn"
+										disabled={watchSaving}
+										onClick={handleSaveWatchDraft}
+									>
+										{watchSaving ? (
+											<Loader2 size={12} className="zn-spin" />
+										) : (
+											<Save size={12} />
+										)}
+										<span>{c.history.watchSave}</span>
+									</button>
+								</div>
+							</div>
+						</div>
+					)}
+
+					{converterState.watch_rules.length === 0 && !watchEditorOpen ? (
+						<div className="zn-recent-empty">
+							<div className="zn-converter-empty-title">{c.history.watchEmptyTitle}</div>
+							<div className="zn-converter-empty-desc">{c.history.watchEmptyDesc}</div>
+						</div>
+					) : (
+						<div className="zn-watch-list">
+							{converterState.watch_rules.map((rule) => {
+								const st = watchStatuses[rule.id];
+								const isRunning = Boolean(st?.running);
+								const convertedCount = st?.converted_count ?? 0;
+								const targetBadge = rule.preset_id
+									? customMatcherInputs.presetsById.get(rule.preset_id)?.name ||
+										DEFAULT_PRESET_CATALOG[rule.preset_id]?.label ||
+										rule.preset_id
+									: rule.target_format.toUpperCase();
+
+								return (
+									<div key={rule.id} className="zn-watch-rule-item">
+										<div className="zn-watch-rule-top">
+											<div className="zn-watch-rule-info">
+												<div className="zn-watch-rule-title-row">
+													<span
+														className="zn-watch-rule-folder-name"
+														title={rule.folder}
+													>
+														{extractBaseName(rule.folder)}
+													</span>
+													<span
+														className={`zn-watch-status-badge ${
+															isRunning ? "is-running" : "is-stopped"
+														}`}
+													>
+														<span className="zn-watch-status-dot" />
+														<span>
+															{isRunning
+																? c.history.watchStatusRunning
+																: c.history.watchStatusStopped}
+														</span>
+													</span>
+													{(isRunning || convertedCount > 0) && (
+														<span className="zn-conv-slice-count-pill">
+															{c.history.watchConvertedCount(convertedCount)}
+														</span>
+													)}
+												</div>
+												<div className="zn-watch-rule-path" dir="ltr" title={rule.folder}>
+													{rule.folder}
+												</div>
+											</div>
+
+											<div className="zn-watch-rule-actions">
+												<label className="toggle-switch">
+													<input
+														type="checkbox"
+														checked={rule.enabled}
+														disabled={watchSaving}
+														onChange={() => handleToggleWatchRule(rule.id)}
+													/>
+													<span className="slider" />
+												</label>
+												<button
+													type="button"
+													className="zn-icon-action-btn"
+													disabled={watchSaving}
+													onClick={() => handleEditWatchRule(rule)}
+													title={c.history.watchEdit}
+													aria-label={c.history.watchEdit}
+												>
+													<Pencil size={12} />
+												</button>
+												<button
+													type="button"
+													className="zn-icon-action-btn zn-pack-remove-btn"
+													disabled={watchSaving}
+													onClick={() => handleDeleteWatchRule(rule.id)}
+													title={c.history.watchDelete}
+													aria-label={c.history.watchDelete}
+												>
+													<Trash2 size={12} />
+												</button>
+											</div>
+										</div>
+
+										<div className="zn-watch-rule-tags">
+											<span className="zn-recent-flow-badge" dir="ltr">
+												→ {targetBadge}
+											</span>
+											<span className="zn-watch-rule-tag" dir={rule.output_folder ? "ltr" : dir}>
+												{rule.output_folder || c.history.watchDefaultOutputTag}
+											</span>
+											{rule.recursive && (
+												<span className="zn-watch-rule-tag">
+													{c.history.watchRecursiveTag}
+												</span>
+											)}
+											{rule.move_originals && (
+												<span className="zn-watch-rule-tag">
+													{c.history.watchMoveOriginalsTag}
+												</span>
+											)}
+											{rule.keep_dates && (
+												<span className="zn-watch-rule-tag">
+													{c.history.watchKeepDatesTag}
+												</span>
+											)}
+										</div>
+
+										{st?.last_error && (
+											<div className="zn-converter-error-banner" role="alert">
+												<AlertCircle size={13} />
+												<span>{cleanErrorMessage(st.last_error)}</span>
+											</div>
+										)}
+									</div>
+								);
+							})}
+						</div>
+					)}
 				</div>
 
 				{/* Recent Conversions List */}
@@ -2783,11 +3480,18 @@ export function ConverterTab({
 								<input
 									type="checkbox"
 									checked={converterExplorerMenu}
-									onChange={toggleConverterExplorerMenu}
+									disabled={explorerMenuBusy}
+									onChange={handleToggleExplorerMenu}
 								/>
 								<span className="slider" />
 							</label>
 						</SettingRow>
+						{explorerMenuError && (
+							<div className="zn-converter-error-banner zn-explorer-menu-error" role="alert">
+								<AlertCircle size={13} />
+								<span>{explorerMenuError}</span>
+							</div>
+						)}
 					</div>
 				</div>
 			)}

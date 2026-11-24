@@ -3716,6 +3716,7 @@ pub fn release_appbars(handle: &AppHandle) {
 pub fn restore_taskbar_and_exit(handle: &AppHandle) {
     crate::diagnostics::record("shutdown", "restoring taskbar and releasing AppBars");
     SHUTTING_DOWN.store(true, Ordering::Relaxed);
+    crate::converter::shutdown_converter();
     crate::translator::shutdown();
     release_appbars(handle);
     set_taskbar_visibility(true, true);
@@ -3738,6 +3739,7 @@ pub async fn quit_zenith(handle: AppHandle) {
 pub async fn restart_zenith(handle: AppHandle) {
     crate::diagnostics::record("restart", "restoring taskbar and releasing AppBars");
     SHUTTING_DOWN.store(true, Ordering::Relaxed);
+    crate::converter::shutdown_converter();
     crate::translator::shutdown();
     release_appbars(&handle);
     if let Some(w) = handle.get_webview_window("settings") {
@@ -3781,8 +3783,11 @@ fn re_register_appbars(app: &AppHandle, settings: &HashMap<String, serde_json::V
     }
 }
 
-#[tauri::command]
-pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Result<(), String> {
+pub fn persist_setting_and_emit(
+    app: &AppHandle,
+    key: String,
+    value: serde_json::Value,
+) -> Result<HashMap<String, serde_json::Value>, String> {
     let path = app
         .path()
         .app_config_dir()
@@ -3818,6 +3823,13 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
         );
     }
 
+    Ok(settings)
+}
+
+#[tauri::command]
+pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Result<(), String> {
+    let settings = persist_setting_and_emit(&app, key.clone(), value.clone())?;
+
     if key == "zenith-language" || key == "bloom-language" {
         apply_language(&app, value.as_str());
     } else if key == "zenith-scale" || key == "bloom-scale" {
@@ -3844,6 +3856,8 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
         re_register_appbars(&app, &settings);
     } else if key == "zenith-translator-enabled" || key.starts_with("zenith-translator-hotkey-") {
         crate::translator::sync_hotkeys_from_settings(&app);
+    } else if key == "zenith-converter-explorer-menu" || key == "bloom-converter-explorer-menu" {
+        crate::converter::sync_explorer_menu_from_settings(&app);
     } else if key.starts_with("zenith-converter-") {
         crate::converter::sync_trigger_config_from_settings(&app);
     }
@@ -4529,6 +4543,7 @@ fn apply_imported_settings(app: &AppHandle, settings: &str) -> Result<(), String
     }
     sync_language_from_cache(app);
     crate::converter::sync_trigger_config_from_settings(app);
+    crate::converter::sync_explorer_menu_from_settings(app);
 
     Ok(())
 }
@@ -4567,6 +4582,7 @@ pub fn reset_settings(app: AppHandle) -> Result<(), String> {
 
     apply_language(&app, None);
     crate::converter::sync_trigger_config_from_settings(&app);
+    crate::converter::sync_explorer_menu_from_settings(&app);
     // Mirror the external-edit watcher so every open window drops the removed
     // keys from localStorage. The caller restarts Zenith right after, but this
     // keeps the reset correct even if a window lingers.
@@ -4692,11 +4708,16 @@ pub fn setup_settings_watcher(app: AppHandle) {
                 if let Some((changed, removed)) = changes {
                     // Both file and cache locks are released before emitting.
                     let mut converter_changed = false;
+                    let mut explorer_menu_changed = false;
                     for (key, value) in &changed {
                         if key == "zenith-language" || key == "bloom-language" {
                             apply_language(&app, value.as_str());
                         }
-                        if key.starts_with("zenith-converter-") {
+                        if key == "zenith-converter-explorer-menu"
+                            || key == "bloom-converter-explorer-menu"
+                        {
+                            explorer_menu_changed = true;
+                        } else if key.starts_with("zenith-converter-") {
                             converter_changed = true;
                         }
                         let _ = app.emit(
@@ -4708,7 +4729,11 @@ pub fn setup_settings_watcher(app: AppHandle) {
                         if key == "zenith-language" || key == "bloom-language" {
                             apply_language(&app, None);
                         }
-                        if key.starts_with("zenith-converter-") {
+                        if key == "zenith-converter-explorer-menu"
+                            || key == "bloom-converter-explorer-menu"
+                        {
+                            explorer_menu_changed = true;
+                        } else if key.starts_with("zenith-converter-") {
                             converter_changed = true;
                         }
                         let _ = app.emit(
@@ -4718,6 +4743,9 @@ pub fn setup_settings_watcher(app: AppHandle) {
                     }
                     if converter_changed {
                         crate::converter::sync_trigger_config_from_settings(&app);
+                    }
+                    if explorer_menu_changed {
+                        crate::converter::sync_explorer_menu_from_settings(&app);
                     }
                 }
             }

@@ -226,6 +226,7 @@ async fn install_inner(app: &AppHandle) -> Result<(), String> {
             // The installer exits the process without going through
             // restore_taskbar_and_exit, so do the same teardown here.
             crate::state::SHUTTING_DOWN.store(true, Ordering::Relaxed);
+            crate::converter::shutdown_converter();
             crate::commands::release_appbars(&hook_handle);
             crate::utils::set_taskbar_visibility(true, true);
             crate::services::set_native_osd_suppressed(false);

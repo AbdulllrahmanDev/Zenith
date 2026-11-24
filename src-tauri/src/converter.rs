@@ -148,6 +148,25 @@ pub struct WatchRule {
     pub enabled: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct WatchRuleStatus {
+    pub id: String,
+    pub running: bool,
+    pub converted_count: u64,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum WatchStdoutEvent {
+    Started {
+        folder: String,
+        target: String,
+        output_folder: String,
+    },
+    FileDone(ConvertedFileItem),
+    Stopped,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct ConverterState {
     #[serde(default)]
@@ -274,6 +293,36 @@ static CORE_INSTALLING: AtomicBool = AtomicBool::new(false);
 static ACTIVE_ENGINE_OPS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
 type CliVersionCacheEntry = (PathBuf, u64, Option<std::time::SystemTime>, String);
 static CACHED_CLI_VERSION: OnceLock<Mutex<Option<CliVersionCacheEntry>>> = OnceLock::new();
+static CONVERTER_SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
+static WATCH_GENERATION_SEQ: AtomicU64 = AtomicU64::new(1);
+static WATCH_HISTORY_SEQ: AtomicU64 = AtomicU64::new(1);
+static WATCH_RECONCILE_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+
+struct ActiveWatchEntry {
+    generation: u64,
+    effective_args: Vec<String>,
+    pid: Option<u32>,
+    cancel_tx: watch::Sender<bool>,
+    running: bool,
+    converted_count: u64,
+    last_error: Option<String>,
+}
+
+#[derive(Default)]
+struct WatchManagerState {
+    ordered_ids: Vec<String>,
+    entries: HashMap<String, ActiveWatchEntry>,
+}
+
+static WATCH_MANAGER: OnceLock<Mutex<WatchManagerState>> = OnceLock::new();
+
+fn watch_manager() -> &'static Mutex<WatchManagerState> {
+    WATCH_MANAGER.get_or_init(|| Mutex::new(WatchManagerState::default()))
+}
+
+fn watch_reconcile_lock() -> &'static tokio::sync::Mutex<()> {
+    WATCH_RECONCILE_LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
+}
 
 fn active_jobs_map() -> &'static Mutex<HashMap<String, ActiveJobState>> {
     ACTIVE_CONVERTER_JOBS.get_or_init(|| Mutex::new(HashMap::new()))
@@ -1087,6 +1136,10 @@ async fn run_single_cli_convert(
     cancel_rx: &mut watch::Receiver<bool>,
     temp_to_orig: &HashMap<String, String>,
 ) -> Result<(Vec<ConvertedFileItem>, Option<String>, Option<String>), String> {
+    if CONVERTER_SHUTTING_DOWN.load(Ordering::Acquire) {
+        return Err("CANCELLED".to_string());
+    }
+
     let args = build_convert_args(cli_req, paths);
     let std_cmd = build_cli_command(&paths.cli_exe, &args, paths);
     let mut cmd = tokio::process::Command::from(std_cmd);
@@ -1097,7 +1150,7 @@ async fn run_single_cli_convert(
         .map_err(|e| format!("CLI_SPAWN_FAILED: {e}"))?;
     let pid = child.id();
 
-    if !attach_job_pid(&cli_req.job_id, pid) {
+    if CONVERTER_SHUTTING_DOWN.load(Ordering::Acquire) || !attach_job_pid(&cli_req.job_id, pid) {
         terminate_child_and_tree(&mut child, pid).await;
         return Err("CANCELLED".to_string());
     }
@@ -1769,6 +1822,7 @@ pub async fn converter_save_presets(
     presets: Vec<ConverterPresetConfig>,
 ) -> Result<ConverterState, String> {
     let paths = resolve_converter_paths(&app)?;
+    let paths_for_reconcile = paths.clone();
     let sanitized: Vec<ConverterPresetConfig> = presets
         .into_iter()
         .map(sanitize_preset)
@@ -1784,6 +1838,10 @@ pub async fn converter_save_presets(
     .map_err(|e| format!("Failed to save converter presets: {e}"))??;
 
     let _ = app.emit("converter-state-changed", &updated);
+    if updated.watch_rules.iter().any(|r| r.enabled) {
+        let statuses = reconcile_watches(app.clone(), paths_for_reconcile, updated.clone()).await;
+        let _ = app.emit("converter-watch-status", &statuses);
+    }
     Ok(updated)
 }
 
@@ -1840,6 +1898,1148 @@ pub async fn converter_open_output(path: String, reveal_in_folder: bool) -> Resu
     })
     .await
     .map_err(|e| format!("OPEN_FAILED: {e}"))?
+}
+
+// ─── Watch Folders Supervisor, Clean Shutdown, Explorer Menu & CLI Handoff ──
+
+const EXPLORER_FILE_SHELL_KEY: &str = r"Software\Classes\*\shell\ZenithConvert";
+const EXPLORER_DIR_SHELL_KEY: &str = r"Software\Classes\Directory\shell\ZenithConvert";
+const EXPLORER_MENU_LABEL: &str = "Convert with Zenith";
+const CLI_HANDOFF_MUTEX_NAME: &str = "ZenithConverterHandoffLock";
+const CURRENT_APP_IDENTIFIER: &str = "io.github.abdulllrahmandev.zenith";
+
+fn normalize_watch_target_token(raw: &str) -> String {
+    let trimmed = raw.trim().trim_start_matches('.');
+    if trimmed.eq_ignore_ascii_case("*audio") {
+        "same-audio".to_string()
+    } else {
+        trimmed.to_ascii_lowercase()
+    }
+}
+
+pub fn build_watch_args(rule: &WatchRule) -> Vec<String> {
+    let mut args = Vec::with_capacity(12);
+    args.push("watch".to_string());
+    args.push(rule.folder.trim().to_string());
+
+    if let Some(preset) = rule
+        .preset_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        args.push("--preset".to_string());
+        args.push(preset.to_string());
+    } else {
+        let target = normalize_watch_target_token(&rule.target_format);
+        if !target.is_empty() {
+            args.push("--to".to_string());
+            args.push(target);
+        }
+    }
+
+    let out = rule.output_folder.trim();
+    if !out.is_empty() {
+        args.push("-o".to_string());
+        args.push(out.to_string());
+    }
+    if rule.recursive {
+        args.push("-r".to_string());
+    }
+    if rule.move_originals {
+        args.push("--move-originals".to_string());
+    }
+    if rule.keep_dates {
+        args.push("--keep-dates".to_string());
+    }
+    args.push("--json".to_string());
+    args
+}
+
+fn append_preset_override_flags(
+    args: &mut Vec<String>,
+    preset: &ConverterPresetConfig,
+    rule_keep_dates: bool,
+) {
+    if let Some(quality) = preset.quality {
+        args.push("-q".to_string());
+        args.push(quality.clamp(1, 100).to_string());
+    }
+    if let Some(pages) = preset
+        .pages
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        args.push("--pages".to_string());
+        args.push(pages.to_string());
+    }
+    if let Some(every) = preset.split_every.filter(|&n| n > 0) {
+        args.push("--split-every".to_string());
+        args.push(every.to_string());
+    } else if let Some(parts) = preset.split_parts.filter(|&n| n >= 2) {
+        args.push("--split-parts".to_string());
+        args.push(parts.to_string());
+    }
+    match preset
+        .conflict
+        .as_deref()
+        .map(|s| s.trim().to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("overwrite") => args.push("--overwrite".to_string()),
+        Some("skip") => args.push("--skip".to_string()),
+        _ => {}
+    }
+    if preset.zip == Some(true) {
+        args.push("--zip".to_string());
+    }
+    if let Some(fs) = preset
+        .iso_filesystem
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        args.push("--iso-filesystem".to_string());
+        args.push(fs.to_string());
+    }
+    if let Some(label) = preset
+        .iso_label
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        args.push("--iso-label".to_string());
+        args.push(label.to_string());
+    }
+    if !rule_keep_dates && preset.keep_dates == Some(true) {
+        args.push("--keep-dates".to_string());
+    }
+}
+
+fn build_watch_args_for_spawn(
+    rule: &WatchRule,
+    presets: &[ConverterPresetConfig],
+) -> Vec<String> {
+    let Some(pid) = rule
+        .preset_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    else {
+        return build_watch_args(rule);
+    };
+
+    let preset_cfg = presets.iter().find(|p| p.id == pid);
+    let is_custom_preset = pid.starts_with("custom-");
+
+    if !is_custom_preset && preset_cfg.is_none() {
+        return build_watch_args(rule);
+    }
+
+    let mut args = Vec::with_capacity(16);
+    args.push("watch".to_string());
+    args.push(rule.folder.trim().to_string());
+
+    if is_custom_preset {
+        let target_raw = preset_cfg
+            .map(|p| p.target_format.as_str())
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or(&rule.target_format);
+        let target = normalize_watch_target_token(target_raw);
+        if !target.is_empty() && target != "*" {
+            args.push("--to".to_string());
+            args.push(target);
+        } else {
+            args.push("--preset".to_string());
+            args.push(pid.to_string());
+        }
+    } else {
+        args.push("--preset".to_string());
+        args.push(pid.to_string());
+    }
+
+    let out = rule.output_folder.trim();
+    if !out.is_empty() {
+        args.push("-o".to_string());
+        args.push(out.to_string());
+    }
+    if rule.recursive {
+        args.push("-r".to_string());
+    }
+    if rule.move_originals {
+        args.push("--move-originals".to_string());
+    }
+    if rule.keep_dates {
+        args.push("--keep-dates".to_string());
+    }
+    if let Some(cfg) = preset_cfg {
+        append_preset_override_flags(&mut args, cfg, rule.keep_dates);
+    }
+    args.push("--json".to_string());
+    args
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawWatchStdoutLine {
+    event: String,
+    #[serde(default)]
+    folder: Option<String>,
+    #[serde(default)]
+    preset: Option<String>,
+    #[serde(default)]
+    target: Option<String>,
+    #[serde(default, alias = "output_folder")]
+    output_folder: Option<String>,
+    #[serde(default)]
+    source: Option<String>,
+    #[serde(default)]
+    outputs: Vec<String>,
+    #[serde(default)]
+    state: Option<String>,
+    #[serde(default)]
+    error: Option<String>,
+    #[serde(default, alias = "error_key")]
+    error_key: Option<String>,
+    #[serde(default, alias = "missing_engine")]
+    missing_engine: Option<String>,
+    #[serde(default, alias = "needs_engines")]
+    needs_engines: Vec<String>,
+}
+
+pub fn parse_watch_stdout_line(line: &str) -> Option<WatchStdoutEvent> {
+    let trimmed = line.trim().trim_start_matches('\u{feff}');
+    if trimmed.is_empty() || !trimmed.starts_with('{') {
+        return None;
+    }
+
+    let raw: RawWatchStdoutLine = serde_json::from_str(trimmed).ok()?;
+    match raw.event.as_str() {
+        "started" => Some(WatchStdoutEvent::Started {
+            folder: raw.folder.unwrap_or_default(),
+            target: raw.target.or(raw.preset).unwrap_or_default(),
+            output_folder: raw.output_folder.unwrap_or_default(),
+        }),
+        "file" => {
+            let source = raw.source?;
+            let state = raw.state?;
+            let missing_engine = extract_missing_engine(
+                raw.missing_engine.as_deref(),
+                raw.error_key.as_deref(),
+                &raw.needs_engines,
+            );
+            Some(WatchStdoutEvent::FileDone(ConvertedFileItem {
+                source,
+                state,
+                outputs: raw.outputs,
+                error: raw.error,
+                error_key: raw.error_key,
+                missing_engine,
+            }))
+        }
+        "stopped" => Some(WatchStdoutEvent::Stopped),
+        _ => None,
+    }
+}
+
+pub fn parse_convert_cli_args<I: IntoIterator<Item = String>>(args: I) -> Vec<String> {
+    let mut found_flag = false;
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+
+    for raw in args {
+        let trimmed = raw.trim();
+        if !found_flag {
+            if trimmed.eq_ignore_ascii_case("--convert") {
+                found_flag = true;
+            }
+            continue;
+        }
+        if trimmed.is_empty()
+            || trimmed.starts_with("--")
+            || matches!(trimmed, "-h" | "-v" | "-?")
+        {
+            continue;
+        }
+        let owned = trimmed.to_string();
+        if seen.insert(owned.clone()) {
+            out.push(owned);
+        }
+    }
+    out
+}
+
+fn sanitize_watch_rule(mut rule: WatchRule) -> WatchRule {
+    rule.id = rule.id.trim().to_string();
+    rule.folder = rule.folder.trim().to_string();
+    rule.target_format = rule
+        .target_format
+        .trim()
+        .trim_start_matches('.')
+        .to_ascii_lowercase();
+    rule.preset_id = rule
+        .preset_id
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    rule.output_folder = rule.output_folder.trim().to_string();
+    rule
+}
+
+fn build_watch_statuses_unlocked(mgr: &WatchManagerState) -> Vec<WatchRuleStatus> {
+    mgr.ordered_ids
+        .iter()
+        .filter_map(|id| {
+            mgr.entries.get(id).map(|entry| WatchRuleStatus {
+                id: id.clone(),
+                running: entry.running,
+                converted_count: entry.converted_count,
+                last_error: entry.last_error.clone(),
+            })
+        })
+        .collect()
+}
+
+fn snapshot_watch_statuses() -> Vec<WatchRuleStatus> {
+    let Ok(mgr) = watch_manager().lock() else {
+        return Vec::new();
+    };
+    build_watch_statuses_unlocked(&mgr)
+}
+
+fn emit_watch_statuses(app: &AppHandle) {
+    let statuses = snapshot_watch_statuses();
+    let _ = app.emit("converter-watch-status", &statuses);
+}
+
+fn update_watch_entry_if_current<F>(rule_id: &str, gen: u64, update: F) -> bool
+where
+    F: FnOnce(&mut ActiveWatchEntry),
+{
+    let Ok(mut mgr) = watch_manager().lock() else {
+        return false;
+    };
+    let Some(entry) = mgr.entries.get_mut(rule_id) else {
+        return false;
+    };
+    if entry.generation != gen {
+        return false;
+    }
+    update(entry);
+    true
+}
+
+fn spawn_watch_worker(
+    app: AppHandle,
+    paths: ConverterPaths,
+    rule: WatchRule,
+    mut child: tokio::process::Child,
+    pid: Option<u32>,
+    gen: u64,
+    mut cancel_rx: watch::Receiver<bool>,
+) {
+    tauri::async_runtime::spawn(async move {
+        let stdout = child.stdout.take();
+        let stderr = child.stderr.take();
+        let rule_id = rule.id.clone();
+
+        let app_for_stdout = app.clone();
+        let paths_for_stdout = paths.clone();
+        let rule_for_stdout = rule.clone();
+        let rule_id_stdout = rule_id.clone();
+        let read_stdout = async move {
+            if let Some(out) = stdout {
+                let mut reader = BufReader::new(out);
+                let mut buf = Vec::with_capacity(512);
+                loop {
+                    buf.clear();
+                    match reader.read_until(b'\n', &mut buf).await {
+                        Ok(0) => break,
+                        Ok(_) => {
+                            if buf.len() > MAX_STDERR_LINE_BYTES {
+                                buf.truncate(MAX_STDERR_LINE_BYTES);
+                            }
+                            let line = String::from_utf8_lossy(&buf);
+                            let Some(ev) = parse_watch_stdout_line(&line) else {
+                                continue;
+                            };
+                            match ev {
+                                WatchStdoutEvent::Started { .. } => {
+                                    if update_watch_entry_if_current(&rule_id_stdout, gen, |e| {
+                                        e.running = true;
+                                        e.last_error = None;
+                                    }) {
+                                        emit_watch_statuses(&app_for_stdout);
+                                    }
+                                }
+                                WatchStdoutEvent::FileDone(item) => {
+                                    let is_done = item.state.eq_ignore_ascii_case("done");
+                                    let is_failed = item.state.eq_ignore_ascii_case("failed");
+                                    let item_err = item.error.clone().or_else(|| {
+                                        item.missing_engine
+                                            .as_ref()
+                                            .map(|eng| format!("Missing optional pack: {eng}"))
+                                    });
+                                    let changed = update_watch_entry_if_current(
+                                        &rule_id_stdout,
+                                        gen,
+                                        |e| {
+                                            if is_done {
+                                                e.converted_count =
+                                                    e.converted_count.saturating_add(1);
+                                                e.last_error = None;
+                                            } else if is_failed {
+                                                e.last_error = item_err.clone();
+                                            }
+                                        },
+                                    );
+                                    if changed {
+                                        emit_watch_statuses(&app_for_stdout);
+                                    }
+                                    let seq = WATCH_HISTORY_SEQ.fetch_add(1, Ordering::Relaxed);
+                                    let synthetic_req = ConvertRequest {
+                                        job_id: format!("watch-{}-{seq}", rule_for_stdout.id),
+                                        inputs: vec![item.source.clone()],
+                                        to: rule_for_stdout.target_format.clone(),
+                                        preset: rule_for_stdout.preset_id.clone(),
+                                        output_dir: (!rule_for_stdout
+                                            .output_folder
+                                            .trim()
+                                            .is_empty())
+                                        .then(|| rule_for_stdout.output_folder.clone()),
+                                        quality: None,
+                                        pages: None,
+                                        split_every: None,
+                                        split_parts: None,
+                                        conflict: None,
+                                        overwrite: None,
+                                        keep_dates: Some(rule_for_stdout.keep_dates),
+                                        zip: None,
+                                        iso_filesystem: None,
+                                        iso_label: None,
+                                        crop: None,
+                                    };
+                                    record_conversion_history(
+                                        &app_for_stdout,
+                                        &paths_for_stdout,
+                                        &synthetic_req,
+                                        &[item],
+                                    )
+                                    .await;
+                                }
+                                WatchStdoutEvent::Stopped => {
+                                    if update_watch_entry_if_current(&rule_id_stdout, gen, |e| {
+                                        e.running = false;
+                                    }) {
+                                        emit_watch_statuses(&app_for_stdout);
+                                    }
+                                }
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+        };
+
+        let read_stderr = async move {
+            let mut tail = VecDeque::with_capacity(MAX_STDERR_TAIL_LINES);
+            if let Some(err) = stderr {
+                let mut reader = BufReader::new(err);
+                let mut buf = Vec::with_capacity(512);
+                loop {
+                    buf.clear();
+                    match reader.read_until(b'\n', &mut buf).await {
+                        Ok(0) => break,
+                        Ok(_) => {
+                            if buf.len() > MAX_STDERR_LINE_BYTES {
+                                buf.truncate(MAX_STDERR_LINE_BYTES);
+                            }
+                            let line = String::from_utf8_lossy(&buf);
+                            push_stderr_tail(&mut tail, &line);
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+            tail.into_iter().collect::<Vec<_>>().join(" | ")
+        };
+
+        let io_result = {
+            let io_fut = std::pin::pin!(futures_util::future::join(read_stdout, read_stderr));
+            let cancel_fut = std::pin::pin!(wait_for_cancel(&mut cancel_rx));
+            match futures_util::future::select(io_fut, cancel_fut).await {
+                futures_util::future::Either::Left((res, _)) => Some(res),
+                futures_util::future::Either::Right((_, _)) => None,
+            }
+        };
+
+        let Some((_, stderr_tail)) = io_result else {
+            terminate_child_and_tree(&mut child, pid).await;
+            return;
+        };
+
+        let wait_result = {
+            let wait_fut = std::pin::pin!(child.wait());
+            let cancel_fut = std::pin::pin!(wait_for_cancel(&mut cancel_rx));
+            match futures_util::future::select(wait_fut, cancel_fut).await {
+                futures_util::future::Either::Left((res, _)) => Some(res),
+                futures_util::future::Either::Right((_, _)) => None,
+            }
+        };
+
+        let Some(status_res) = wait_result else {
+            terminate_child_and_tree(&mut child, pid).await;
+            return;
+        };
+
+        if *cancel_rx.borrow() || CONVERTER_SHUTTING_DOWN.load(Ordering::Acquire) {
+            return;
+        }
+
+        let err_msg = match status_res {
+            Ok(status) if status.success() => None,
+            Ok(status) => Some(if !stderr_tail.trim().is_empty() {
+                stderr_tail
+            } else if let Some(code) = status.code() {
+                format!("Watch process exited with code {code}")
+            } else {
+                "Watch process terminated unexpectedly".to_string()
+            }),
+            Err(e) => Some(format!("Watch wait failed: {e}")),
+        };
+
+        if update_watch_entry_if_current(&rule_id, gen, |e| {
+            e.running = false;
+            e.pid = None;
+            if err_msg.is_some() {
+                e.last_error = err_msg.clone();
+            }
+        }) {
+            emit_watch_statuses(&app);
+        }
+    });
+}
+
+async fn reconcile_watches(
+    app: AppHandle,
+    paths: ConverterPaths,
+    state: ConverterState,
+) -> Vec<WatchRuleStatus> {
+    let _reconcile_guard = watch_reconcile_lock().lock().await;
+    let shutting_down = CONVERTER_SHUTTING_DOWN.load(Ordering::Acquire);
+    let core_installed = paths.cli_exe.is_file();
+
+    struct PendingSpawn {
+        rule: WatchRule,
+        args: Vec<String>,
+        gen: u64,
+        cancel_tx: watch::Sender<bool>,
+        cancel_rx: watch::Receiver<bool>,
+    }
+
+    let mut pids_to_kill: Vec<u32> = Vec::new();
+    let mut pending_spawns: Vec<PendingSpawn> = Vec::new();
+
+    {
+        let Ok(mut mgr) = watch_manager().lock() else {
+            return Vec::new();
+        };
+
+        let next_rules_by_id: HashMap<String, (WatchRule, Vec<String>)> = state
+            .watch_rules
+            .iter()
+            .map(|r| {
+                let args = build_watch_args_for_spawn(r, &state.presets);
+                (r.id.clone(), (r.clone(), args))
+            })
+            .collect();
+
+        // Cancel & remove rules that disappeared, became disabled, lost core/folder, or changed config.
+        let existing_ids: Vec<String> = mgr.entries.keys().cloned().collect();
+        for id in existing_ids {
+            let keep = next_rules_by_id
+                .get(&id)
+                .is_some_and(|(next_rule, next_args)| {
+                    let entry = &mgr.entries[&id];
+                    !shutting_down
+                        && next_rule.enabled
+                        && core_installed
+                        && Path::new(next_rule.folder.trim()).is_dir()
+                        && entry.running
+                        && entry.pid.is_some()
+                        && entry.effective_args == *next_args
+                });
+
+            if !keep {
+                if let Some(mut old) = mgr.entries.remove(&id) {
+                    let _ = old.cancel_tx.send(true);
+                    if let Some(pid) = old.pid.take() {
+                        pids_to_kill.push(pid);
+                    }
+                }
+            }
+        }
+
+        mgr.ordered_ids = state.watch_rules.iter().map(|r| r.id.clone()).collect();
+
+        for rule in &state.watch_rules {
+            if mgr.entries.contains_key(&rule.id) {
+                continue;
+            }
+            let effective_args = next_rules_by_id
+                .get(&rule.id)
+                .map(|(_, a)| a.clone())
+                .unwrap_or_else(|| build_watch_args(rule));
+            let (cancel_tx, cancel_rx) = watch::channel(false);
+
+            if shutting_down || !rule.enabled {
+                mgr.entries.insert(
+                    rule.id.clone(),
+                    ActiveWatchEntry {
+                        generation: 0,
+                        effective_args,
+                        pid: None,
+                        cancel_tx,
+                        running: false,
+                        converted_count: 0,
+                        last_error: None,
+                    },
+                );
+                continue;
+            }
+
+            if !core_installed {
+                mgr.entries.insert(
+                    rule.id.clone(),
+                    ActiveWatchEntry {
+                        generation: 0,
+                        effective_args,
+                        pid: None,
+                        cancel_tx,
+                        running: false,
+                        converted_count: 0,
+                        last_error: Some(
+                            "Core converter runtime is not installed yet.".to_string(),
+                        ),
+                    },
+                );
+                continue;
+            }
+
+            if !Path::new(rule.folder.trim()).is_dir() {
+                mgr.entries.insert(
+                    rule.id.clone(),
+                    ActiveWatchEntry {
+                        generation: 0,
+                        effective_args,
+                        pid: None,
+                        cancel_tx,
+                        running: false,
+                        converted_count: 0,
+                        last_error: Some(format!(
+                            "Watch folder does not exist: {}",
+                            rule.folder.trim()
+                        )),
+                    },
+                );
+                continue;
+            }
+
+            let gen = WATCH_GENERATION_SEQ.fetch_add(1, Ordering::SeqCst);
+            mgr.entries.insert(
+                rule.id.clone(),
+                ActiveWatchEntry {
+                    generation: gen,
+                    effective_args: effective_args.clone(),
+                    pid: None,
+                    cancel_tx: cancel_tx.clone(),
+                    running: false,
+                    converted_count: 0,
+                    last_error: None,
+                },
+            );
+            pending_spawns.push(PendingSpawn {
+                rule: rule.clone(),
+                args: effective_args,
+                gen,
+                cancel_tx,
+                cancel_rx,
+            });
+        }
+    }
+
+    for pid in pids_to_kill {
+        terminate_process_tree(pid);
+    }
+
+    for item in pending_spawns {
+        if CONVERTER_SHUTTING_DOWN.load(Ordering::Acquire) {
+            let _ = item.cancel_tx.send(true);
+            continue;
+        }
+        let std_cmd = build_cli_command(&paths.cli_exe, &item.args, &paths);
+        let mut cmd = tokio::process::Command::from(std_cmd);
+        cmd.kill_on_drop(true);
+
+        match cmd.spawn() {
+            Ok(mut child) => {
+                let pid = child.id();
+                if CONVERTER_SHUTTING_DOWN.load(Ordering::Acquire) {
+                    terminate_child_and_tree(&mut child, pid).await;
+                    continue;
+                }
+                let attached = update_watch_entry_if_current(&item.rule.id, item.gen, |e| {
+                    e.pid = pid;
+                    e.running = true;
+                    e.last_error = None;
+                });
+                if !attached {
+                    terminate_child_and_tree(&mut child, pid).await;
+                    continue;
+                }
+                spawn_watch_worker(
+                    app.clone(),
+                    paths.clone(),
+                    item.rule,
+                    child,
+                    pid,
+                    item.gen,
+                    item.cancel_rx,
+                );
+            }
+            Err(e) => {
+                let _ = update_watch_entry_if_current(&item.rule.id, item.gen, |entry| {
+                    entry.running = false;
+                    entry.pid = None;
+                    entry.last_error = Some(format!("Failed to start watch process: {e}"));
+                });
+            }
+        }
+    }
+
+    snapshot_watch_statuses()
+}
+
+pub fn start_enabled_watches(app: &AppHandle) {
+    let Ok(paths) = resolve_converter_paths(app) else {
+        return;
+    };
+    let app_clone = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let state = tokio::task::spawn_blocking({
+            let p = paths.clone();
+            move || load_converter_state(&p)
+        })
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or_default();
+
+        if state.watch_rules.is_empty() {
+            return;
+        }
+        let statuses = reconcile_watches(app_clone.clone(), paths, state).await;
+        let _ = app_clone.emit("converter-watch-status", &statuses);
+    });
+}
+
+pub fn shutdown_converter() {
+    CONVERTER_SHUTTING_DOWN.store(true, Ordering::SeqCst);
+    let mut pids_to_kill: Vec<u32> = Vec::new();
+
+    if let Ok(mut mgr) = watch_manager().lock() {
+        for entry in mgr.entries.values_mut() {
+            entry.running = false;
+            let _ = entry.cancel_tx.send(true);
+            if let Some(pid) = entry.pid.take() {
+                pids_to_kill.push(pid);
+            }
+        }
+    }
+
+    if let Ok(mut jobs) = active_jobs_map().lock() {
+        for state in jobs.values_mut() {
+            state.cancelled = true;
+            let _ = state.cancel_tx.send(true);
+            if let Some(pid) = state.pid.take() {
+                pids_to_kill.push(pid);
+            }
+        }
+    }
+
+    for pid in pids_to_kill {
+        terminate_process_tree(pid);
+    }
+}
+
+#[tauri::command]
+pub async fn converter_save_watch_rules(
+    app: AppHandle,
+    rules: Vec<WatchRule>,
+) -> Result<Vec<WatchRuleStatus>, String> {
+    let paths = resolve_converter_paths(&app)?;
+    let mut seen_ids = HashSet::new();
+    let sanitized: Vec<WatchRule> = rules
+        .into_iter()
+        .map(sanitize_watch_rule)
+        .filter(|r| {
+            !r.id.is_empty()
+                && !r.folder.is_empty()
+                && (!r.target_format.is_empty() || r.preset_id.is_some())
+                && seen_ids.insert(r.id.clone())
+        })
+        .collect();
+
+    let paths_clone = paths.clone();
+    let updated = tokio::task::spawn_blocking(move || {
+        update_converter_state(&paths_clone, |state| {
+            state.watch_rules = sanitized;
+        })
+    })
+    .await
+    .map_err(|e| format!("Failed to save watch rules: {e}"))??;
+
+    let _ = app.emit("converter-state-changed", &updated);
+    let statuses = reconcile_watches(app.clone(), paths, updated).await;
+    let _ = app.emit("converter-watch-status", &statuses);
+    Ok(statuses)
+}
+
+#[tauri::command]
+pub async fn converter_get_watch_statuses() -> Result<Vec<WatchRuleStatus>, String> {
+    Ok(snapshot_watch_statuses())
+}
+
+fn to_wide_null(s: &str) -> Vec<u16> {
+    s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+fn reg_set_sz(
+    hkey: windows::Win32::System::Registry::HKEY,
+    value_name: Option<&str>,
+    data: &str,
+) -> Result<(), String> {
+    use windows::core::PCWSTR;
+    use windows::Win32::System::Registry::{RegSetValueExW, REG_SZ};
+
+    let name_wide = value_name.map(to_wide_null);
+    let data_wide = to_wide_null(data);
+    let byte_slice = unsafe {
+        std::slice::from_raw_parts(
+            data_wide.as_ptr() as *const u8,
+            data_wide.len() * std::mem::size_of::<u16>(),
+        )
+    };
+    let name_ptr = name_wide
+        .as_ref()
+        .map(|w| PCWSTR(w.as_ptr()))
+        .unwrap_or_else(PCWSTR::null);
+    let err = unsafe { RegSetValueExW(hkey, name_ptr, None, REG_SZ, Some(byte_slice)) };
+    if err.0 != 0 {
+        return Err(format!(
+            "REGISTRY_ERROR: RegSetValueExW failed with code {}",
+            err.0
+        ));
+    }
+    Ok(())
+}
+
+fn write_hkcu_shell_entry(
+    subkey: &str,
+    label: &str,
+    icon: &str,
+    command: &str,
+) -> Result<(), String> {
+    use windows::core::PCWSTR;
+    use windows::Win32::System::Registry::{
+        RegCloseKey, RegCreateKeyExW, HKEY, HKEY_CURRENT_USER, KEY_WRITE, REG_OPTION_NON_VOLATILE,
+    };
+
+    let subkey_wide = to_wide_null(subkey);
+    let mut hkey = HKEY::default();
+    let err = unsafe {
+        RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            PCWSTR(subkey_wide.as_ptr()),
+            None,
+            PCWSTR::null(),
+            REG_OPTION_NON_VOLATILE,
+            KEY_WRITE,
+            None,
+            &mut hkey,
+            None,
+        )
+    };
+    if err.0 != 0 {
+        return Err(format!(
+            "REGISTRY_ERROR: Failed to create HKCU\\{subkey} (code {})",
+            err.0
+        ));
+    }
+    let write_parent = (|| -> Result<(), String> {
+        reg_set_sz(hkey, None, label)?;
+        reg_set_sz(hkey, Some("Icon"), icon)?;
+        Ok(())
+    })();
+    unsafe {
+        let _ = RegCloseKey(hkey);
+    }
+    write_parent?;
+
+    let cmd_subkey = format!("{subkey}\\command");
+    let cmd_wide = to_wide_null(&cmd_subkey);
+    let mut cmd_hkey = HKEY::default();
+    let err = unsafe {
+        RegCreateKeyExW(
+            HKEY_CURRENT_USER,
+            PCWSTR(cmd_wide.as_ptr()),
+            None,
+            PCWSTR::null(),
+            REG_OPTION_NON_VOLATILE,
+            KEY_WRITE,
+            None,
+            &mut cmd_hkey,
+            None,
+        )
+    };
+    if err.0 != 0 {
+        return Err(format!(
+            "REGISTRY_ERROR: Failed to create HKCU\\{cmd_subkey} (code {})",
+            err.0
+        ));
+    }
+    let write_cmd = reg_set_sz(cmd_hkey, None, command);
+    unsafe {
+        let _ = RegCloseKey(cmd_hkey);
+    }
+    write_cmd
+}
+
+fn delete_hkcu_shell_entry(subkey: &str) -> Result<(), String> {
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND};
+    use windows::Win32::System::Registry::{RegDeleteTreeW, HKEY_CURRENT_USER};
+
+    let subkey_wide = to_wide_null(subkey);
+    let err = unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, PCWSTR(subkey_wide.as_ptr())) };
+    if err.0 != 0 && err != ERROR_FILE_NOT_FOUND && err != ERROR_PATH_NOT_FOUND {
+        return Err(format!(
+            "REGISTRY_ERROR: Failed to remove HKCU\\{subkey} (code {})",
+            err.0
+        ));
+    }
+    Ok(())
+}
+
+fn hkcu_shell_entry_exists(subkey: &str) -> bool {
+    use windows::core::PCWSTR;
+    use windows::Win32::System::Registry::{
+        RegCloseKey, RegOpenKeyExW, HKEY, HKEY_CURRENT_USER, KEY_READ,
+    };
+
+    let subkey_wide = to_wide_null(subkey);
+    let mut hkey = HKEY::default();
+    let err = unsafe {
+        RegOpenKeyExW(
+            HKEY_CURRENT_USER,
+            PCWSTR(subkey_wide.as_ptr()),
+            None,
+            KEY_READ,
+            &mut hkey,
+        )
+    };
+    if err.0 == 0 {
+        unsafe {
+            let _ = RegCloseKey(hkey);
+        }
+        true
+    } else {
+        false
+    }
+}
+
+pub fn apply_explorer_menu_registry(enabled: bool) -> Result<(), String> {
+    if enabled {
+        let exe_path = std::env::current_exe()
+            .map_err(|e| format!("REGISTRY_ERROR: Failed to resolve executable path: {e}"))?;
+        let exe_raw = exe_path.to_string_lossy();
+        let exe_clean = exe_raw.strip_prefix(r"\\?\").unwrap_or(&exe_raw);
+        let icon = format!("{exe_clean},0");
+        let cmd = format!("\"{exe_clean}\" --convert \"%1\"");
+        write_hkcu_shell_entry(EXPLORER_FILE_SHELL_KEY, EXPLORER_MENU_LABEL, &icon, &cmd)?;
+        write_hkcu_shell_entry(EXPLORER_DIR_SHELL_KEY, EXPLORER_MENU_LABEL, &icon, &cmd)?;
+    } else {
+        delete_hkcu_shell_entry(EXPLORER_FILE_SHELL_KEY)?;
+        delete_hkcu_shell_entry(EXPLORER_DIR_SHELL_KEY)?;
+    }
+    Ok(())
+}
+
+pub fn sync_explorer_menu_from_settings(app: &AppHandle) {
+    let enabled = crate::utils::get_setting_str(app, "zenith-converter-explorer-menu")
+        .or_else(|| crate::utils::get_setting_str(app, "bloom-converter-explorer-menu"))
+        .is_some_and(|v| v == "true");
+
+    if enabled
+        || hkcu_shell_entry_exists(EXPLORER_FILE_SHELL_KEY)
+        || hkcu_shell_entry_exists(EXPLORER_DIR_SHELL_KEY)
+    {
+        if let Err(err) = apply_explorer_menu_registry(enabled) {
+            eprintln!("Failed to sync Windows Explorer context menu: {err}");
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn converter_toggle_explorer_menu(
+    app: AppHandle,
+    enabled: bool,
+) -> Result<bool, String> {
+    tokio::task::spawn_blocking(move || apply_explorer_menu_registry(enabled))
+        .await
+        .map_err(|e| format!("REGISTRY_ERROR: {e}"))??;
+
+    crate::commands::persist_setting_and_emit(
+        &app,
+        "zenith-converter-explorer-menu".to_string(),
+        serde_json::Value::String(if enabled { "true" } else { "false" }.to_string()),
+    )?;
+    Ok(enabled)
+}
+
+fn cli_handoff_file_path() -> Option<PathBuf> {
+    let appdata = std::env::var_os("APPDATA")?;
+    Some(
+        PathBuf::from(appdata)
+            .join(CURRENT_APP_IDENTIFIER)
+            .join("converter")
+            .join("cli-handoff.json"),
+    )
+}
+
+struct NamedMutexGuard(windows::Win32::Foundation::HANDLE);
+
+impl Drop for NamedMutexGuard {
+    fn drop(&mut self) {
+        use windows::Win32::Foundation::CloseHandle;
+        use windows::Win32::System::Threading::ReleaseMutex;
+        unsafe {
+            let _ = ReleaseMutex(self.0);
+            let _ = CloseHandle(self.0);
+        }
+    }
+}
+
+fn acquire_cli_handoff_mutex() -> Option<NamedMutexGuard> {
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{CreateMutexW, WaitForSingleObject};
+
+    let name_wide = to_wide_null(CLI_HANDOFF_MUTEX_NAME);
+    unsafe {
+        let handle = CreateMutexW(None, false, PCWSTR(name_wide.as_ptr())).ok()?;
+        let wait = WaitForSingleObject(handle, 2000);
+        // WAIT_OBJECT_0 (0) or WAIT_ABANDONED (0x80) both grant ownership.
+        if wait.0 == 0 || wait.0 == 0x80 {
+            Some(NamedMutexGuard(handle))
+        } else {
+            let _ = CloseHandle(handle);
+            None
+        }
+    }
+}
+
+pub fn write_cli_handoff_paths(paths: &[String]) -> Result<(), String> {
+    let Some(file_path) = cli_handoff_file_path() else {
+        return Err("APPDATA environment variable is missing".to_string());
+    };
+    let _guard = acquire_cli_handoff_mutex();
+
+    if let Some(parent) = file_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+
+    let mut merged: Vec<String> = match std::fs::read_to_string(&file_path) {
+        Ok(raw) => serde_json::from_str::<Vec<String>>(&raw).unwrap_or_default(),
+        Err(_) => Vec::new(),
+    };
+    for p in paths {
+        let trimmed = p.trim();
+        if !trimmed.is_empty() && !merged.iter().any(|existing| existing == trimmed) {
+            merged.push(trimmed.to_string());
+        }
+    }
+
+    let json = serde_json::to_string(&merged).map_err(|e| e.to_string())?;
+    let tmp_path = file_path.with_extension(format!("tmp.{}", std::process::id()));
+    std::fs::write(&tmp_path, json.as_bytes()).map_err(|e| e.to_string())?;
+    if let Err(err) = std::fs::rename(&tmp_path, &file_path) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(err.to_string());
+    }
+    Ok(())
+}
+
+pub fn take_cli_handoff_paths() -> Vec<String> {
+    let Some(file_path) = cli_handoff_file_path() else {
+        return Vec::new();
+    };
+    let _guard = acquire_cli_handoff_mutex();
+
+    let paths = match std::fs::read_to_string(&file_path) {
+        Ok(raw) => serde_json::from_str::<Vec<String>>(&raw).unwrap_or_default(),
+        Err(_) => Vec::new(),
+    };
+    let _ = std::fs::remove_file(&file_path);
+    paths
+        .into_iter()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+pub fn open_converter_donut_from_cli(app: &AppHandle, paths: Vec<String>) {
+    if crate::state::SHUTTING_DOWN.load(Ordering::Acquire)
+        || CONVERTER_SHUTTING_DOWN.load(Ordering::Acquire)
+    {
+        return;
+    }
+    let clean_paths: Vec<String> = paths
+        .into_iter()
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect();
+    if clean_paths.is_empty() {
+        return;
+    }
+
+    let mut pt = windows::Win32::Foundation::POINT::default();
+    unsafe {
+        let _ = windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut pt);
+    }
+
+    CONVERTER_DRAG_IS_BROWSER.store(false, Ordering::Relaxed);
+    let session_id = prepare_converter_overlay_open();
+    crate::commands::show_overlay_for_converter(app, pt.x, pt.y, session_id);
+
+    if !is_converter_session_current(session_id) || !CONVERTER_OVERLAY_OPEN.load(Ordering::Acquire) {
+        return;
+    }
+
+    let (x, y) = crate::services::screen_to_radial_css(pt.x, pt.y);
+    let _ = app.emit_to(
+        "overlay",
+        "converter-donut-open",
+        serde_json::json!({
+            "x": x,
+            "y": y,
+            "paths": clean_paths,
+            "urls": Vec::<String>::new(),
+            "isBrowserDrag": false,
+            "fromCli": true,
+        }),
+    );
 }
 
 #[derive(Deserialize)]
@@ -2906,7 +4106,25 @@ pub async fn converter_ensure_core(app: AppHandle) -> Result<ConverterRuntimeSta
 
     let paths = resolve_converter_paths(&app)?;
     match ensure_core_inner(&app, &paths).await {
-        Ok(status) => Ok(status),
+        Ok(status) => {
+            if status.core_installed {
+                let app_clone = app.clone();
+                let paths_clone = paths.clone();
+                tauri::async_runtime::spawn(async move {
+                    let st = tokio::task::spawn_blocking({
+                        let p = paths_clone.clone();
+                        move || load_converter_state(&p)
+                    })
+                    .await
+                    .ok()
+                    .and_then(Result::ok)
+                    .unwrap_or_default();
+                    let statuses = reconcile_watches(app_clone.clone(), paths_clone, st).await;
+                    let _ = app_clone.emit("converter-watch-status", &statuses);
+                });
+            }
+            Ok(status)
+        }
         Err(err) => {
             emit_core_progress(&app, "error", 0.0, err.clone());
             Err(err)
@@ -7385,5 +8603,195 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  Filee-2.5.0-wi
 
         assert!(parse_data_image_uri("data:text/html;base64,PHNjcmlwdD4=").is_none());
         assert!(parse_data_image_uri("data:image/png;base64,TVqQAAMAAAAEAAAA").is_none());
+    }
+
+    #[test]
+    fn build_watch_args_covers_flags_and_custom_output() {
+        let rule = WatchRule {
+            id: "w1".to_string(),
+            folder: r"D:\Inbox".to_string(),
+            target_format: "pdf".to_string(),
+            preset_id: None,
+            output_folder: r"D:\Out".to_string(),
+            recursive: true,
+            move_originals: true,
+            keep_dates: true,
+            enabled: true,
+        };
+        assert_eq!(
+            build_watch_args(&rule),
+            vec![
+                "watch",
+                r"D:\Inbox",
+                "--to",
+                "pdf",
+                "-o",
+                r"D:\Out",
+                "-r",
+                "--move-originals",
+                "--keep-dates",
+                "--json",
+            ]
+        );
+
+        let preset_rule = WatchRule {
+            id: "w2".to_string(),
+            folder: r"D:\Photos".to_string(),
+            target_format: "*".to_string(),
+            preset_id: Some("compress-image".to_string()),
+            output_folder: String::new(),
+            recursive: false,
+            move_originals: false,
+            keep_dates: false,
+            enabled: true,
+        };
+        assert_eq!(
+            build_watch_args(&preset_rule),
+            vec![
+                "watch",
+                r"D:\Photos",
+                "--preset",
+                "compress-image",
+                "--json",
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_watch_stdout_line_parses_started_file_stopped() {
+        assert_eq!(
+            parse_watch_stdout_line(
+                r#"{"event":"started","folder":"D:\\Inbox","preset":"PDF","target":"pdf","outputFolder":"D:\\Out"}"#
+            ),
+            Some(WatchStdoutEvent::Started {
+                folder: r"D:\Inbox".to_string(),
+                target: "pdf".to_string(),
+                output_folder: r"D:\Out".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_watch_stdout_line(
+                r#"{"event":"file","source":"a.png","outputs":["a.pdf"],"state":"Done"}"#
+            ),
+            Some(WatchStdoutEvent::FileDone(ConvertedFileItem {
+                source: "a.png".to_string(),
+                state: "Done".to_string(),
+                outputs: vec!["a.pdf".to_string()],
+                error: None,
+                error_key: None,
+                missing_engine: None,
+            }))
+        );
+        assert_eq!(
+            parse_watch_stdout_line(r#"{"event":"stopped"}"#),
+            Some(WatchStdoutEvent::Stopped)
+        );
+        assert_eq!(parse_watch_stdout_line("Watching D:\\Inbox..."), None);
+        assert_eq!(parse_watch_stdout_line("   "), None);
+        assert_eq!(parse_watch_stdout_line("{not-json"), None);
+    }
+
+    #[test]
+    fn parse_convert_cli_args_extracts_paths_after_flag() {
+        assert_eq!(
+            parse_convert_cli_args(vec![
+                "Zenith.exe".to_string(),
+                "--convert".to_string(),
+                r"C:\a.png".to_string(),
+                r"D:\b.docx".to_string(),
+            ]),
+            vec![r"C:\a.png".to_string(), r"D:\b.docx".to_string()]
+        );
+        assert_eq!(
+            parse_convert_cli_args(vec![
+                "Zenith.exe".to_string(),
+                "--convert".to_string(),
+                "".to_string(),
+                "--self-flag".to_string(),
+                r"C:\c.webp".to_string(),
+            ]),
+            vec![r"C:\c.webp".to_string()]
+        );
+        assert!(parse_convert_cli_args(vec!["Zenith.exe".to_string()]).is_empty());
+    }
+
+    #[test]
+    fn build_watch_args_for_spawn_resolves_custom_preset_and_overrides() {
+        let custom_preset = ConverterPresetConfig {
+            id: "custom-1700000".to_string(),
+            name: "WebP 75".to_string(),
+            target_format: ".WEBP".to_string(),
+            quality: Some(75),
+            pages: Some("1-3".to_string()),
+            split_every: None,
+            split_parts: None,
+            conflict: Some("overwrite".to_string()),
+            keep_dates: Some(true),
+            zip: Some(true),
+            iso_filesystem: None,
+            iso_label: None,
+        };
+        let rule = WatchRule {
+            id: "w-custom".to_string(),
+            folder: r"D:\Drop".to_string(),
+            target_format: "webp".to_string(),
+            preset_id: Some("custom-1700000".to_string()),
+            output_folder: r"D:\DropOut".to_string(),
+            recursive: true,
+            move_originals: false,
+            keep_dates: false,
+            enabled: true,
+        };
+        assert_eq!(
+            build_watch_args_for_spawn(&rule, &[custom_preset]),
+            vec![
+                "watch",
+                r"D:\Drop",
+                "--to",
+                "webp",
+                "-o",
+                r"D:\DropOut",
+                "-r",
+                "-q",
+                "75",
+                "--pages",
+                "1-3",
+                "--overwrite",
+                "--zip",
+                "--keep-dates",
+                "--json",
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_watch_stdout_line_handles_missing_engine_and_bom() {
+        let line = "\u{feff}{\"event\":\"file\",\"source\":\"clip.mp4\",\"outputs\":[],\"state\":\"Failed\",\"error\":\"No route\",\"errorKey\":\"error.no_route\",\"needsEngines\":[\"ffmpeg\"]}";
+        assert_eq!(
+            parse_watch_stdout_line(line),
+            Some(WatchStdoutEvent::FileDone(ConvertedFileItem {
+                source: "clip.mp4".to_string(),
+                state: "Failed".to_string(),
+                outputs: Vec::new(),
+                error: Some("No route".to_string()),
+                error_key: Some("error.no_route".to_string()),
+                missing_engine: Some("ffmpeg".to_string()),
+            }))
+        );
+    }
+
+    #[test]
+    fn parse_convert_cli_args_deduplicates_and_handles_case() {
+        assert_eq!(
+            parse_convert_cli_args(vec![
+                "Zenith.exe".to_string(),
+                "--CONVERT".to_string(),
+                r"C:\photo.png".to_string(),
+                r"C:\photo.png".to_string(),
+                "-h".to_string(),
+                r"D:\Docs".to_string(),
+            ]),
+            vec![r"C:\photo.png".to_string(), r"D:\Docs".to_string()]
+        );
     }
 }

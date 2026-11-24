@@ -97,6 +97,7 @@ interface DonutOpenPayload {
 	paths: string[];
 	urls: string[];
 	isBrowserDrag: boolean;
+	fromCli?: boolean;
 }
 
 interface DonutDropPayload {
@@ -1693,7 +1694,7 @@ export function ConverterDonut({
 	// Tauri event listeners for drag lifecycle + install/conversion progress.
 	useEffect(() => {
 		const unOpen = listen<DonutOpenPayload>("converter-donut-open", (ev) => {
-			if (!enabledRef.current || suppressedRef.current) {
+			if ((!enabledRef.current && !ev.payload.fromCli) || suppressedRef.current) {
 				releaseOverlayLock();
 				return;
 			}
