@@ -194,13 +194,13 @@ export function useSettings() {
 	const [notchWorkDelay, setNotchWorkDelay] = useState(() => {
 		const val = localStorage.getItem("zenith-notch-work-delay");
 		if (val && val.trim().toLowerCase() === "never") return "never";
-		const parsed = val !== null ? parseInt(val, 10) : 2000;
-		return Number.isFinite(parsed) ? String(Math.min(5000, Math.max(500, parsed))) : "2000";
+		const parsed = val !== null ? parseInt(val, 10) : 0;
+		return Number.isFinite(parsed) ? String(Math.min(5000, Math.max(0, parsed))) : "0";
 	});
 	const [notchWorkLastDelayMs, setNotchWorkLastDelayMs] = useState(() => {
 		const val = localStorage.getItem("zenith-notch-work-delay");
-		const parsed = val !== null ? parseInt(val, 10) : 2000;
-		return Number.isFinite(parsed) ? Math.min(5000, Math.max(500, parsed)) : 2000;
+		const parsed = val !== null ? parseInt(val, 10) : 0;
+		return Number.isFinite(parsed) ? Math.min(5000, Math.max(0, parsed)) : 0;
 	});
 	const [notchPosition, setNotchPosition] = useState<"left" | "center" | "right">(() => {
 		const val = localStorage.getItem("zenith-notch-position");
@@ -601,7 +601,7 @@ export function useSettings() {
 					setNotchWorkDelay("never");
 				} else {
 					const parsed = parseInt(rawWorkDelay, 10);
-					const clamped = Number.isFinite(parsed) ? Math.min(5000, Math.max(500, parsed)) : 2000;
+					const clamped = Number.isFinite(parsed) ? Math.min(5000, Math.max(0, parsed)) : 0;
 					setNotchWorkLastDelayMs(clamped);
 					setNotchWorkDelay(String(clamped));
 				}
@@ -1724,7 +1724,7 @@ export function useSettings() {
 	};
 
 	const handleNotchWorkDelayChange = (ms: number) => {
-		const clamped = Math.min(5000, Math.max(500, Math.round(ms)));
+		const clamped = Math.min(5000, Math.max(0, Math.round(ms)));
 		setNotchWorkLastDelayMs(clamped);
 		const next = String(clamped);
 		setNotchWorkDelay(next);

@@ -3196,15 +3196,18 @@ pub(crate) enum TopEdgePolicy {
         allow_ceiling_instant: bool,
     },
     NeverReveal,
+    WorkCtrlRequired {
+        dwell_ms: i64,
+    },
 }
 
-const WORK_MODE_DEFAULT_DWELL_MS: i64 = 2000;
+const WORK_MODE_DEFAULT_DWELL_MS: i64 = 0;
 
 /// Resolve top-edge reveal behavior for the notch from its mode and delay settings.
 /// - `fixed` (or unset): always visible via AppBar, top-edge reveal disabled.
-/// - `work`: hides behind maximized/overlapping windows; either never reveals over
-///   full windows (`work_delay == "never"`) or requires holding at the top edge for
-///   `work_delay` ms (default 2000ms) with no ceiling instant-reveal bypass.
+/// - `work`: hides behind maximized/overlapping windows; strictly requires holding
+///   the `Ctrl` key while moving the cursor to the top edge to reveal. If `work_delay == "never"`,
+///   it never reveals over full windows.
 /// - `smart` / `peek` / other: uses `edge_delay` ms (default 200ms, 0..=2000) and
 ///   keeps the 2px ceiling slam shortcut.
 pub(crate) fn resolve_top_edge_policy(
@@ -3225,10 +3228,7 @@ pub(crate) fn resolve_top_edge_policy(
                 .and_then(|s| s.trim().parse::<i64>().ok())
                 .unwrap_or(WORK_MODE_DEFAULT_DWELL_MS)
                 .clamp(0, 10_000);
-            TopEdgePolicy::Dwell {
-                dwell_ms,
-                allow_ceiling_instant: false,
-            }
+            TopEdgePolicy::WorkCtrlRequired { dwell_ms }
         }
         Some(_) => {
             let dwell_ms = edge_delay
@@ -3279,6 +3279,15 @@ fn top_edge_armed_for(
         return false;
     }
 
+    if let TopEdgePolicy::WorkCtrlRequired { .. } = policy {
+        use windows::Win32::UI::Input::KeyboardAndMouse::VK_CONTROL;
+        if !is_vk_down(VK_CONTROL) {
+            MH_TOP_EDGE_ENTER_MS.store(0, Ordering::Relaxed);
+            MH_TOP_EDGE_ARMED.store(false, Ordering::Relaxed);
+            return false;
+        }
+    }
+
     let monitors = get_active_notch_monitors(app_handle);
     if !in_top_edge_band_with(&monitors, cursor, scale) {
         MH_TOP_EDGE_ENTER_MS.store(0, Ordering::Relaxed);
@@ -3288,15 +3297,15 @@ fn top_edge_armed_for(
     if MH_TOP_EDGE_ARMED.load(Ordering::Relaxed) {
         return true;
     }
-    let TopEdgePolicy::Dwell {
-        dwell_ms,
-        allow_ceiling_instant,
-    } = policy
-    else {
-        return false;
+    let (dwell_ms, allow_ceiling_instant) = match policy {
+        TopEdgePolicy::WorkCtrlRequired { dwell_ms } => (dwell_ms, true),
+        TopEdgePolicy::Dwell {
+            dwell_ms,
+            allow_ceiling_instant,
+        } => (dwell_ms, allow_ceiling_instant),
+        TopEdgePolicy::DisabledFixed | TopEdgePolicy::NeverReveal => return false,
     };
-    // Instant reveal when slammed against the top ceiling (within 2px of screen top),
-    // disabled in work mode so accidental ceiling hits don't bypass the reveal timer.
+    // Instant reveal when slammed against the top ceiling (within 2px of screen top)
     let is_at_ceiling = allow_ceiling_instant
         && monitors
             .iter()
@@ -3428,12 +3437,17 @@ fn update_main_interaction(
         let mut in_notch_rect = false;
         let mut in_top_span = false;
 
+        let is_ctrl_down = is_vk_down(windows::Win32::UI::Input::KeyboardAndMouse::VK_CONTROL);
         let work_never_hidden =
             is_work_mode && !notch_visible && top_policy == TopEdgePolicy::NeverReveal;
+        let work_ctrl_blocked = is_work_mode && !notch_visible && !is_ctrl_down;
         let work_waiting_dwell = is_work_mode
             && !notch_visible
-            && matches!(top_policy, TopEdgePolicy::Dwell { .. })
-            && !edge_armed;
+            && matches!(
+                top_policy,
+                TopEdgePolicy::Dwell { .. } | TopEdgePolicy::WorkCtrlRequired { .. }
+            )
+            && (!edge_armed || !is_ctrl_down);
 
         if let Some(r) = notch_rect {
             let pad_x = (50.0 * scale) as i32;
@@ -3453,13 +3467,13 @@ fn update_main_interaction(
             let edge_pad = (160.0 * scale) as i32;
             in_top_span = at_top_edge && cursor.x >= rx - edge_pad && cursor.x <= rx + rw + edge_pad;
 
-            if !work_never_hidden && !work_waiting_dwell {
+            if !work_never_hidden && !work_ctrl_blocked && !work_waiting_dwell {
                 let hover_active = in_notch_rect || edge_armed || in_top_span;
                 if (notch_visible || hover_active) && (in_notch_rect || in_top_span) {
                     is_click_interactive = true;
                 }
             }
-            if !work_never_hidden && drag_held && (in_notch_rect || in_top_span) {
+            if !work_never_hidden && !work_ctrl_blocked && drag_held && (in_notch_rect || in_top_span) {
                 is_click_interactive = true;
             }
         }
@@ -3506,6 +3520,7 @@ fn setup_top_edge_watchdog(app_handle: AppHandle) {
     std::thread::spawn(move || {
         let mut last_pt: Option<(i32, i32)> = None;
         let mut last_fg_fs = false;
+        let mut last_ctrl = false;
         loop {
             std::thread::sleep(Duration::from_millis(TOP_EDGE_POLL_MS));
             if CAPTURE_UI_ACTIVE.load(Ordering::Relaxed) || SHUTTING_DOWN.load(Ordering::Relaxed) {
@@ -3517,14 +3532,17 @@ fn setup_top_edge_watchdog(app_handle: AppHandle) {
             }
             let fg_fs = CURRENT_FOREGROUND_FULLSCREEN.load(Ordering::Relaxed);
             let moved = last_pt != Some((pt.x, pt.y));
+            let is_ctrl = is_vk_down(windows::Win32::UI::Input::KeyboardAndMouse::VK_CONTROL);
+            let ctrl_changed = last_ctrl != is_ctrl;
             let dwell_pending = MH_TOP_EDGE_ENTER_MS.load(Ordering::Relaxed) != 0
                 && !MH_TOP_EDGE_ARMED.load(Ordering::Relaxed);
             let hover_active = any_cached_hover(&NOTCH_HOVER_CACHE);
-            if !moved && fg_fs == last_fg_fs && !dwell_pending && !hover_active {
+            if !moved && !ctrl_changed && fg_fs == last_fg_fs && !dwell_pending && !hover_active {
                 continue;
             }
             last_pt = Some((pt.x, pt.y));
             last_fg_fs = fg_fs;
+            last_ctrl = is_ctrl;
             update_main_interaction(&app_handle, pt, now_ms(), fg_fs);
         }
     });
@@ -5912,16 +5930,14 @@ mod tests {
         );
         assert_eq!(
             resolve_top_edge_policy(Some("work"), None, None),
-            TopEdgePolicy::Dwell {
-                dwell_ms: 2000,
-                allow_ceiling_instant: false,
+            TopEdgePolicy::WorkCtrlRequired {
+                dwell_ms: 0,
             }
         );
         assert_eq!(
             resolve_top_edge_policy(Some("work"), Some("200"), Some("3500")),
-            TopEdgePolicy::Dwell {
+            TopEdgePolicy::WorkCtrlRequired {
                 dwell_ms: 3500,
-                allow_ceiling_instant: false,
             }
         );
         assert_eq!(
@@ -5930,9 +5946,8 @@ mod tests {
         );
         assert_eq!(
             resolve_top_edge_policy(Some("work"), None, Some("99999")),
-            TopEdgePolicy::Dwell {
+            TopEdgePolicy::WorkCtrlRequired {
                 dwell_ms: 10_000,
-                allow_ceiling_instant: false,
             }
         );
     }

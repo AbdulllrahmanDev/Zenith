@@ -344,6 +344,21 @@ export function NotchTab({
 
 				{notchMode === "work" && (
 					<>
+						<div
+							style={{
+								margin: "4px 0 16px",
+								padding: "12px 16px",
+								background: "rgba(255, 255, 255, 0.05)",
+								border: "1px solid rgba(255, 255, 255, 0.08)",
+								borderRadius: "8px",
+								fontSize: "13px",
+								lineHeight: "1.6",
+								color: "var(--text-secondary, #a1a1aa)"
+							}}
+						>
+							{n.workModeNote}
+						</div>
+
 						<SettingRow
 							icon={EyeOff}
 							label={n.workNeverReveal}
@@ -362,8 +377,8 @@ export function NotchTab({
 						{notchWorkDelay !== "never" && (() => {
 							const parsed = parseInt(notchWorkDelay, 10);
 							const numericWorkDelay = Number.isFinite(parsed)
-								? Math.min(5000, Math.max(500, parsed))
-								: 2000;
+								? Math.min(5000, Math.max(0, parsed))
+								: 0;
 							const secText =
 								numericWorkDelay % 1000 === 0
 									? String(numericWorkDelay / 1000)
@@ -372,11 +387,11 @@ export function NotchTab({
 								<SettingRow
 									icon={Timer}
 									label={n.workDelay}
-									desc={n.workDelaySec(secText)}
+									desc={numericWorkDelay === 0 ? n.workDelayInstant : n.workDelaySec(secText)}
 								>
 									<input
 										type="range"
-										min="500"
+										min="0"
 										max="5000"
 										step="500"
 										value={numericWorkDelay}

@@ -621,8 +621,8 @@ function App() {
 	const [notchWorkDelay, setNotchWorkDelay] = useState(() => {
 		const val = localStorage.getItem("zenith-notch-work-delay");
 		if (val && val.trim().toLowerCase() === "never") return "never";
-		const parsed = val !== null ? parseInt(val, 10) : 2000;
-		return Number.isFinite(parsed) ? String(Math.min(10000, Math.max(500, parsed))) : "2000";
+		const parsed = val !== null ? parseInt(val, 10) : 0;
+		return Number.isFinite(parsed) ? String(Math.min(10000, Math.max(0, parsed))) : "0";
 	});
 	const [notchPosition, setNotchPosition] = useState<NotchPosition>(() => {
 		const val = localStorage.getItem("zenith-notch-position");
@@ -1326,14 +1326,14 @@ function App() {
 					setNotchMode(mapped);
 				}
 
-				const nWorkDelay = getVal("zenith-notch-work-delay", "2000");
+				const nWorkDelay = getVal("zenith-notch-work-delay", "0");
 				if (nWorkDelay) {
 					if (nWorkDelay.trim().toLowerCase() === "never") {
 						setNotchWorkDelay("never");
 					} else {
 						const parsed = parseInt(nWorkDelay, 10);
 						setNotchWorkDelay(
-							Number.isFinite(parsed) ? String(Math.min(10000, Math.max(500, parsed))) : "2000"
+							Number.isFinite(parsed) ? String(Math.min(10000, Math.max(0, parsed))) : "0"
 						);
 					}
 				}
@@ -3786,7 +3786,10 @@ function App() {
 				<motion.div
 					ref={notchRef}
 					className={`zenith-notch ${isHovered ? "expanded" : ""} ${isImpacted ? "is-impacted" : ""} ${isDragHovering ? "drag-hover" : ""} ${notchPanelMode === "translator" && notchTranslation ? "is-translator" : ""} ${notchPanelMode === "converter" && notchConverterToast ? `is-converter is-converter-${notchConverterToast.status}` : ""}`}
-					onMouseEnter={() => setIsNotchHovered(true)}
+					onMouseEnter={() => {
+						if (notchMode === "work" && isHidden) return;
+						setIsNotchHovered(true);
+					}}
 					onMouseLeave={() => setIsNotchHovered(false)}
 					onWheel={handleWheel}
 					initial={{
