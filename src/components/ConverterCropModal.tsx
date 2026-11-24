@@ -192,6 +192,7 @@ export const ConverterCropModal: React.FC<ConverterCropModalProps> = ({
 
 	const stageWrapRef = useRef<HTMLDivElement | null>(null);
 	const dragCleanupRef = useRef<(() => void) | null>(null);
+	const backdropPointerDownRef = useRef(false);
 
 	const currentPath = inputs[currentIndex] ?? inputs[0] ?? "";
 	const totalCount = inputs.length;
@@ -426,8 +427,13 @@ export const ConverterCropModal: React.FC<ConverterCropModalProps> = ({
 			className="zn-crop-backdrop"
 			dir={dir}
 			onMouseDown={(e) => e.stopPropagation()}
+			onPointerDown={(e) => {
+				backdropPointerDownRef.current = e.target === e.currentTarget;
+			}}
 			onClick={(e) => {
-				if (e.target === e.currentTarget) {
+				const startedOnBackdrop = backdropPointerDownRef.current;
+				backdropPointerDownRef.current = false;
+				if (startedOnBackdrop && e.target === e.currentTarget) {
 					onCancel();
 				}
 			}}
