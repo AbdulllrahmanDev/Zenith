@@ -38,6 +38,10 @@ pub struct CropBox {
     pub y: u32,
     pub width: u32,
     pub height: u32,
+    #[serde(default)]
+    pub ref_width: Option<u32>,
+    #[serde(default)]
+    pub ref_height: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -811,6 +815,56 @@ fn emit_converter_event(app: &AppHandle, job_id: &str, event: &CliEvent) {
 }
 
 const MAX_IMAGE_PREVIEW_EDGE: u32 = 1280;
+const MAX_CROP_SOURCE_BYTES: u64 = 128 * 1024 * 1024;
+const MAX_CROP_IMAGE_DIM: u32 = 16384;
+const MAX_CROP_DECODE_ALLOC_BYTES: u64 = 512 * 1024 * 1024;
+
+fn decode_image_with_limits(
+    path: &Path,
+    max_file_bytes: u64,
+    max_dim: u32,
+    max_alloc: u64,
+) -> Result<image::DynamicImage, String> {
+    let meta = std::fs::metadata(path).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            format!("IMAGE_NOT_FOUND: Image file does not exist: {}", path.display())
+        } else {
+            format!("IMAGE_IO_ERROR: Failed to inspect {}: {e}", path.display())
+        }
+    })?;
+    if !meta.is_file() {
+        return Err(format!(
+            "IMAGE_NOT_FOUND: Image path is not a file: {}",
+            path.display()
+        ));
+    }
+    if meta.len() > max_file_bytes {
+        return Err(format!(
+            "IMAGE_TOO_LARGE: Image {} exceeds the {} MB limit",
+            path.display(),
+            max_file_bytes / (1024 * 1024)
+        ));
+    }
+
+    let mut reader = image::ImageReader::open(path)
+        .map_err(|e| format!("IMAGE_DECODE_FAILED: Failed to open {}: {e}", path.display()))?
+        .with_guessed_format()
+        .map_err(|e| {
+            format!(
+                "IMAGE_DECODE_FAILED: Failed to detect format for {}: {e}",
+                path.display()
+            )
+        })?;
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(max_dim);
+    limits.max_image_height = Some(max_dim);
+    limits.max_alloc = Some(max_alloc);
+    reader.limits(limits);
+
+    reader
+        .decode()
+        .map_err(|e| format!("IMAGE_DECODE_FAILED: Failed to decode {}: {e}", path.display()))
+}
 
 pub fn clamp_crop_box(
     crop: &CropBox,
@@ -823,12 +877,27 @@ pub fn clamp_crop_box(
     if crop.width == 0 || crop.height == 0 {
         return Err("INVALID_CROP: Crop width and height must be at least 1 pixel".to_string());
     }
-    let x = crop.x.min(img_width - 1);
-    let y = crop.y.min(img_height - 1);
+
+    let (raw_x, raw_y, raw_w, raw_h) = match (crop.ref_width, crop.ref_height) {
+        (Some(rw), Some(rh)) if rw > 0 && rh > 0 && (rw != img_width || rh != img_height) => {
+            let sx = img_width as f64 / rw as f64;
+            let sy = img_height as f64 / rh as f64;
+            (
+                ((crop.x as f64) * sx).round().max(0.0) as u32,
+                ((crop.y as f64) * sy).round().max(0.0) as u32,
+                ((crop.width as f64) * sx).round().max(1.0) as u32,
+                ((crop.height as f64) * sy).round().max(1.0) as u32,
+            )
+        }
+        _ => (crop.x, crop.y, crop.width, crop.height),
+    };
+
+    let x = raw_x.min(img_width - 1);
+    let y = raw_y.min(img_height - 1);
     let max_w = img_width - x;
     let max_h = img_height - y;
-    let w = crop.width.clamp(1, max_w);
-    let h = crop.height.clamp(1, max_h);
+    let w = raw_w.clamp(1, max_w);
+    let h = raw_h.clamp(1, max_h);
     Ok((x, y, w, h))
 }
 
@@ -863,8 +932,12 @@ pub fn crop_image_to_temp_png(
     crop: &CropBox,
     temp_dir: &Path,
 ) -> Result<PathBuf, String> {
-    let img = image::open(src_path)
-        .map_err(|e| format!("IMAGE_DECODE_FAILED: Failed to open {}: {e}", src_path.display()))?;
+    let img = decode_image_with_limits(
+        src_path,
+        MAX_CROP_SOURCE_BYTES,
+        MAX_CROP_IMAGE_DIM,
+        MAX_CROP_DECODE_ALLOC_BYTES,
+    )?;
     let (x, y, w, h) = clamp_crop_box(crop, img.width(), img.height())?;
     let cropped = img.crop_imm(x, y, w, h);
 
@@ -878,11 +951,22 @@ pub fn crop_image_to_temp_png(
     let stem = sanitize_path_stem(src_path);
     let mut out_path = temp_dir.join(format!("{stem}.png"));
     if out_path.exists() {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_nanos())
-            .unwrap_or(0);
-        out_path = temp_dir.join(format!("{stem}_{nanos}.png"));
+        let mut idx = 1u32;
+        loop {
+            let sub_dir = temp_dir.join(format!("item_{idx}"));
+            let candidate = sub_dir.join(format!("{stem}.png"));
+            if !candidate.exists() {
+                std::fs::create_dir_all(&sub_dir).map_err(|e| {
+                    format!(
+                        "TEMP_DIR_ERROR: Failed to create crop temp dir {}: {e}",
+                        sub_dir.display()
+                    )
+                })?;
+                out_path = candidate;
+                break;
+            }
+            idx += 1;
+        }
     }
 
     cropped
@@ -899,15 +983,12 @@ pub fn crop_image_to_temp_png(
 pub fn load_image_preview_sync(src_path: &Path) -> Result<ImagePreviewPayload, String> {
     use base64::Engine;
 
-    if !src_path.is_file() {
-        return Err(format!(
-            "IMAGE_NOT_FOUND: Image file does not exist: {}",
-            src_path.display()
-        ));
-    }
-
-    let img = image::open(src_path)
-        .map_err(|e| format!("IMAGE_DECODE_FAILED: Failed to open {}: {e}", src_path.display()))?;
+    let img = decode_image_with_limits(
+        src_path,
+        MAX_CROP_SOURCE_BYTES,
+        MAX_CROP_IMAGE_DIM,
+        MAX_CROP_DECODE_ALLOC_BYTES,
+    )?;
     let width = img.width();
     let height = img.height();
     if width == 0 || height == 0 {
@@ -1216,7 +1297,7 @@ pub async fn converter_convert(
         let cropped_pairs = tokio::task::spawn_blocking(move || -> Result<Vec<(String, String)>, String> {
             let mut pairs = Vec::with_capacity(inputs_clone.len());
             for (idx, orig) in inputs_clone.into_iter().enumerate() {
-                let slot_dir = temp_root.join(idx.to_string());
+                let slot_dir = temp_root.join(format!("item_{idx}"));
                 let cropped_path = crop_image_to_temp_png(Path::new(&orig), &crop_clone, &slot_dir)?;
                 pairs.push((orig, cropped_path.to_string_lossy().to_string()));
             }
@@ -1454,23 +1535,10 @@ where
 pub fn generate_thumbnail_data_url(path: &Path) -> Option<String> {
     use base64::Engine;
 
-    let meta = std::fs::metadata(path).ok()?;
-    if !meta.is_file() || meta.len() > MAX_THUMBNAIL_SOURCE_BYTES {
-        return None;
-    }
-
-    let reader = image::ImageReader::open(path)
-        .ok()?
-        .with_guessed_format()
-        .ok()?;
-    let mut limits = image::Limits::default();
-    limits.max_image_width = Some(8192);
-    limits.max_image_height = Some(8192);
-    limits.max_alloc = Some(256 * 1024 * 1024);
-    let mut reader = reader;
-    reader.limits(limits);
-
-    let thumb = reader.decode().ok()?.thumbnail(64, 64);
+    let thumb =
+        decode_image_with_limits(path, MAX_THUMBNAIL_SOURCE_BYTES, 8192, 256 * 1024 * 1024)
+            .ok()?
+            .thumbnail(64, 64);
     let mut png = Vec::new();
     thumb
         .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
@@ -5094,6 +5162,8 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  Filee-2.5.0-wi
                 y: 70,
                 width: 50,
                 height: 40,
+                ref_width: None,
+                ref_height: None,
             },
             100,
             80,
@@ -5108,6 +5178,8 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  Filee-2.5.0-wi
                     y: 10,
                     width: 0,
                     height: 20,
+                    ref_width: None,
+                    ref_height: None,
                 },
                 100,
                 80,
@@ -5122,6 +5194,8 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  Filee-2.5.0-wi
                     y: 10,
                     width: 20,
                     height: 0,
+                    ref_width: None,
+                    ref_height: None,
                 },
                 100,
                 80,
@@ -5136,6 +5210,8 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  Filee-2.5.0-wi
                     y: 0,
                     width: 10,
                     height: 10,
+                    ref_width: None,
+                    ref_height: None,
                 },
                 0,
                 80,
@@ -5152,6 +5228,8 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  Filee-2.5.0-wi
                 y: 70,
                 width: 50,
                 height: 40,
+                ref_width: None,
+                ref_height: None,
             },
             &temp_dir,
         )
@@ -5159,6 +5237,100 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  Filee-2.5.0-wi
         assert!(out_png.is_file());
         let cropped = image::open(&out_png).expect("cropped png should be readable");
         assert_eq!((cropped.width(), cropped.height()), (10, 10));
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn crop_image_to_temp_png_handles_same_stem_without_collision() {
+        let base = std::env::temp_dir().join(format!(
+            "zenith_converter_crop_collision_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let dir_a = base.join("folder_a");
+        let dir_b = base.join("folder_b");
+        std::fs::create_dir_all(&dir_a).unwrap();
+        std::fs::create_dir_all(&dir_b).unwrap();
+
+        let src_a = dir_a.join("photo.png");
+        let src_b = dir_b.join("photo.png");
+        image::RgbaImage::from_pixel(60, 60, image::Rgba([255, 0, 0, 255]))
+            .save(&src_a)
+            .unwrap();
+        image::RgbaImage::from_pixel(60, 60, image::Rgba([0, 255, 0, 255]))
+            .save(&src_b)
+            .unwrap();
+
+        let crop = CropBox {
+            x: 10,
+            y: 10,
+            width: 20,
+            height: 20,
+            ref_width: None,
+            ref_height: None,
+        };
+        let temp_dir = base.join("temp");
+        let out_0 = crop_image_to_temp_png(&src_a, &crop, &temp_dir.join("item_0")).unwrap();
+        let out_1 = crop_image_to_temp_png(&src_b, &crop, &temp_dir.join("item_1")).unwrap();
+        assert_ne!(out_0, out_1);
+        assert_eq!(out_0.file_name().and_then(|s| s.to_str()), Some("photo.png"));
+        assert_eq!(out_1.file_name().and_then(|s| s.to_str()), Some("photo.png"));
+
+        // Also verify calling twice with the exact same temp_dir preserves the stem via subfolder.
+        let dup_dir = base.join("same_temp");
+        let dup_0 = crop_image_to_temp_png(&src_a, &crop, &dup_dir).unwrap();
+        let dup_1 = crop_image_to_temp_png(&src_b, &crop, &dup_dir).unwrap();
+        assert_ne!(dup_0, dup_1);
+        assert_eq!(dup_0.file_name().and_then(|s| s.to_str()), Some("photo.png"));
+        assert_eq!(dup_1.file_name().and_then(|s| s.to_str()), Some("photo.png"));
+        assert_eq!(
+            image::open(&dup_0).unwrap().to_rgba8().get_pixel(0, 0),
+            &image::Rgba([255, 0, 0, 255])
+        );
+        assert_eq!(
+            image::open(&dup_1).unwrap().to_rgba8().get_pixel(0, 0),
+            &image::Rgba([0, 255, 0, 255])
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn crop_image_region_scales_proportionally_for_ref_dimensions() {
+        let base = std::env::temp_dir().join(format!(
+            "zenith_converter_crop_scale_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&base).unwrap();
+
+        let ref_crop = CropBox {
+            x: 1000,
+            y: 600,
+            width: 2000,
+            height: 1500,
+            ref_width: Some(4000),
+            ref_height: Some(3000),
+        };
+        let scaled = clamp_crop_box(&ref_crop, 800, 600)
+            .expect("proportional crop from 4000x3000 onto 800x600 must succeed");
+        assert_eq!(scaled, (200, 120, 400, 300));
+
+        let small_img_path = base.join("small.png");
+        image::RgbaImage::from_pixel(800, 600, image::Rgba([30, 90, 180, 255]))
+            .save(&small_img_path)
+            .unwrap();
+        let cropped_path = crop_image_to_temp_png(&small_img_path, &ref_crop, &base.join("out"))
+            .expect("crop_image_to_temp_png should scale ref crop cleanly");
+        let cropped = image::open(&cropped_path).unwrap();
+        assert_eq!((cropped.width(), cropped.height()), (400, 300));
 
         let _ = std::fs::remove_dir_all(&base);
     }

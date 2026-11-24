@@ -156,6 +156,8 @@ export interface CropBox {
 	y: number;
 	width: number;
 	height: number;
+	ref_width?: number;
+	ref_height?: number;
 }
 
 export interface ImagePreviewPayload {

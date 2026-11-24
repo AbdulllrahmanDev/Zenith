@@ -400,7 +400,11 @@ export const ConverterCropModal: React.FC<ConverterCropModalProps> = ({
 
 	const handleApplyAll = useCallback(() => {
 		if (!preview) return;
-		const currentCrop = normToCropBox(normCrop, preview.width, preview.height);
+		const currentCrop: CropBox = {
+			...normToCropBox(normCrop, preview.width, preview.height),
+			ref_width: preview.width,
+			ref_height: preview.height
+		};
 		const remaining: CropConfirmItem[] = inputs.slice(currentIndex).map((path) => ({
 			path,
 			crop: currentCrop,

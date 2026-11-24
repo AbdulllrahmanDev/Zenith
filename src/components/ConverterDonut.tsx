@@ -133,6 +133,16 @@ interface CropBatch {
 	crop: CropBox;
 }
 
+interface CropBatchGroupState {
+	cropGroupId: string;
+	allInputs: string[];
+	totalInputs: number;
+	completedInputs: number;
+	accumulatedOutputs: string[];
+	remainingBatches: CropBatch[];
+	isLast: boolean;
+}
+
 interface CropSessionState {
 	option: TargetOption;
 	inputs: string[];
@@ -144,7 +154,7 @@ interface InstallPromptState {
 	inputs: string[];
 	dropPoint: { x: number; y: number };
 	crop?: CropBox | null;
-	remainingCropBatches?: CropBatch[];
+	cropBatchGroup?: CropBatchGroupState;
 	needsCore: boolean;
 	engineId: string | null;
 	enginePack: EnginePackInfo | null;
@@ -156,6 +166,7 @@ interface InstallPromptState {
 
 interface JobState {
 	jobId: string;
+	cropGroupId?: string;
 	option: TargetOption;
 	inputs: string[];
 	dropPoint: { x: number; y: number };
@@ -594,6 +605,13 @@ export function ConverterDonut({
 	const jobSeqRef = useRef(0);
 	const activeJobIdRef = useRef<string | null>(null);
 	const cancelledJobIdsRef = useRef<Set<string>>(new Set());
+	const cancelledCropGroupsRef = useRef<Set<string>>(new Set());
+	const activeCropGroupProgressRef = useRef<{
+		cropGroupId: string;
+		totalInputs: number;
+		completedInputs: number;
+		currentBatchInputs: number;
+	} | null>(null);
 	const emittedJobIdsRef = useRef<Set<string>>(new Set());
 	const fileProgressRef = useRef<Map<string, number>>(new Map());
 	const converterStateRef = useRef<ConverterState | null>(null);
@@ -870,7 +888,7 @@ export function ConverterDonut({
 			needsCore = false,
 			gen?: number,
 			crop?: CropBox | null,
-			remainingCropBatches?: CropBatch[]
+			cropBatchGroup?: CropBatchGroupState
 		) => {
 			const checkGen = gen ?? sessionGenRef.current;
 			setJobState(null);
@@ -886,7 +904,7 @@ export function ConverterDonut({
 				inputs,
 				dropPoint,
 				crop: crop ?? null,
-				remainingCropBatches,
+				cropBatchGroup,
 				needsCore,
 				engineId,
 				enginePack: pack,
@@ -906,7 +924,7 @@ export function ConverterDonut({
 			dropPoint: { x: number; y: number },
 			gen?: number,
 			crop?: CropBox | null,
-			remainingCropBatches?: CropBatch[]
+			cropBatchGroup?: CropBatchGroupState
 		) => {
 			const checkGen = gen ?? sessionGenRef.current;
 			setJobState(null);
@@ -926,7 +944,7 @@ export function ConverterDonut({
 				inputs,
 				dropPoint,
 				crop: crop ?? null,
-				remainingCropBatches,
+				cropBatchGroup,
 				needsCore: true,
 				engineId: requiredEngine,
 				enginePack: pack,
@@ -974,21 +992,44 @@ export function ConverterDonut({
 			dropPoint: { x: number; y: number },
 			gen: number,
 			crop?: CropBox | null,
-			remainingCropBatches?: CropBatch[]
-		): Promise<boolean> => {
-			if (sessionGenRef.current !== gen) return false;
+			cropBatchGroup?: CropBatchGroupState
+		): Promise<{ ok: boolean; outputs: string[] }> => {
+			if (
+				sessionGenRef.current !== gen ||
+				(cropBatchGroup && cancelledCropGroupsRef.current.has(cropBatchGroup.cropGroupId))
+			) {
+				return { ok: false, outputs: [] };
+			}
 			const jobId = `conv-${Date.now()}-${++jobSeqRef.current}`;
 			activeJobIdRef.current = jobId;
 			fileProgressRef.current = new Map(inputs.map((p) => [p, 0]));
 
+			if (cropBatchGroup) {
+				activeCropGroupProgressRef.current = {
+					cropGroupId: cropBatchGroup.cropGroupId,
+					totalInputs: cropBatchGroup.totalInputs,
+					completedInputs: cropBatchGroup.completedInputs,
+					currentBatchInputs: inputs.length
+				};
+			} else {
+				activeCropGroupProgressRef.current = null;
+			}
+
+			const initialFraction = cropBatchGroup
+				? cropBatchGroup.completedInputs / Math.max(1, cropBatchGroup.totalInputs)
+				: 0;
+			const displayInputs = cropBatchGroup ? cropBatchGroup.allInputs : inputs;
+			const priorOutputs = cropBatchGroup ? cropBatchGroup.accumulatedOutputs : [];
+
 			setJobState({
 				jobId,
+				cropGroupId: cropBatchGroup?.cropGroupId,
 				option,
-				inputs,
+				inputs: displayInputs,
 				dropPoint,
 				status: "converting",
-				fraction: 0,
-				outputs: [],
+				fraction: initialFraction,
+				outputs: priorOutputs,
 				error: null
 			});
 
@@ -1009,8 +1050,13 @@ export function ConverterDonut({
 
 			try {
 				const result = await invoke<ConvertJobResult>("converter_convert", { req });
-				if (activeJobIdRef.current !== jobId || cancelledJobIdsRef.current.has(jobId)) {
-					return false;
+				if (
+					activeJobIdRef.current !== jobId ||
+					cancelledJobIdsRef.current.has(jobId) ||
+					(cropBatchGroup &&
+						cancelledCropGroupsRef.current.has(cropBatchGroup.cropGroupId))
+				) {
+					return { ok: false, outputs: [] };
 				}
 
 				const outputs = result.files.flatMap((f) => f.outputs ?? []);
@@ -1020,6 +1066,7 @@ export function ConverterDonut({
 					null;
 
 				if (missingEngine && outputs.length === 0) {
+					activeCropGroupProgressRef.current = null;
 					await openMissingEnginePrompt(
 						missingEngine,
 						option,
@@ -1028,49 +1075,90 @@ export function ConverterDonut({
 						false,
 						gen,
 						crop,
-						remainingCropBatches
+						cropBatchGroup
 					);
-					return false;
+					return { ok: false, outputs: [] };
 				}
 
 				const failedFile = result.files.find((f) => f.state.toLowerCase() === "failed");
 				if (failedFile && outputs.length === 0) {
+					activeCropGroupProgressRef.current = null;
 					const errMsg = cleanErrorMessage(failedFile.error || c.donut.failedTitle);
 					setJobState((prev) =>
 						prev && prev.jobId === jobId
 							? { ...prev, status: "error", error: errMsg }
 							: prev
 					);
-					emitJobFinished(jobId, "error", option, inputs, outputs, errMsg);
-					return false;
+					emitJobFinished(
+						cropBatchGroup?.cropGroupId ?? jobId,
+						"error",
+						option,
+						displayInputs,
+						priorOutputs,
+						errMsg
+					);
+					return { ok: false, outputs: [] };
 				}
 
+				const combinedOutputs = [...priorOutputs, ...outputs];
+				if (cropBatchGroup && !cropBatchGroup.isLast) {
+					const nextFraction =
+						(cropBatchGroup.completedInputs + inputs.length) /
+						Math.max(1, cropBatchGroup.totalInputs);
+					setJobState((prev) =>
+						prev && prev.jobId === jobId
+							? { ...prev, fraction: nextFraction, outputs: combinedOutputs }
+							: prev
+					);
+					return { ok: true, outputs: combinedOutputs };
+				}
+
+				activeCropGroupProgressRef.current = null;
 				setJobState((prev) =>
 					prev && prev.jobId === jobId
-						? { ...prev, status: "done", fraction: 1, outputs, error: null }
+						? { ...prev, status: "done", fraction: 1, outputs: combinedOutputs, error: null }
 						: prev
 				);
-				emitJobFinished(jobId, "done", option, inputs, outputs);
-				return true;
+				emitJobFinished(
+					cropBatchGroup?.cropGroupId ?? jobId,
+					"done",
+					option,
+					displayInputs,
+					combinedOutputs
+				);
+				return { ok: true, outputs: combinedOutputs };
 			} catch (err) {
-				if (activeJobIdRef.current !== jobId || cancelledJobIdsRef.current.has(jobId)) {
-					return false;
+				if (
+					activeJobIdRef.current !== jobId ||
+					cancelledJobIdsRef.current.has(jobId) ||
+					(cropBatchGroup &&
+						cancelledCropGroupsRef.current.has(cropBatchGroup.cropGroupId))
+				) {
+					return { ok: false, outputs: [] };
 				}
 				const raw = err instanceof Error ? err.message : String(err);
 
 				if (raw === "CANCELLED" || raw.startsWith("CANCELLED")) {
+					activeCropGroupProgressRef.current = null;
 					setJobState((prev) =>
 						prev && prev.jobId === jobId
 							? { ...prev, status: "cancelled", error: null }
 							: prev
 					);
-					emitJobFinished(jobId, "cancelled", option, inputs, []);
-					return false;
+					emitJobFinished(
+						cropBatchGroup?.cropGroupId ?? jobId,
+						"cancelled",
+						option,
+						displayInputs,
+						[]
+					);
+					return { ok: false, outputs: [] };
 				}
 
 				if (raw.startsWith("MISSING_ENGINE:")) {
 					const engineId = raw.slice("MISSING_ENGINE:".length).trim();
 					if (engineId) {
+						activeCropGroupProgressRef.current = null;
 						await openMissingEnginePrompt(
 							engineId,
 							option,
@@ -1079,32 +1167,41 @@ export function ConverterDonut({
 							false,
 							gen,
 							crop,
-							remainingCropBatches
+							cropBatchGroup
 						);
-						return false;
+						return { ok: false, outputs: [] };
 					}
 				}
 
 				if (raw.startsWith("CORE_NOT_INSTALLED")) {
+					activeCropGroupProgressRef.current = null;
 					await openMissingCorePrompt(
 						option,
 						inputs,
 						dropPoint,
 						gen,
 						crop,
-						remainingCropBatches
+						cropBatchGroup
 					);
-					return false;
+					return { ok: false, outputs: [] };
 				}
 
+				activeCropGroupProgressRef.current = null;
 				const clean = cleanErrorMessage(raw);
 				setJobState((prev) =>
 					prev && prev.jobId === jobId
 						? { ...prev, status: "error", error: clean }
 						: prev
 				);
-				emitJobFinished(jobId, "error", option, inputs, [], clean);
-				return false;
+				emitJobFinished(
+					cropBatchGroup?.cropGroupId ?? jobId,
+					"error",
+					option,
+					displayInputs,
+					[],
+					clean
+				);
+				return { ok: false, outputs: [] };
 			}
 		},
 		[c.donut.failedTitle, emitJobFinished, openMissingCorePrompt, openMissingEnginePrompt]
@@ -1117,13 +1214,14 @@ export function ConverterDonut({
 			dropPoint: { x: number; y: number },
 			myGen: number,
 			crop?: CropBox | null,
-			remainingCropBatches?: CropBatch[]
-		): Promise<boolean> => {
+			cropBatchGroup?: CropBatchGroupState
+		): Promise<{ ok: boolean; outputs: string[] }> => {
 			clearCheckingState();
 			setCheckingJob({
 				jobId: `checking-${myGen}`,
+				cropGroupId: cropBatchGroup?.cropGroupId,
 				option,
-				inputs,
+				inputs: cropBatchGroup ? cropBatchGroup.allInputs : inputs,
 				dropPoint,
 				status: "checking",
 				fraction: 0,
@@ -1141,7 +1239,7 @@ export function ConverterDonut({
 				invoke<ConverterRuntimeStatus>("converter_status"),
 				invoke<EnginePackInfo[]>("converter_list_engines")
 			]);
-			if (sessionGenRef.current !== myGen) return false;
+			if (sessionGenRef.current !== myGen) return { ok: false, outputs: [] };
 
 			const coreInstalled =
 				statusRes.status === "fulfilled" ? statusRes.value.core_installed : true;
@@ -1167,7 +1265,7 @@ export function ConverterDonut({
 					inputs,
 					dropPoint,
 					crop: crop ?? null,
-					remainingCropBatches,
+					cropBatchGroup,
 					needsCore: !coreInstalled,
 					engineId: needsEngine ? requiredEngine : null,
 					enginePack,
@@ -1176,18 +1274,11 @@ export function ConverterDonut({
 					engineProgress: null,
 					error: null
 				});
-				return false;
+				return { ok: false, outputs: [] };
 			}
 
 			await releaseOverlayLock();
-			return runConversionJob(
-				option,
-				inputs,
-				dropPoint,
-				myGen,
-				crop,
-				remainingCropBatches
-			);
+			return runConversionJob(option, inputs, dropPoint, myGen, crop, cropBatchGroup);
 		},
 		[clearCheckingState, releaseOverlayLock, runConversionJob]
 	);
@@ -1218,20 +1309,53 @@ export function ConverterDonut({
 	);
 
 	const runCropBatches = useCallback(
-		async (batches: CropBatch[], dropPoint: { x: number; y: number }, gen: number) => {
+		async (
+			batches: CropBatch[],
+			dropPoint: { x: number; y: number },
+			gen: number,
+			resumeState?: {
+				cropGroupId: string;
+				allInputs: string[];
+				totalInputs: number;
+				completedInputs: number;
+				accumulatedOutputs: string[];
+				skipPreflightOnFirst?: boolean;
+			}
+		) => {
+			const cropGroupId =
+				resumeState?.cropGroupId ?? `cropgrp-${Date.now()}-${++jobSeqRef.current}`;
+			const allInputs = resumeState?.allInputs ?? batches.flatMap((b) => b.inputs);
+			const totalInputs = resumeState?.totalInputs ?? allInputs.length;
+			let completedInputs = resumeState?.completedInputs ?? 0;
+			let accumulatedOutputs = resumeState?.accumulatedOutputs ?? [];
+
 			for (let i = 0; i < batches.length; i += 1) {
-				if (sessionGenRef.current !== gen) return;
+				if (
+					sessionGenRef.current !== gen ||
+					cancelledCropGroupsRef.current.has(cropGroupId)
+				) {
+					activeCropGroupProgressRef.current = null;
+					return;
+				}
 				const batch = batches[i];
-				const rest = batches.slice(i + 1);
-				const ok =
-					i === 0
+				const groupState: CropBatchGroupState = {
+					cropGroupId,
+					allInputs,
+					totalInputs,
+					completedInputs,
+					accumulatedOutputs,
+					remainingBatches: batches.slice(i + 1),
+					isLast: i === batches.length - 1
+				};
+				const res =
+					i === 0 && !resumeState?.skipPreflightOnFirst
 						? await runPreflightAndConvert(
 								batch.option,
 								batch.inputs,
 								dropPoint,
 								gen,
 								batch.crop,
-								rest.length > 0 ? rest : undefined
+								groupState
 							)
 						: await runConversionJob(
 								batch.option,
@@ -1239,9 +1363,11 @@ export function ConverterDonut({
 								dropPoint,
 								gen,
 								batch.crop,
-								rest.length > 0 ? rest : undefined
+								groupState
 							);
-				if (!ok) return;
+				if (!res.ok) return;
+				completedInputs += batch.inputs.length;
+				accumulatedOutputs = res.outputs;
 			}
 		},
 		[runConversionJob, runPreflightAndConvert]
@@ -1267,7 +1393,9 @@ export function ConverterDonut({
 					prev.crop.x === item.crop.x &&
 					prev.crop.y === item.crop.y &&
 					prev.crop.width === item.crop.width &&
-					prev.crop.height === item.crop.height
+					prev.crop.height === item.crop.height &&
+					prev.crop.ref_width === item.crop.ref_width &&
+					prev.crop.ref_height === item.crop.ref_height
 				) {
 					prev.inputs.push(item.path);
 				} else {
@@ -1341,30 +1469,28 @@ export function ConverterDonut({
 
 			setInstallPrompt(null);
 			await releaseOverlayLock();
-			const remaining = prompt.remainingCropBatches;
-			const ok = await runConversionJob(
-				prompt.option,
-				prompt.inputs,
-				prompt.dropPoint,
-				myGen,
-				prompt.crop,
-				remaining
-			);
-			if (ok && remaining && remaining.length > 0) {
-				for (let i = 0; i < remaining.length; i += 1) {
-					if (sessionGenRef.current !== myGen) return;
-					const batch = remaining[i];
-					const rest = remaining.slice(i + 1);
-					const nextOk = await runConversionJob(
-						batch.option,
-						batch.inputs,
-						prompt.dropPoint,
-						myGen,
-						batch.crop,
-						rest.length > 0 ? rest : undefined
-					);
-					if (!nextOk) return;
-				}
+			const group = prompt.cropBatchGroup;
+			if (group && prompt.crop) {
+				const resumeBatches: CropBatch[] = [
+					{ option: prompt.option, inputs: prompt.inputs, crop: prompt.crop },
+					...group.remainingBatches
+				];
+				await runCropBatches(resumeBatches, prompt.dropPoint, myGen, {
+					cropGroupId: group.cropGroupId,
+					allInputs: group.allInputs,
+					totalInputs: group.totalInputs,
+					completedInputs: group.completedInputs,
+					accumulatedOutputs: group.accumulatedOutputs,
+					skipPreflightOnFirst: true
+				});
+			} else {
+				await runConversionJob(
+					prompt.option,
+					prompt.inputs,
+					prompt.dropPoint,
+					myGen,
+					prompt.crop
+				);
 			}
 		} catch (err) {
 			if (sessionGenRef.current !== myGen) return;
@@ -1373,7 +1499,13 @@ export function ConverterDonut({
 				prev ? { ...prev, installing: false, error: msg } : null
 			);
 		}
-	}, [c.donut.unavailablePack, c.runtime.missingTitle, releaseOverlayLock, runConversionJob]);
+	}, [
+		c.donut.unavailablePack,
+		c.runtime.missingTitle,
+		releaseOverlayLock,
+		runConversionJob,
+		runCropBatches
+	]);
 
 	// Tauri event listeners for drag lifecycle + install/conversion progress.
 	useEffect(() => {
@@ -1494,10 +1626,15 @@ export function ConverterDonut({
 				vals.length > 0
 					? vals.reduce((acc, v) => acc + v, 0) / vals.length
 					: Math.max(0, Math.min(1, p.fraction ?? 0));
+			const groupMeta = activeCropGroupProgressRef.current;
+			const overallFraction = groupMeta
+				? (groupMeta.completedInputs + avg * groupMeta.currentBatchInputs) /
+					Math.max(1, groupMeta.totalInputs)
+				: avg;
 
 			setJobState((prev) =>
 				prev && prev.jobId === p.job_id && prev.status === "converting"
-					? { ...prev, fraction: avg }
+					? { ...prev, fraction: Math.max(prev.fraction, overallFraction) }
 					: prev
 			);
 		});
@@ -1643,6 +1780,14 @@ export function ConverterDonut({
 		if (!jobState) return;
 		const id = jobState.jobId;
 		if (jobState.status === "converting") {
+			if (jobState.cropGroupId) {
+				cancelledCropGroupsRef.current.add(jobState.cropGroupId);
+				if (cancelledCropGroupsRef.current.size > 64) {
+					const oldestGroup = cancelledCropGroupsRef.current.values().next().value;
+					if (oldestGroup !== undefined) cancelledCropGroupsRef.current.delete(oldestGroup);
+				}
+				activeCropGroupProgressRef.current = null;
+			}
 			cancelledJobIdsRef.current.add(id);
 			if (cancelledJobIdsRef.current.size > 64) {
 				const oldest = cancelledJobIdsRef.current.values().next().value;
@@ -1652,7 +1797,13 @@ export function ConverterDonut({
 			setJobState((prev) =>
 				prev && prev.jobId === id ? { ...prev, status: "cancelled", error: null } : prev
 			);
-			emitJobFinished(id, "cancelled", jobState.option, jobState.inputs, []);
+			emitJobFinished(
+				jobState.cropGroupId ?? id,
+				"cancelled",
+				jobState.option,
+				jobState.inputs,
+				[]
+			);
 		} else {
 			setJobState(null);
 			if (activeJobIdRef.current === id) {
