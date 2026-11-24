@@ -49,7 +49,8 @@ import {
 	DEFAULT_PRESET_CATALOG,
 	EXTENSION_CATEGORY,
 	extractExtension,
-	matchFormatsForPaths
+	matchFormatsForPaths,
+	normalizeConverterPathKey
 } from "../converter/formats";
 import type {
 	ConverterRuntimeStatus,
@@ -95,6 +96,7 @@ interface DonutOpenPayload {
 	x: number;
 	y: number;
 	paths: string[];
+	virtualNames?: string[];
 	urls: string[];
 	isBrowserDrag: boolean;
 	fromCli?: boolean;
@@ -124,11 +126,14 @@ interface WheelSession {
 	openX: number;
 	openY: number;
 	paths: string[];
+	virtualNames: string[];
 	urls: string[];
 	isBrowserDrag: boolean;
+	fromCli?: boolean;
 	sides: DonutSides;
 	side: 0 | 1;
 	flipKey: number;
+	notice?: string | null;
 }
 
 interface CropBatch {
@@ -343,11 +348,18 @@ function parentDirectory(path: string): string {
 	return clean.slice(0, idx);
 }
 
-function resolveMatchInputs(paths: string[], urls: string[], isBrowserDrag = false): string[] {
+function resolveMatchInputs(
+	paths: string[],
+	virtualNames: string[],
+	urls: string[],
+	isBrowserDrag = false
+): string[] {
 	if (paths.length > 0) return paths;
-	if (urls.length === 0) return [];
+	if (urls.length === 0) {
+		return virtualNames.filter((s) => s.trim().length > 0);
+	}
 	return urls
-		.map((raw) => {
+		.map((raw, idx) => {
 			const trimmed = raw.trim();
 			if (/^data:image\//i.test(trimmed)) {
 				return `browser-image.${dataImageMimeToExt(trimmed)}`;
@@ -369,6 +381,11 @@ function resolveMatchInputs(paths: string[], urls: string[], isBrowserDrag = fal
 					) {
 						return `browser-asset.${paramVal}`;
 					}
+				}
+				const virtualFallback = virtualNames[idx]?.trim();
+				const virtualExt = virtualFallback ? extractExtension(virtualFallback) : "";
+				if (virtualExt && virtualExt in EXTENSION_CATEGORY) {
+					return virtualFallback;
 				}
 				if (isBrowserDrag) {
 					return "browser-image.png";
@@ -734,6 +751,7 @@ export function ConverterDonut({
 	const lastWheelFlipRef = useRef(0);
 	const autoDismissTimerRef = useRef<number | null>(null);
 	const checkingTimerRef = useRef<number | null>(null);
+	const wheelNoticeTimerRef = useRef<number | null>(null);
 
 	const enabledRef = useRef(enabled);
 	enabledRef.current = enabled;
@@ -952,16 +970,36 @@ export function ConverterDonut({
 		[]
 	);
 
+	const clearWheelNotice = useCallback(() => {
+		if (wheelNoticeTimerRef.current !== null) {
+			window.clearTimeout(wheelNoticeTimerRef.current);
+			wheelNoticeTimerRef.current = null;
+		}
+	}, []);
+
+	const showWheelDropNotice = useCallback(
+		(message: string) => {
+			clearWheelNotice();
+			setWheelSession((prev) => (prev ? { ...prev, notice: message } : null));
+			wheelNoticeTimerRef.current = window.setTimeout(() => {
+				wheelNoticeTimerRef.current = null;
+				setWheelSession((prev) => (prev ? { ...prev, notice: null } : null));
+			}, 2200);
+		},
+		[clearWheelNotice]
+	);
+
 	const dismissWheelOrInstall = useCallback(() => {
 		sessionGenRef.current += 1;
 		clearCheckingState();
+		clearWheelNotice();
 		setWheelSession(null);
 		setCropSession(null);
 		setInstallPrompt(null);
 		setActiveIndex(null);
 		setIsCenterActive(false);
 		releaseOverlayLock();
-	}, [clearCheckingState, releaseOverlayLock]);
+	}, [clearCheckingState, clearWheelNotice, releaseOverlayLock]);
 
 	const flipSide = useCallback(() => {
 		const ws = stateRef.current.wheelSession;
@@ -1077,7 +1115,7 @@ export function ConverterDonut({
 	const emitJobFinished = useCallback(
 		(
 			jobId: string,
-			status: "done" | "error" | "cancelled",
+			status: "completed" | "failed" | "cancelled",
 			option: TargetOption,
 			inputs: string[],
 			outputs: string[],
@@ -1119,7 +1157,9 @@ export function ConverterDonut({
 			}
 			const jobId = `conv-${Date.now()}-${++jobSeqRef.current}`;
 			activeJobIdRef.current = jobId;
-			fileProgressRef.current = new Map(inputs.map((p) => [p, 0]));
+			fileProgressRef.current = new Map(
+				inputs.map((p) => [normalizeConverterPathKey(p), 0])
+			);
 
 			if (cropBatchGroup) {
 				activeCropGroupProgressRef.current = {
@@ -1208,7 +1248,7 @@ export function ConverterDonut({
 					);
 					emitJobFinished(
 						cropBatchGroup?.cropGroupId ?? jobId,
-						"error",
+						"failed",
 						option,
 						displayInputs,
 						priorOutputs,
@@ -1238,7 +1278,7 @@ export function ConverterDonut({
 				);
 				emitJobFinished(
 					cropBatchGroup?.cropGroupId ?? jobId,
-					"done",
+					"completed",
 					option,
 					displayInputs,
 					combinedOutputs
@@ -1312,10 +1352,10 @@ export function ConverterDonut({
 				);
 				emitJobFinished(
 					cropBatchGroup?.cropGroupId ?? jobId,
-					"error",
+					"failed",
 					option,
 					displayInputs,
-					[],
+					priorOutputs,
 					clean
 				);
 				return { ok: false, outputs: [] };
@@ -1470,7 +1510,7 @@ export function ConverterDonut({
 							? { ...prev, status: "error", error: errMsg }
 							: prev
 					);
-					emitJobFinished(fetchJobId, "error", option, displayInputs, [], errMsg);
+					emitJobFinished(fetchJobId, "failed", option, displayInputs, [], errMsg);
 					return;
 				}
 				if (sessionGenRef.current !== myGen) return;
@@ -1700,6 +1740,19 @@ export function ConverterDonut({
 		runCropBatches
 	]);
 
+	const commitWheelAction = useCallback(
+		(option: TargetOption, ws: WheelSession, point: { x: number; y: number }) => {
+			const inputs = ws.paths.length > 0 ? ws.paths : ws.urls;
+			if (inputs.length === 0 && ws.virtualNames.length > 0) {
+				showWheelDropNotice(c.donut.dropToExtractHint);
+				return;
+			}
+			clearWheelNotice();
+			commitSlice(option, inputs, point, ws.isBrowserDrag);
+		},
+		[c.donut.dropToExtractHint, clearWheelNotice, commitSlice, showWheelDropNotice]
+	);
+
 	// Tauri event listeners for drag lifecycle + install/conversion progress.
 	useEffect(() => {
 		const unOpen = listen<DonutOpenPayload>("converter-donut-open", (ev) => {
@@ -1707,13 +1760,61 @@ export function ConverterDonut({
 				releaseOverlayLock();
 				return;
 			}
-			const { x, y, paths, urls, isBrowserDrag } = ev.payload;
-			const isBrowser = Boolean(isBrowserDrag) || ((paths ?? []).length === 0 && (urls ?? []).length > 0);
+			const { x, y, paths, virtualNames, urls, isBrowserDrag, fromCli } = ev.payload;
+			const realPaths = paths ?? [];
+			const vNames = virtualNames ?? [];
+			const rawUrls = urls ?? [];
+			const isBrowser =
+				Boolean(isBrowserDrag) ||
+				(realPaths.length === 0 && vNames.length === 0 && rawUrls.length > 0);
 			if (isBrowser && !browserDragEnabledRef.current) {
 				releaseOverlayLock();
 				return;
 			}
-			const matchInputs = resolveMatchInputs(paths ?? [], urls ?? [], isBrowser);
+
+			const existingWs = stateRef.current.wheelSession;
+			if (fromCli && existingWs?.fromCli && realPaths.length > 0) {
+				const merged = [...existingWs.paths];
+				const seen = new Set(merged.map((p) => normalizeConverterPathKey(p)));
+				let added = false;
+				for (const p of realPaths) {
+					const key = normalizeConverterPathKey(p);
+					if (key && !seen.has(key)) {
+						seen.add(key);
+						merged.push(p);
+						added = true;
+					}
+				}
+				if (added) {
+					const { profiles, extraPresets } = buildCustomMatcherInputs(
+						converterStateRef.current
+					);
+					const nextSides = matchFormatsForPaths(merged, profiles, extraPresets);
+					const nextSide: 0 | 1 =
+						existingWs.side === 1 && nextSides.secondary.length === 0
+							? 0
+							: existingWs.side;
+					const nextSlices =
+						nextSide === 0 ? nextSides.primary : nextSides.secondary;
+					setActiveIndex((idx) =>
+						idx !== null && idx >= nextSlices.length ? null : idx
+					);
+					setWheelSession((prev) =>
+						prev?.fromCli
+							? {
+									...prev,
+									paths: merged,
+									sides: nextSides,
+									side: nextSide,
+									notice: null
+								}
+							: prev
+					);
+				}
+				return;
+			}
+
+			const matchInputs = resolveMatchInputs(realPaths, vNames, rawUrls, isBrowser);
 			if (matchInputs.length === 0) {
 				releaseOverlayLock();
 				return;
@@ -1721,6 +1822,7 @@ export function ConverterDonut({
 
 			sessionGenRef.current += 1;
 			clearCheckingState();
+			clearWheelNotice();
 			refreshThemeSnap();
 			const { profiles, extraPresets } = buildCustomMatcherInputs(converterStateRef.current);
 			const sides = matchFormatsForPaths(matchInputs, profiles, extraPresets);
@@ -1734,12 +1836,15 @@ export function ConverterDonut({
 			setWheelSession({
 				openX: x,
 				openY: y,
-				paths: paths ?? [],
-				urls: urls ?? [],
+				paths: realPaths,
+				virtualNames: vNames,
+				urls: rawUrls,
 				isBrowserDrag: Boolean(isBrowserDrag),
+				fromCli: Boolean(fromCli),
 				sides,
 				side: 0,
-				flipKey: 0
+				flipKey: 0,
+				notice: null
 			});
 			setActiveIndex(null);
 			setIsCenterActive(true);
@@ -1786,6 +1891,12 @@ export function ConverterDonut({
 							? ws.paths
 							: ws.urls;
 
+			if (inputs.length === 0) {
+				dismissWheelOrInstall();
+				return;
+			}
+
+			clearWheelNotice();
 			commitSlice(chosen, inputs, dropPt, Boolean(ev.payload.isBrowserDrag || ws.isBrowserDrag));
 		});
 
@@ -1798,6 +1909,7 @@ export function ConverterDonut({
 			) {
 				sessionGenRef.current += 1;
 				clearCheckingState();
+				clearWheelNotice();
 				setWheelSession(null);
 				setCropSession(null);
 				setInstallPrompt(null);
@@ -1813,10 +1925,11 @@ export function ConverterDonut({
 			const p = ev.payload;
 			if (!activeJobIdRef.current || p.job_id !== activeJobIdRef.current) return;
 
+			const sourceKey = normalizeConverterPathKey(p.source);
 			if (p.kind === "progress" && typeof p.fraction === "number") {
-				fileProgressRef.current.set(p.source, Math.max(0, Math.min(1, p.fraction)));
+				fileProgressRef.current.set(sourceKey, Math.max(0, Math.min(1, p.fraction)));
 			} else if (p.kind === "file") {
-				fileProgressRef.current.set(p.source, 1);
+				fileProgressRef.current.set(sourceKey, 1);
 			}
 
 			const vals = Array.from(fileProgressRef.current.values());
@@ -1859,6 +1972,7 @@ export function ConverterDonut({
 				window.clearTimeout(checkingTimerRef.current);
 				checkingTimerRef.current = null;
 			}
+			clearWheelNotice();
 			unOpen.then((fn) => fn());
 			unMove.then((fn) => fn());
 			unDrop.then((fn) => fn());
@@ -1867,7 +1981,7 @@ export function ConverterDonut({
 			unCoreProgress.then((fn) => fn());
 			unEngineProgress.then((fn) => fn());
 		};
-	}, [aimAtPoint, clearCheckingState, commitSlice, dismissWheelOrInstall, refreshThemeSnap, releaseOverlayLock]);
+	}, [aimAtPoint, clearCheckingState, clearWheelNotice, commitSlice, dismissWheelOrInstall, refreshThemeSnap, releaseOverlayLock]);
 
 	// Pointer, Wheel, and Keyboard handlers while Donut, Preflight Check, or Install Prompt is open.
 	useEffect(() => {
@@ -1921,8 +2035,7 @@ export function ConverterDonut({
 					stateRef.current;
 				if (ws && idx !== null && slices[idx]) {
 					e.preventDefault();
-					const inputs = ws.paths.length > 0 ? ws.paths : ws.urls;
-					commitSlice(slices[idx], inputs, lastPointerRef.current ?? center, ws.isBrowserDrag);
+					commitWheelAction(slices[idx], ws, lastPointerRef.current ?? center);
 				}
 			}
 		};
@@ -1942,7 +2055,7 @@ export function ConverterDonut({
 		Boolean(installPrompt),
 		Boolean(checkingJob),
 		aimAtPoint,
-		commitSlice,
+		commitWheelAction,
 		dismissWheelOrInstall,
 		flipSide
 	]);
@@ -2064,13 +2177,20 @@ export function ConverterDonut({
 		const fileCount = wheelSession.paths.length;
 		if (fileCount === 1) return extractBaseName(wheelSession.paths[0]);
 		if (fileCount > 1) return c.donut.fileCount(fileCount);
+		const virtualCount = wheelSession.virtualNames.length;
+		if (virtualCount === 1) return extractBaseName(wheelSession.virtualNames[0]);
+		if (virtualCount > 1) return c.donut.fileCount(virtualCount);
 		if (wheelSession.urls.length === 1) return extractBaseName(wheelSession.urls[0]);
 		return c.donut.urlCount(wheelSession.urls.length);
 	}, [wheelSession, c.donut]);
 
 	const hubCountLabel = useMemo(() => {
 		if (!wheelSession) return "";
-		if (wheelSession.paths.length > 0) return c.donut.fileCount(wheelSession.paths.length);
+		const count =
+			wheelSession.paths.length > 0
+				? wheelSession.paths.length
+				: wheelSession.virtualNames.length;
+		if (count > 0) return c.donut.fileCount(count);
 		return c.donut.urlCount(wheelSession.urls.length);
 	}, [wheelSession, c.donut]);
 
@@ -2334,15 +2454,10 @@ export function ConverterDonut({
 										accentForeground={accentForeground}
 										revealed={revealed}
 										onClick={(opt) => {
-											const inputs =
-												wheelSession.paths.length > 0
-													? wheelSession.paths
-													: wheelSession.urls;
-											commitSlice(
+											commitWheelAction(
 												opt,
-												inputs,
-												lastPointerRef.current ?? centerPos,
-												wheelSession.isBrowserDrag
+												wheelSession,
+												lastPointerRef.current ?? centerPos
 											);
 										}}
 									/>
@@ -2364,9 +2479,11 @@ export function ConverterDonut({
 						>
 							<div className="zn-conv-context-inner">
 								<span className="zn-conv-context-source">
-									{activeIndex !== null && currentSlices[activeIndex]
-										? currentSlices[activeIndex].label
-										: sourceSummary || c.donut.dropPrompt}
+									{wheelSession.notice
+										? wheelSession.notice
+										: activeIndex !== null && currentSlices[activeIndex]
+											? currentSlices[activeIndex].label
+											: sourceSummary || c.donut.dropPrompt}
 								</span>
 
 								{hasSecondSide && (

@@ -430,6 +430,9 @@ export const ConverterCropModal: React.FC<ConverterCropModalProps> = ({
 			onPointerDown={(e) => {
 				backdropPointerDownRef.current = e.target === e.currentTarget;
 			}}
+			onPointerCancel={() => {
+				backdropPointerDownRef.current = false;
+			}}
 			onClick={(e) => {
 				const startedOnBackdrop = backdropPointerDownRef.current;
 				backdropPointerDownRef.current = false;

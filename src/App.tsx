@@ -60,6 +60,9 @@ import {
 	Type,
 	X,
 	Check,
+	CheckCircle2,
+	AlertCircle,
+	FolderOpen,
 	Copy,
 	ChevronLeft,
 	ChevronRight,
@@ -451,6 +454,7 @@ type NotchPanelMode =
 	| "ai-chat"
 	| "announcement"
 	| "translator"
+	| "converter"
 	| "status"
 	| "shelf"
 	| "wifi"
@@ -465,6 +469,23 @@ interface NotchTranslationState {
 	error: boolean;
 	fontSize: number;
 	timeoutSec: number;
+}
+
+interface NotchConverterToastState {
+	id: number;
+	status: "completed" | "failed";
+	targetFormat: string;
+	targetLabel: string;
+	inputs: string[];
+	outputs: string[];
+	error?: string;
+}
+
+function converterBaseName(rawPath: string): string {
+	const trimmed = rawPath.trim().replace(/[\\/]+$/, "");
+	if (!trimmed) return rawPath.trim();
+	const parts = trimmed.split(/[\\/]/);
+	return parts[parts.length - 1] || trimmed;
 }
 
 // The shelf is a short-lived stash: one row, newest first, oldest evicted.
@@ -725,7 +746,16 @@ function App() {
 	const notchTranslationOpenRef = useRef(false);
 	notchTranslationOpenRef.current = notchTranslationOpen;
 
+	const [notchConverterToast, setNotchConverterToast] = useState<NotchConverterToastState | null>(null);
+	const [notchConverterRemainingPct, setNotchConverterRemainingPct] = useState(100);
+	const notchConverterOpen = notchConverterToast !== null;
+	const notchConverterOpenRef = useRef(false);
+	notchConverterOpenRef.current = notchConverterOpen;
+	const seenConverterJobIdsRef = useRef<Set<string>>(new Set());
+
 	const [isVisible, setIsVisible] = useState(true);
+	const isVisibleRef = useRef(true);
+	isVisibleRef.current = isVisible;
 	const [isImpacted, setIsImpacted] = useState(false);
 	const [isExpanded, setIsExpanded] = useState(false);
 	const [startupAnimating, setStartupAnimating] = useState(false);
@@ -809,11 +839,18 @@ function App() {
 	const appliedDock = useRef<{ enabled: boolean; mode: string } | null>(null);
 	const appliedNotchMode = useRef<string | null>(null);
 
-	const isAnyInteraction = isHovered || isNotchHovered || isEdgeHovered || eventPeek || notchTranslationOpen;
+	const isAnyInteraction =
+		isHovered ||
+		isNotchHovered ||
+		isEdgeHovered ||
+		eventPeek ||
+		notchTranslationOpen ||
+		notchConverterOpen;
 	const isHidden =
 		!startupAnimating &&
 		!showAthanBanner &&
 		!notchTranslationOpen &&
+		!notchConverterOpen &&
 		notchMode === "smart" &&
 		isOverlapped &&
 		interactionState === "none";
@@ -1814,6 +1851,9 @@ function App() {
 		if (notchPanelModeRef.current === "translator" && notchTranslationOpenRef.current) {
 			return;
 		}
+		if (notchPanelModeRef.current === "converter" && notchConverterOpenRef.current) {
+			return;
+		}
 		setNotchPanelMode((prev) =>
 			prev === "music" ||
 			prev === "command-center" ||
@@ -2176,6 +2216,114 @@ function App() {
 		}
 	}, [notchTranslation, notchPanelMode]);
 
+	const dismissNotchConverterToast = useCallback(() => {
+		setNotchConverterToast(null);
+		setNotchConverterRemainingPct(100);
+		setIsOpen(false);
+		setNotchPanelMode(restingModeRef.current);
+	}, []);
+
+	// Listen for finished file conversions and show a concise Notch toast.
+	useEffect(() => {
+		if (windowLabel && windowLabel !== "main") return;
+		let cancelled = false;
+		let unlisten: (() => void) | undefined;
+
+		listen<{
+			jobId?: string;
+			status?: string;
+			targetFormat?: string;
+			targetLabel?: string;
+			inputs?: string[];
+			outputs?: string[];
+			error?: string;
+		}>("converter-job-finished", (ev) => {
+			if (cancelled || !isVisibleRef.current) return;
+			const p = ev.payload;
+			if (!p || p.status === "cancelled") return;
+
+			const isSuccess = p.status === "completed" || p.status === "done";
+			const isFailure = p.status === "failed" || p.status === "error";
+			if (!isSuccess && !isFailure) return;
+
+			const jobId = typeof p.jobId === "string" ? p.jobId.trim() : "";
+			if (jobId) {
+				if (seenConverterJobIdsRef.current.has(jobId)) return;
+				seenConverterJobIdsRef.current.add(jobId);
+				if (seenConverterJobIdsRef.current.size > 32) {
+					const oldest = seenConverterJobIdsRef.current.values().next().value;
+					if (oldest !== undefined) seenConverterJobIdsRef.current.delete(oldest);
+				}
+			}
+
+			const fmt = (p.targetFormat || "").trim();
+			const label = (p.targetLabel || "").trim() || (fmt ? fmt.toUpperCase() : "");
+
+			setNotchConverterToast({
+				id: Date.now(),
+				status: isSuccess ? "completed" : "failed",
+				targetFormat: fmt,
+				targetLabel: label,
+				inputs: Array.isArray(p.inputs) ? p.inputs : [],
+				outputs: Array.isArray(p.outputs) ? p.outputs : [],
+				error: typeof p.error === "string" && p.error.trim() ? p.error.trim() : undefined
+			});
+			setNotchConverterRemainingPct(100);
+			setIsOpen(true);
+			setNotchPanelMode("converter");
+			if (notchMode === "peek" || notchMode === "smart") {
+				triggerEventPeek(5000);
+			}
+		})
+			.then((fn) => {
+				if (cancelled) fn();
+				else unlisten = fn;
+			})
+			.catch(() => {});
+
+		return () => {
+			cancelled = true;
+			unlisten?.();
+		};
+	}, [windowLabel, notchMode, triggerEventPeek]);
+
+	// Auto-dismiss converter toast after ~5s (paused while hovering the notch).
+	useEffect(() => {
+		if (!notchConverterToast || isHovered || isNotchHovered) {
+			return;
+		}
+		const totalMs = 5000;
+		const tickMs = 100;
+		let elapsed = ((100 - notchConverterRemainingPct) / 100) * totalMs;
+
+		const timer = window.setInterval(() => {
+			elapsed += tickMs;
+			const pct = Math.max(0, 100 - (elapsed / totalMs) * 100);
+			setNotchConverterRemainingPct(pct);
+			if (elapsed >= totalMs) {
+				window.clearInterval(timer);
+				dismissNotchConverterToast();
+			}
+		}, tickMs);
+
+		return () => window.clearInterval(timer);
+		// Re-run only when hover toggles or a new toast arrives.
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [notchConverterToast?.id, isHovered, isNotchHovered, dismissNotchConverterToast]);
+
+	// Dismiss converter toast if fullscreen activates or another panel replaces "converter".
+	useEffect(() => {
+		if (!isVisible && notchConverterToast) {
+			dismissNotchConverterToast();
+		}
+	}, [isVisible, notchConverterToast, dismissNotchConverterToast]);
+
+	useEffect(() => {
+		if (notchConverterToast && notchPanelMode !== "converter") {
+			setNotchConverterToast(null);
+		}
+	}, [notchConverterToast, notchPanelMode]);
+
 	// Window height is now kept constant to prevent rendering layout lag and sharp corners
 
 	const lastScrollTime = useRef(0);
@@ -2192,7 +2340,8 @@ function App() {
 			target.closest(".ai-chat-history-list") ||
 			target.closest(".ai-chat-staged-row") ||
 			target.closest(".ai-chat-input") ||
-			target.closest(".translator-notch-content")
+			target.closest(".translator-notch-content") ||
+			target.closest(".converter-notch-content")
 		) {
 			return;
 		}
@@ -2218,7 +2367,13 @@ function App() {
 	// Wheel and swipe navigate panels, even from a collapsed live activity.
 	// Music and shelf remain entry points through their activity affordances.
 	const cycleNotchPanelMode = (direction: 1 | -1) => {
-		if (notchPanelMode === "announcement" || notchPanelMode === "translator") return false;
+		if (
+			notchPanelMode === "announcement" ||
+			notchPanelMode === "translator" ||
+			notchPanelMode === "converter"
+		) {
+			return false;
+		}
 		const panels = NOTCH_PANELS.filter(panelAvailable);
 		const currentIndex = panels.indexOf(notchPanelMode as NotchPanel);
 		const nextMode = currentIndex === -1
@@ -2454,7 +2609,13 @@ function App() {
 
 	// Expands the notch into a panel, or into an activity's own view.
 	const openNotch = (view: NotchPanel | "music" | "shelf") => {
-		if (notchPanelMode === "announcement" || notchPanelMode === "translator") return;
+		if (
+			notchPanelMode === "announcement" ||
+			notchPanelMode === "translator" ||
+			notchPanelMode === "converter"
+		) {
+			return;
+		}
 		setIsOpen(true);
 		setNotchPanelMode(view);
 	};
@@ -2540,7 +2701,14 @@ function App() {
 	// session exists, the timer (with music in its bubble) once one is set, and
 	// the clock otherwise. An open notch is left alone.
 	useEffect(() => {
-		if (isOpen || announcementOpenRef.current || notchTranslationOpenRef.current) return;
+		if (
+			isOpen ||
+			announcementOpenRef.current ||
+			notchTranslationOpenRef.current ||
+			notchConverterOpenRef.current
+		) {
+			return;
+		}
 		if (notchPanelMode !== collapsedMode && notchPanelMode !== "shelf") {
 			setNotchPanelMode(collapsedMode);
 		}
@@ -3244,6 +3412,7 @@ function App() {
 			if (notchTranslation.status === "loading") return 260;
 			return notchTranslation.text.length > 260 ? 480 : 420;
 		}
+		if (notchPanelMode === "converter" && notchConverterToast) return 360;
 		if (notchPanelMode === "announcement" && announcement && !announcementDismissed) return 380;
 		if (isCalendarMode) return 480;
 		if (notchPanelMode === "prayer" && isOpen) return 480;
@@ -3284,6 +3453,9 @@ function App() {
 			const estLines = Math.max(2, Math.min(8, Math.max(explicitLines, wrappedLines)));
 			const bodyH = estLines * ((notchTranslation.fontSize || 15) + 8);
 			return Math.min(268, Math.max(146, 36 + 56 + bodyH));
+		}
+		if (notchPanelMode === "converter" && notchConverterToast) {
+			return notchConverterToast.status === "failed" && notchConverterToast.error ? 114 : 102;
 		}
 		// Announcement card: body is line-clamped, so a fixed size fits both cases.
 		if (notchPanelMode === "announcement" && announcement && !announcementDismissed) {
@@ -3357,7 +3529,9 @@ function App() {
 		notchPanelMode === "translator" ||
 		(showAthanBanner && isOpen)
 			? 26
-			: 18;
+			: notchPanelMode === "converter"
+				? 22
+				: 18;
 	targetBoxRef.current = {
 		width: pillTargetWidth,
 		height: pillTargetHeight,
@@ -3401,7 +3575,9 @@ function App() {
 		announcementOpen,
 		notchTranslation?.id,
 		notchTranslation?.status,
-		notchTranslation?.text
+		notchTranslation?.text,
+		notchConverterToast?.id,
+		notchConverterToast?.status
 	]);
 
 	return (
@@ -3437,7 +3613,7 @@ function App() {
 			>
 				<motion.div
 					ref={notchRef}
-					className={`zenith-notch ${isHovered ? "expanded" : ""} ${isImpacted ? "is-impacted" : ""} ${isDragHovering ? "drag-hover" : ""} ${notchPanelMode === "translator" && notchTranslation ? "is-translator" : ""}`}
+					className={`zenith-notch ${isHovered ? "expanded" : ""} ${isImpacted ? "is-impacted" : ""} ${isDragHovering ? "drag-hover" : ""} ${notchPanelMode === "translator" && notchTranslation ? "is-translator" : ""} ${notchPanelMode === "converter" && notchConverterToast ? `is-converter is-converter-${notchConverterToast.status}` : ""}`}
 					onMouseEnter={() => setIsNotchHovered(true)}
 					onMouseLeave={() => setIsNotchHovered(false)}
 					onWheel={handleWheel}
@@ -4545,6 +4721,135 @@ function App() {
 													</div>
 												</>
 											)}
+										</motion.div>
+									)}
+								</AnimatePresence>
+
+								{/* Converter Completion / Failure Card in Notch */}
+								<AnimatePresence>
+									{!showAthanBanner && notchPanelMode === "converter" && notchConverterToast && (
+										<motion.div
+											key="converter-notch-view"
+											className={`converter-notch-content is-${notchConverterToast.status} ${
+												notchConverterToast.status === "completed" &&
+												notchConverterToast.outputs.length > 0
+													? "is-clickable"
+													: ""
+											}`}
+											dir={dir}
+											onClick={(e) => {
+												e.stopPropagation();
+												if (
+													notchConverterToast.status === "completed" &&
+													notchConverterToast.outputs.length > 0
+												) {
+													invoke("converter_open_output", {
+														path: notchConverterToast.outputs[0]
+													}).catch(() => {});
+													dismissNotchConverterToast();
+												}
+											}}
+											initial={{ opacity: 0, y: -4 }}
+											animate={{ opacity: 1, y: 0 }}
+											exit={{
+												opacity: 0,
+												filter: "blur(4px)",
+												transition: { duration: 0.1 }
+											}}
+											transition={{ type: "spring", stiffness: 420, damping: 32 }}
+										>
+											<div className="converter-notch-row">
+												<div className={`converter-notch-badge is-${notchConverterToast.status}`}>
+													{notchConverterToast.status === "completed" ? (
+														<CheckCircle2 size={15} strokeWidth={2.2} />
+													) : (
+														<AlertCircle size={15} strokeWidth={2.2} />
+													)}
+												</div>
+
+												<div className="converter-notch-meta">
+													<div className="converter-notch-title-row">
+														<span className="converter-notch-title">
+															{notchConverterToast.status === "completed"
+																? nu.converterDone
+																: nu.converterFailed}
+														</span>
+														{notchConverterToast.targetLabel && (
+															<span className="converter-notch-format-pill" dir="ltr">
+																{notchConverterToast.targetLabel}
+															</span>
+														)}
+													</div>
+													<div className="converter-notch-sub" dir="auto">
+														{notchConverterToast.status === "completed"
+															? notchConverterToast.outputs.length > 1
+																? nu.converterFilesReady(notchConverterToast.outputs.length)
+																: converterBaseName(
+																		notchConverterToast.outputs[0] ??
+																			notchConverterToast.inputs[0] ??
+																			""
+																	) || nu.converterFilesReady(1)
+															: notchConverterToast.error ||
+																converterBaseName(notchConverterToast.inputs[0] ?? "")}
+													</div>
+												</div>
+
+												<div className="converter-notch-actions">
+													{notchConverterToast.status === "completed" &&
+														notchConverterToast.outputs.length > 0 && (
+															<>
+																<button
+																	type="button"
+																	className="converter-notch-open-btn"
+																	onClick={(e) => {
+																		e.stopPropagation();
+																		invoke("converter_open_output", {
+																			path: notchConverterToast.outputs[0]
+																		}).catch(() => {});
+																		dismissNotchConverterToast();
+																	}}
+																	title={nu.converterOpen}
+																>
+																	<span>{nu.converterOpen}</span>
+																</button>
+																<button
+																	type="button"
+																	className="converter-notch-ghost-btn"
+																	onClick={(e) => {
+																		e.stopPropagation();
+																		invoke("converter_open_output", {
+																			path: notchConverterToast.outputs[0],
+																			revealInFolder: true
+																		}).catch(() => {});
+																		dismissNotchConverterToast();
+																	}}
+																	title={nu.converterReveal}
+																	aria-label={nu.converterReveal}
+																>
+																	<FolderOpen size={13} strokeWidth={2} />
+																</button>
+															</>
+														)}
+													<button
+														type="button"
+														className="converter-notch-ghost-btn"
+														onClick={(e) => {
+															e.stopPropagation();
+															dismissNotchConverterToast();
+														}}
+														title={t.common.dismiss}
+														aria-label={t.common.dismiss}
+													>
+														<X size={13} strokeWidth={2.2} />
+													</button>
+												</div>
+											</div>
+											<div className="converter-notch-progress">
+												<div
+													className="converter-notch-progress-fill"
+													style={{ width: `${notchConverterRemainingPct}%` }}
+												/>
+											</div>
 										</motion.div>
 									)}
 								</AnimatePresence>

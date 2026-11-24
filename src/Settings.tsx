@@ -233,10 +233,14 @@ function SettingsApp() {
 										<span className="sidebar-group-label">{t.settingsWindow.tabs.mouse}</span>
 										<ChevronDown size={13} strokeWidth={1.75} className="sidebar-group-chevron" />
 									</button>
-									<div className={`sidebar-subgroup ${mouseGroupOpen ? "open" : ""}`}>
+									<div
+										className={`sidebar-subgroup ${mouseGroupOpen ? "open" : ""}`}
+										aria-hidden={!mouseGroupOpen}
+									>
 										<div className="sidebar-subgroup-inner">
 											<button
 												type="button"
+												tabIndex={mouseGroupOpen ? 0 : -1}
 												className={`sidebar-tab sidebar-subtab ${activeTab === "mouse-compass" ? "active" : ""}`}
 												onClick={() => setActiveTab("mouse-compass")}
 											>
@@ -247,6 +251,7 @@ function SettingsApp() {
 											</button>
 											<button
 												type="button"
+												tabIndex={mouseGroupOpen ? 0 : -1}
 												className={`sidebar-tab sidebar-subtab ${activeTab === "mouse-converter" ? "active" : ""}`}
 												onClick={() => setActiveTab("mouse-converter")}
 											>
@@ -592,7 +597,6 @@ function SettingsApp() {
 							converterOutputFolder={settings.converterOutputFolder}
 							handleConverterOutputFolderChange={settings.handleConverterOutputFolderChange}
 							converterExplorerMenu={settings.converterExplorerMenu}
-							toggleConverterExplorerMenu={settings.toggleConverterExplorerMenu}
 						/>
 					)}
 					{activeTab === "ai" && (

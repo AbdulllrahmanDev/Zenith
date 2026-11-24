@@ -10,6 +10,7 @@ import {
 	extractExtension,
 	getCompatibleCatalogIdsForCategory,
 	matchFormatsForPaths,
+	normalizeConverterPathKey,
 } from "./formats";
 import type { ConverterState, TargetOption, ToolbarProfile } from "./types";
 
@@ -331,5 +332,65 @@ describe("ConverterState helpers & ConvertRequest builder", () => {
 		});
 		expect(req.preset).toBe("to-jpg");
 		expect(req.quality).toBeNull();
+	});
+
+	test("prefers to-<fmt> catalog template for custom .srt presets, marks to-heic ffmpeg, and enforces tool category on mixed profiles", () => {
+		expect(DEFAULT_PRESET_CATALOG["to-heic"]?.requiredEngine).toBe("ffmpeg");
+
+		const state: ConverterState = {
+			profiles: [
+				{
+					id: "mixed",
+					category: "mixed",
+					label: "Mixed",
+					primary_ids: ["to-pdf", "tool-crop", "zip-all"],
+					secondary_ids: [],
+				},
+			],
+			presets: [
+				{
+					id: "custom-srt",
+					name: "Clean SRT",
+					target_format: ".srt",
+					quality: null,
+					pages: null,
+					split_every: null,
+					split_parts: null,
+					conflict: "rename",
+					keep_dates: false,
+					zip: false,
+					iso_filesystem: null,
+					iso_label: null,
+				},
+			],
+			recent: [],
+			watch_rules: [],
+		};
+
+		const { profiles, extraPresets } = buildCustomMatcherInputs(state);
+		expect(extraPresets?.["custom-srt"]?.requiredEngine).toBeUndefined();
+		expect(extraPresets?.["custom-srt"]?.category).toBe("subtitle");
+
+		const mixedWithPdf = matchFormatsForPaths(
+			["C:\\Temp\\photo.png", "C:\\Temp\\report.pdf"],
+			profiles,
+			extraPresets,
+		);
+		expect(mixedWithPdf.detectedCategory).toBe("mixed");
+		expect(mixedWithPdf.primary.map((o) => o.presetId)).toContain("to-pdf");
+		expect(mixedWithPdf.primary.map((o) => o.presetId)).not.toContain("tool-crop");
+	});
+});
+
+describe("normalizeConverterPathKey", () => {
+	test("normalizes slashes, casing, and trailing slashes while preserving drive roots", () => {
+		expect(normalizeConverterPathKey("C:/Users/Dev/Photo.PNG")).toBe(
+			"c:\\users\\dev\\photo.png",
+		);
+		expect(normalizeConverterPathKey("  D:\\Projects\\Folder\\  ")).toBe(
+			"d:\\projects\\folder",
+		);
+		expect(normalizeConverterPathKey("C:\\")).toBe("c:\\");
+		expect(normalizeConverterPathKey("C:/")).toBe("c:\\");
 	});
 });

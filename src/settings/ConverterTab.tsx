@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
 	AlertCircle,
@@ -59,7 +59,8 @@ import {
 	DEFAULT_TOOLBAR_PROFILES,
 	detectInputCategory,
 	getCompatibleCatalogIdsForCategory,
-	matchFormatsForPaths
+	matchFormatsForPaths,
+	normalizeConverterPathKey
 } from "../converter/formats";
 import type {
 	ConflictPolicy,
@@ -96,7 +97,6 @@ export interface ConverterTabProps {
 	converterOutputFolder: string;
 	handleConverterOutputFolderChange: (v: string) => void;
 	converterExplorerMenu: boolean;
-	toggleConverterExplorerMenu?: () => void;
 }
 
 interface DropJobState {
@@ -565,10 +565,11 @@ export function ConverterTab({
 			const p = ev.payload;
 			if (!activeDropJobIdRef.current || p.job_id !== activeDropJobIdRef.current) return;
 
+			const sourceKey = normalizeConverterPathKey(p.source);
 			if (p.kind === "progress" && typeof p.fraction === "number") {
-				dropFileProgressRef.current.set(p.source, Math.max(0, Math.min(1, p.fraction)));
+				dropFileProgressRef.current.set(sourceKey, Math.max(0, Math.min(1, p.fraction)));
 			} else if (p.kind === "file") {
-				dropFileProgressRef.current.set(p.source, 1);
+				dropFileProgressRef.current.set(sourceKey, 1);
 			}
 
 			const vals = Array.from(dropFileProgressRef.current.values());
@@ -1004,7 +1005,7 @@ export function ConverterTab({
 			const nextPresets = converterState.presets.filter((p) => p.id !== id);
 			await savePresetList(nextPresets);
 
-			// If a custom preset was removed from presets, clean up any profile references to it.
+			// If a custom preset was removed from presets, clean up profile & watch rule references to it.
 			const isBuiltIn = Boolean(DEFAULT_PRESET_CATALOG[id]);
 			if (!isBuiltIn) {
 				const hasRef = mergedProfiles.some(
@@ -1018,6 +1019,26 @@ export function ConverterTab({
 					}));
 					await persistMergedProfiles(cleanedProfiles);
 				}
+				const hasWatchRef = converterState.watch_rules.some((r) => r.preset_id === id);
+				if (hasWatchRef) {
+					const fallbackFmt = presetDraft.target_format
+						.trim()
+						.replace(/^\./, "")
+						.toLowerCase();
+					const cleanedWatchRules = converterState.watch_rules.map((r) =>
+						r.preset_id === id
+							? {
+									...r,
+									preset_id: null,
+									target_format: r.target_format.trim() || fallbackFmt
+								}
+							: r
+					);
+					await persistWatchRules(cleanedWatchRules);
+				}
+				setWatchDraft((prev) =>
+					prev.preset_id === id ? { ...prev, preset_id: null } : prev
+				);
 				handleSelectPresetForEdit("to-jpg");
 			} else {
 				const resetDraft = buildDraftForPresetId(id, nextPresets);
@@ -1065,7 +1086,9 @@ export function ConverterTab({
 			if (inputs.length === 0) return;
 			const jobId = `settings-${Date.now()}-${++dropJobSeqRef.current}`;
 			activeDropJobIdRef.current = jobId;
-			dropFileProgressRef.current = new Map(inputs.map((p) => [p, 0]));
+			dropFileProgressRef.current = new Map(
+				inputs.map((p) => [normalizeConverterPathKey(p), 0])
+			);
 			setPendingDropInstall(null);
 			setHistoryError(null);
 			setDropJob({
@@ -1104,6 +1127,8 @@ export function ConverterTab({
 					const latestEngines = await invoke<EnginePackInfo[]>("converter_list_engines").catch(
 						() => engines
 					);
+					if (activeDropJobIdRef.current !== jobId) return;
+					activeDropJobIdRef.current = null;
 					const pack =
 						latestEngines.find((e) => e.id.toLowerCase() === missingEngine.toLowerCase()) ??
 						null;
@@ -1122,17 +1147,29 @@ export function ConverterTab({
 
 				const failedFile = result.files.find((f) => f.state.toLowerCase() === "failed");
 				if (failedFile && outputs.length === 0) {
+					activeDropJobIdRef.current = null;
+					const errMsg = cleanErrorMessage(failedFile.error || c.donut.failedTitle);
 					setDropJob({
 						jobId,
 						targetLabel: option.label,
 						status: "error",
 						fraction: 0,
 						outputs,
-						error: cleanErrorMessage(failedFile.error || c.donut.failedTitle)
+						error: errMsg
 					});
+					emit("converter-job-finished", {
+						jobId,
+						status: "failed",
+						targetFormat: option.format,
+						targetLabel: option.label,
+						inputs,
+						outputs,
+						error: errMsg
+					}).catch(() => {});
 					return;
 				}
 
+				activeDropJobIdRef.current = null;
 				setDropJob({
 					jobId,
 					targetLabel: option.label,
@@ -1141,8 +1178,17 @@ export function ConverterTab({
 					outputs,
 					error: null
 				});
+				emit("converter-job-finished", {
+					jobId,
+					status: "completed",
+					targetFormat: option.format,
+					targetLabel: option.label,
+					inputs,
+					outputs
+				}).catch(() => {});
 			} catch (err) {
 				if (activeDropJobIdRef.current !== jobId) return;
+				activeDropJobIdRef.current = null;
 				const raw = err instanceof Error ? err.message : String(err);
 				if (raw === "CANCELLED" || raw.startsWith("CANCELLED")) {
 					setDropJob({
@@ -1188,14 +1234,24 @@ export function ConverterTab({
 					});
 					return;
 				}
+				const errMsg = cleanErrorMessage(raw);
 				setDropJob({
 					jobId,
 					targetLabel: option.label,
 					status: "error",
 					fraction: 0,
 					outputs: [],
-					error: cleanErrorMessage(raw)
+					error: errMsg
 				});
+				emit("converter-job-finished", {
+					jobId,
+					status: "failed",
+					targetFormat: option.format,
+					targetLabel: option.label,
+					inputs,
+					outputs: [],
+					error: errMsg
+				}).catch(() => {});
 			}
 		},
 		[
@@ -1279,10 +1335,20 @@ export function ConverterTab({
 		}
 	};
 
+	const cancelActiveDropJobIfRunning = () => {
+		const activeId = activeDropJobIdRef.current;
+		activeDropJobIdRef.current = null;
+		dropFileProgressRef.current.clear();
+		if (dropJob?.status === "converting" && activeId) {
+			void invoke("converter_cancel", { jobId: activeId }).catch(() => {});
+		}
+	};
+
 	const handleCancelDropJob = async () => {
 		if (!dropJob || dropJob.status !== "converting") return;
 		const id = dropJob.jobId;
 		activeDropJobIdRef.current = null;
+		dropFileProgressRef.current.clear();
 		await invoke("converter_cancel", { jobId: id }).catch(() => {});
 		setDropJob((prev) => (prev && prev.jobId === id ? { ...prev, status: "cancelled" } : prev));
 	};
@@ -2565,6 +2631,7 @@ export function ConverterTab({
 									type="button"
 									className="settings-btn"
 									onClick={() => {
+										cancelActiveDropJobIfRunning();
 										setQueuedFiles([]);
 										setPendingDropInstall(null);
 										setDropJob(null);
@@ -2628,9 +2695,14 @@ export function ConverterTab({
 										<button
 											type="button"
 											className="zn-dropzone-chip-x"
-											onClick={() =>
-												setQueuedFiles((prev) => prev.filter((p) => p !== filePath))
-											}
+											onClick={() => {
+												if (dropJob?.status === "converting") {
+													cancelActiveDropJobIfRunning();
+													setDropJob(null);
+												}
+												setPendingDropInstall(null);
+												setQueuedFiles((prev) => prev.filter((p) => p !== filePath));
+											}}
 											aria-label={c.donutEditor.removeSlice}
 										>
 											<X size={11} />
@@ -3149,7 +3221,9 @@ export function ConverterTab({
 								const targetBadge = rule.preset_id
 									? customMatcherInputs.presetsById.get(rule.preset_id)?.name ||
 										DEFAULT_PRESET_CATALOG[rule.preset_id]?.label ||
-										rule.preset_id
+										(rule.target_format
+											? rule.target_format.toUpperCase()
+											: rule.preset_id)
 									: rule.target_format.toUpperCase();
 
 								return (

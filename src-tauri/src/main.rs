@@ -736,10 +736,9 @@ fn main() {
                             if result != WAIT_OBJECT_0 || SHUTTING_DOWN.load(Ordering::Relaxed) {
                                 break;
                             }
-                            std::thread::sleep(std::time::Duration::from_millis(60));
                             let paths = crate::converter::take_cli_handoff_paths();
                             if !paths.is_empty() {
-                                crate::converter::open_converter_donut_from_cli(&app_handle, paths);
+                                crate::converter::enqueue_cli_convert_paths(&app_handle, paths);
                             }
                         }
                     });
@@ -747,23 +746,28 @@ fn main() {
             }
 
             if !cli_convert_paths.is_empty() {
+                crate::converter::begin_cli_startup_batch(&cli_convert_paths);
                 let app_handle = app.handle().clone();
-                let startup_paths = cli_convert_paths.clone();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_millis(750)).await;
-                    for _ in 0..30 {
+                    let mut ready = false;
+                    for _ in 0..120 {
                         if SHUTTING_DOWN.load(Ordering::Relaxed) {
+                            crate::converter::cancel_cli_startup_batch();
                             return;
                         }
                         if app_handle.get_webview_window("overlay").is_some()
                             && !OVERLAY_IN_SPLASH.load(Ordering::Relaxed)
                         {
+                            ready = true;
                             break;
                         }
                         tokio::time::sleep(std::time::Duration::from_millis(150)).await;
                     }
-                    if !SHUTTING_DOWN.load(Ordering::Relaxed) {
-                        crate::converter::open_converter_donut_from_cli(&app_handle, startup_paths);
+                    if ready && !SHUTTING_DOWN.load(Ordering::Relaxed) {
+                        crate::converter::finish_cli_startup_batch(&app_handle);
+                    } else {
+                        crate::converter::cancel_cli_startup_batch();
                     }
                 });
             }

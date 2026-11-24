@@ -641,7 +641,12 @@ export const en = {
 		shelfPruned: "File no longer exists — removed from shelf",
 		shelfOpenError: "Couldn't open the file",
 		shelfBubbleAria: (count: number) => `Open shelf: ${count} item${count === 1 ? "" : "s"}`,
-		musicBubbleAria: (title?: string) => (title ? `Open music: ${title}` : "Open music")
+		musicBubbleAria: (title?: string) => (title ? `Open music: ${title}` : "Open music"),
+		converterDone: "Conversion Complete",
+		converterFailed: "Conversion Failed",
+		converterOpen: "Open",
+		converterReveal: "Show in folder",
+		converterFilesReady: (n: number) => (n === 1 ? "1 file ready" : `${n} files ready`)
 	},
 	quickPanels: {
 		backToControls: "Back to controls",
@@ -1466,7 +1471,8 @@ export const en = {
 			clickToReveal: "Click to reveal in Explorer",
 			dismiss: "Dismiss",
 			escToCancel: "Esc to cancel",
-			noTargets: "No compatible targets"
+			noTargets: "No compatible targets",
+			dropToExtractHint: "Drop onto a slice to extract"
 		},
 		cropModal: {
 			title: "Crop Image",

@@ -641,7 +641,13 @@ export const ar: TranslationDict = {
 		shelfPruned: "الملف لم يعد موجوداً — تمت إزالته من الرف",
 		shelfOpenError: "تعذّر فتح الملف",
 		shelfBubbleAria: (count: number) => `فتح الرف: ${count} عنصر`,
-		musicBubbleAria: (title?: string) => (title ? `فتح الموسيقى: ${title}` : "فتح الموسيقى")
+		musicBubbleAria: (title?: string) => (title ? `فتح الموسيقى: ${title}` : "فتح الموسيقى"),
+		converterDone: "اكتمل التحويل",
+		converterFailed: "فشل التحويل",
+		converterOpen: "فتح",
+		converterReveal: "عرض في المجلد",
+		converterFilesReady: (n: number) =>
+			n === 1 ? "ملف واحد جاهز" : n === 2 ? "ملفان جاهزان" : n <= 10 ? `${n} ملفات جاهزة` : `${n} ملفاً جاهزاً`
 	},
 	quickPanels: {
 		backToControls: "العودة إلى مركز التحكم",
@@ -1469,7 +1475,8 @@ export const ar: TranslationDict = {
 			clickToReveal: "انقر للعرض في مستكشف الملفات",
 			dismiss: "إغلاق",
 			escToCancel: "Esc للإغلاق",
-			noTargets: "لا توجد صيغ متوافقة"
+			noTargets: "لا توجد صيغ متوافقة",
+			dropToExtractHint: "أسقط الملف على إحدى الصيغ لاستخراجه"
 		},
 		cropModal: {
 			title: "قص الصورة",

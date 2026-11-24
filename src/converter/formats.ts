@@ -581,7 +581,7 @@ export const DEFAULT_PRESET_CATALOG: Record<string, TargetOption> = {
 	"to-ico": preset("to-ico", "ico", "ICO", "image"),
 	"to-gif": preset("to-gif", "gif", "GIF", "image"),
 	"to-avif": preset("to-avif", "avif", "AVIF", "image", { quality: 60 }),
-	"to-heic": preset("to-heic", "heic", "HEIC", "image", { quality: 80 }),
+	"to-heic": preset("to-heic", "heic", "HEIC", "image", { quality: 80, requiredEngine: "ffmpeg" }),
 	"to-jxl": preset("to-jxl", "jxl", "JPEG XL", "image", { quality: 85 }),
 	"to-psd": preset("to-psd", "psd", "PSD", "image"),
 	"to-tga": preset("to-tga", "tga", "TGA", "image"),
@@ -1088,6 +1088,22 @@ export function extractExtension(filePath: string): string {
 	return lower.slice(lastDot + 1);
 }
 
+/**
+ * Normalizes a file or directory path into a stable lookup key for matching
+ * converter progress events against queued input paths.
+ */
+export function normalizeConverterPathKey(filePath: string): string {
+	const trimmed = filePath.trim().replace(/\//g, "\\");
+	if (!trimmed) {
+		return "";
+	}
+	const clean =
+		/^[A-Za-z]:\\$/.test(trimmed) || trimmed === "\\"
+			? trimmed
+			: trimmed.replace(/\\+$/, "") || trimmed;
+	return clean.toLowerCase();
+}
+
 function classifyPath(filePath: string): ClassifiedInput {
 	const trimmed = filePath.trim();
 	if (trimmed.endsWith("/") || trimmed.endsWith("\\") || trimmed.toLowerCase() === "folder") {
@@ -1117,6 +1133,12 @@ function isOptionCompatibleWithInput(option: TargetOption, input: ClassifiedInpu
 	}
 	if (!input.formatId || input.category === "mixed") {
 		return false;
+	}
+	if (option.format === "*") {
+		if (option.category !== "mixed" && option.category !== input.category) {
+			return false;
+		}
+		return CATEGORY_COMPATIBLE_TARGETS[input.category]?.has("*") ?? false;
 	}
 	return CATEGORY_COMPATIBLE_TARGETS[input.category]?.has(option.format) ?? false;
 }
@@ -1389,7 +1411,9 @@ export function buildCustomMatcherInputs(state: ConverterState | null | undefine
 				}
 				extraPresets[presetCfg.id] = opt;
 			} else if (cleanFmt) {
-				const template = defaultOptions.find((o) => o.format === cleanFmt);
+				const template =
+					DEFAULT_PRESET_CATALOG[`to-${cleanFmt}`] ??
+					defaultOptions.find((o) => o.format === cleanFmt);
 				const inferredCategory =
 					EXTENSION_CATEGORY[cleanFmt]?.category ?? template?.category ?? "mixed";
 				const opt: TargetOption = {

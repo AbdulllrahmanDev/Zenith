@@ -3856,7 +3856,7 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
         re_register_appbars(&app, &settings);
     } else if key == "zenith-translator-enabled" || key.starts_with("zenith-translator-hotkey-") {
         crate::translator::sync_hotkeys_from_settings(&app);
-    } else if key == "zenith-converter-explorer-menu" || key == "bloom-converter-explorer-menu" {
+    } else if key == "zenith-converter-explorer-menu" {
         crate::converter::sync_explorer_menu_from_settings(&app);
     } else if key.starts_with("zenith-converter-") {
         crate::converter::sync_trigger_config_from_settings(&app);
@@ -4713,9 +4713,7 @@ pub fn setup_settings_watcher(app: AppHandle) {
                         if key == "zenith-language" || key == "bloom-language" {
                             apply_language(&app, value.as_str());
                         }
-                        if key == "zenith-converter-explorer-menu"
-                            || key == "bloom-converter-explorer-menu"
-                        {
+                        if key == "zenith-converter-explorer-menu" {
                             explorer_menu_changed = true;
                         } else if key.starts_with("zenith-converter-") {
                             converter_changed = true;
@@ -4729,9 +4727,7 @@ pub fn setup_settings_watcher(app: AppHandle) {
                         if key == "zenith-language" || key == "bloom-language" {
                             apply_language(&app, None);
                         }
-                        if key == "zenith-converter-explorer-menu"
-                            || key == "bloom-converter-explorer-menu"
-                        {
+                        if key == "zenith-converter-explorer-menu" {
                             explorer_menu_changed = true;
                         } else if key.starts_with("zenith-converter-") {
                             converter_changed = true;

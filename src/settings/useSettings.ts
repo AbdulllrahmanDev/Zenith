@@ -1897,12 +1897,7 @@ export function useSettings() {
 	};
 	const handleConverterOutputFolderChange = (v: string) => {
 		setConverterOutputFolder(v);
-		saveSetting("zenith-converter-output-folder", v);
-	};
-	const toggleConverterExplorerMenu = () => {
-		const next = !converterExplorerMenu;
-		setConverterExplorerMenu(next);
-		saveSetting("zenith-converter-explorer-menu", String(next));
+		saveSettingDebounced("zenith-converter-output-folder", v);
 	};
 
 	// ── Theme handlers ──
@@ -2273,7 +2268,6 @@ export function useSettings() {
 		converterOutputFolder,
 		handleConverterOutputFolderChange,
 		converterExplorerMenu,
-		toggleConverterExplorerMenu,
 
 		// Notifications
 		notificationsEnabled,

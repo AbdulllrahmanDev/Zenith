@@ -11,7 +11,7 @@ use std::sync::{Mutex, OnceLock};
 use std::thread::ThreadId;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::watch;
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -477,10 +477,11 @@ pub fn parse_cli_stderr_line(line: &str) -> Option<CliEvent> {
     match raw.event.as_str() {
         "progress" => {
             let source = raw.source?;
-            let fraction = raw.fraction?.clamp(0.0, 1.0);
-            if !fraction.is_finite() {
+            let raw_fraction = raw.fraction?;
+            if !raw_fraction.is_finite() {
                 return None;
             }
+            let fraction = raw_fraction.clamp(0.0, 1.0);
             Some(CliEvent::Progress { source, fraction })
         }
         "file" => {
@@ -759,6 +760,9 @@ fn register_active_job(job_id: &str) -> Result<(ActiveJobGuard, watch::Receiver<
 
 fn attach_job_pid(job_id: &str, pid: Option<u32>) -> bool {
     if let Ok(mut jobs) = active_jobs_map().lock() {
+        if CONVERTER_SHUTTING_DOWN.load(Ordering::Acquire) {
+            return false;
+        }
         if let Some(state) = jobs.get_mut(job_id) {
             if state.cancelled {
                 return false;
@@ -1899,7 +1903,11 @@ pub async fn converter_clear_history(app: AppHandle) -> Result<ConverterState, S
 }
 
 #[tauri::command]
-pub async fn converter_open_output(path: String, reveal_in_folder: bool) -> Result<(), String> {
+pub async fn converter_open_output(
+    path: String,
+    reveal_in_folder: Option<bool>,
+) -> Result<(), String> {
+    let reveal_in_folder = reveal_in_folder.unwrap_or(false);
     tokio::task::spawn_blocking(move || {
         let trimmed = path.trim();
         if trimmed.is_empty() {
@@ -2267,6 +2275,25 @@ where
     true
 }
 
+fn attach_watch_pid(rule_id: &str, gen: u64, pid: Option<u32>) -> bool {
+    let Ok(mut mgr) = watch_manager().lock() else {
+        return false;
+    };
+    if CONVERTER_SHUTTING_DOWN.load(Ordering::Acquire) {
+        return false;
+    }
+    let Some(entry) = mgr.entries.get_mut(rule_id) else {
+        return false;
+    };
+    if entry.generation != gen || *entry.cancel_tx.borrow() {
+        return false;
+    }
+    entry.pid = pid;
+    entry.running = true;
+    entry.last_error = None;
+    true
+}
+
 fn spawn_watch_worker(
     app: AppHandle,
     paths: ConverterPaths,
@@ -2357,6 +2384,31 @@ fn spawn_watch_worker(
                                         iso_label: None,
                                         crop: None,
                                     };
+                                    let finished_event = if is_done || is_failed {
+                                        let target_fmt = infer_output_format(
+                                            item.outputs.first().map(String::as_str).unwrap_or(""),
+                                            &synthetic_req,
+                                        );
+                                        let target_label = if target_fmt == "*" {
+                                            rule_for_stdout
+                                                .preset_id
+                                                .clone()
+                                                .unwrap_or_else(|| "*".to_string())
+                                        } else {
+                                            target_fmt.to_ascii_uppercase()
+                                        };
+                                        Some(serde_json::json!({
+                                            "jobId": synthetic_req.job_id,
+                                            "status": if is_done { "completed" } else { "failed" },
+                                            "targetFormat": target_fmt,
+                                            "targetLabel": target_label,
+                                            "inputs": [item.source.clone()],
+                                            "outputs": if is_done { item.outputs.clone() } else { Vec::<String>::new() },
+                                            "error": if is_failed { item_err.clone() } else { None },
+                                        }))
+                                    } else {
+                                        None
+                                    };
                                     record_conversion_history(
                                         &app_for_stdout,
                                         &paths_for_stdout,
@@ -2364,6 +2416,9 @@ fn spawn_watch_worker(
                                         &[item],
                                     )
                                     .await;
+                                    if let Some(payload) = finished_event {
+                                        let _ = app_for_stdout.emit("converter-job-finished", payload);
+                                    }
                                 }
                                 WatchStdoutEvent::Stopped => {
                                     if update_watch_entry_if_current(&rule_id_stdout, gen, |e| {
@@ -2623,16 +2678,7 @@ async fn reconcile_watches(
         match cmd.spawn() {
             Ok(mut child) => {
                 let pid = child.id();
-                if CONVERTER_SHUTTING_DOWN.load(Ordering::Acquire) {
-                    terminate_child_and_tree(&mut child, pid).await;
-                    continue;
-                }
-                let attached = update_watch_entry_if_current(&item.rule.id, item.gen, |e| {
-                    e.pid = pid;
-                    e.running = true;
-                    e.last_error = None;
-                });
-                if !attached {
+                if !attach_watch_pid(&item.rule.id, item.gen, pid) {
                     terminate_child_and_tree(&mut child, pid).await;
                     continue;
                 }
@@ -2906,7 +2952,12 @@ pub fn apply_explorer_menu_registry(enabled: bool) -> Result<(), String> {
         let icon = format!("{exe_clean},0");
         let cmd = format!("\"{exe_clean}\" --convert \"%1\"");
         write_hkcu_shell_entry(EXPLORER_FILE_SHELL_KEY, EXPLORER_MENU_LABEL, &icon, &cmd)?;
-        write_hkcu_shell_entry(EXPLORER_DIR_SHELL_KEY, EXPLORER_MENU_LABEL, &icon, &cmd)?;
+        if let Err(err) =
+            write_hkcu_shell_entry(EXPLORER_DIR_SHELL_KEY, EXPLORER_MENU_LABEL, &icon, &cmd)
+        {
+            let _ = delete_hkcu_shell_entry(EXPLORER_FILE_SHELL_KEY);
+            return Err(err);
+        }
     } else {
         delete_hkcu_shell_entry(EXPLORER_FILE_SHELL_KEY)?;
         delete_hkcu_shell_entry(EXPLORER_DIR_SHELL_KEY)?;
@@ -2916,7 +2967,6 @@ pub fn apply_explorer_menu_registry(enabled: bool) -> Result<(), String> {
 
 pub fn sync_explorer_menu_from_settings(app: &AppHandle) {
     let enabled = crate::utils::get_setting_str(app, "zenith-converter-explorer-menu")
-        .or_else(|| crate::utils::get_setting_str(app, "bloom-converter-explorer-menu"))
         .is_some_and(|v| v == "true");
 
     if enabled
@@ -3054,6 +3104,162 @@ pub fn normalize_directory_hints_for_ui(paths: Vec<String>) -> Vec<String> {
         .collect()
 }
 
+struct CliBatchState {
+    pending: Vec<String>,
+    generation: u64,
+    startup_pending: bool,
+}
+
+static CLI_BATCH_ACCUMULATOR: Mutex<CliBatchState> = Mutex::new(CliBatchState {
+    pending: Vec::new(),
+    generation: 0,
+    startup_pending: false,
+});
+
+const CLI_BATCH_QUIET_MS: u64 = 150;
+const CLI_SPLASH_WAIT_STEP_MS: u64 = 150;
+const CLI_SPLASH_WAIT_MAX_ATTEMPTS: usize = 120;
+
+fn normalize_cli_dedup_key(raw: &str) -> String {
+    let replaced = raw.trim().replace('/', "\\");
+    let stripped = if replaced.len() > 3 {
+        replaced.trim_end_matches('\\')
+    } else {
+        replaced.as_str()
+    };
+    stripped.to_ascii_lowercase()
+}
+
+fn merge_cli_batch_paths(existing: &mut Vec<String>, incoming: Vec<String>) {
+    let mut seen: HashSet<String> = existing
+        .iter()
+        .map(|p| normalize_cli_dedup_key(p))
+        .filter(|k| !k.is_empty())
+        .collect();
+    for raw in incoming {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let key = normalize_cli_dedup_key(trimmed);
+        if !key.is_empty() && seen.insert(key) {
+            existing.push(trimmed.to_string());
+        }
+    }
+}
+
+fn spawn_cli_batch_flush(app: AppHandle, expected_gen: u64) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(CLI_BATCH_QUIET_MS)).await;
+
+        for _ in 0..CLI_SPLASH_WAIT_MAX_ATTEMPTS {
+            if crate::state::SHUTTING_DOWN.load(Ordering::Acquire)
+                || CONVERTER_SHUTTING_DOWN.load(Ordering::Acquire)
+            {
+                return;
+            }
+            let still_current = CLI_BATCH_ACCUMULATOR
+                .lock()
+                .map(|st| st.generation == expected_gen && !st.startup_pending)
+                .unwrap_or(false);
+            if !still_current {
+                return;
+            }
+            if app.get_webview_window("overlay").is_some()
+                && !crate::state::OVERLAY_IN_SPLASH.load(Ordering::Relaxed)
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(CLI_SPLASH_WAIT_STEP_MS)).await;
+        }
+
+        if crate::state::SHUTTING_DOWN.load(Ordering::Acquire)
+            || CONVERTER_SHUTTING_DOWN.load(Ordering::Acquire)
+        {
+            return;
+        }
+
+        let overlay_ready = app.get_webview_window("overlay").is_some()
+            && !crate::state::OVERLAY_IN_SPLASH.load(Ordering::Relaxed);
+
+        let drained = {
+            let Ok(mut st) = CLI_BATCH_ACCUMULATOR.lock() else {
+                return;
+            };
+            if st.generation != expected_gen || st.startup_pending {
+                return;
+            }
+            if !overlay_ready {
+                st.pending.clear();
+                return;
+            }
+            std::mem::take(&mut st.pending)
+        };
+
+        if !drained.is_empty() {
+            open_converter_donut_from_cli(&app, drained);
+        }
+    });
+}
+
+pub fn begin_cli_startup_batch(initial_paths: &[String]) {
+    if let Ok(mut st) = CLI_BATCH_ACCUMULATOR.lock() {
+        st.startup_pending = true;
+        st.generation = st.generation.wrapping_add(1);
+        merge_cli_batch_paths(&mut st.pending, initial_paths.to_vec());
+    }
+}
+
+pub fn finish_cli_startup_batch(app: &AppHandle) {
+    let flush_gen = {
+        let Ok(mut st) = CLI_BATCH_ACCUMULATOR.lock() else {
+            return;
+        };
+        st.startup_pending = false;
+        if st.pending.is_empty() {
+            None
+        } else {
+            st.generation = st.generation.wrapping_add(1);
+            Some(st.generation)
+        }
+    };
+    if let Some(gen) = flush_gen {
+        spawn_cli_batch_flush(app.clone(), gen);
+    }
+}
+
+pub fn cancel_cli_startup_batch() {
+    if let Ok(mut st) = CLI_BATCH_ACCUMULATOR.lock() {
+        st.startup_pending = false;
+        st.pending.clear();
+        st.generation = st.generation.wrapping_add(1);
+    }
+}
+
+pub fn enqueue_cli_convert_paths(app: &AppHandle, paths: Vec<String>) {
+    if paths.is_empty()
+        || crate::state::SHUTTING_DOWN.load(Ordering::Acquire)
+        || CONVERTER_SHUTTING_DOWN.load(Ordering::Acquire)
+    {
+        return;
+    }
+    let flush_gen = {
+        let Ok(mut st) = CLI_BATCH_ACCUMULATOR.lock() else {
+            return;
+        };
+        merge_cli_batch_paths(&mut st.pending, paths);
+        if st.pending.is_empty() || st.startup_pending {
+            None
+        } else {
+            st.generation = st.generation.wrapping_add(1);
+            Some(st.generation)
+        }
+    };
+    if let Some(gen) = flush_gen {
+        spawn_cli_batch_flush(app.clone(), gen);
+    }
+}
+
 pub fn open_converter_donut_from_cli(app: &AppHandle, paths: Vec<String>) {
     if crate::state::SHUTTING_DOWN.load(Ordering::Acquire)
         || CONVERTER_SHUTTING_DOWN.load(Ordering::Acquire)
@@ -3086,6 +3292,7 @@ pub fn open_converter_donut_from_cli(app: &AppHandle, paths: Vec<String>) {
             "x": x,
             "y": y,
             "paths": clean_paths,
+            "virtualNames": Vec::<String>::new(),
             "urls": Vec::<String>::new(),
             "isBrowserDrag": false,
             "fromCli": true,
@@ -3837,8 +4044,8 @@ async fn ensure_core_inner(
     let expected_sha256 = resolve_expected_sha256(sums_sha, digest_sha, &portable_asset.name)?;
 
     let zip_part = paths.downloads_dir.join("filee-portable.zip.part");
-    if zip_part.exists() {
-        let _ = std::fs::remove_file(&zip_part);
+    if tokio::fs::try_exists(&zip_part).await.unwrap_or(false) {
+        let _ = tokio::fs::remove_file(&zip_part).await;
     }
 
     emit_core_progress(
@@ -3860,7 +4067,8 @@ async fn ensure_core_inner(
         .or((portable_asset.size > 0).then_some(portable_asset.size));
 
     {
-        let mut out_file = std::fs::File::create(&zip_part)
+        let mut out_file = tokio::fs::File::create(&zip_part)
+            .await
             .map_err(|e| format!("Failed to create download file {}: {e}", zip_part.display()))?;
         let mut stream = dl_resp.bytes_stream();
         let mut downloaded: u64 = 0;
@@ -3871,13 +4079,13 @@ async fn ensure_core_inner(
                 Ok(c) => c,
                 Err(e) => {
                     drop(out_file);
-                    let _ = std::fs::remove_file(&zip_part);
+                    let _ = tokio::fs::remove_file(&zip_part).await;
                     return Err(map_github_reqwest_error("streaming Filee runtime", e));
                 }
             };
-            if let Err(e) = out_file.write_all(&chunk) {
+            if let Err(e) = out_file.write_all(&chunk).await {
                 drop(out_file);
-                let _ = std::fs::remove_file(&zip_part);
+                let _ = tokio::fs::remove_file(&zip_part).await;
                 return Err(format!("Disk write failed while saving Filee runtime: {e}"));
             }
             downloaded += chunk.len() as u64;
@@ -3898,9 +4106,11 @@ async fn ensure_core_inner(
                 last_emit = Instant::now();
             }
         }
-        out_file
-            .flush()
-            .map_err(|e| format!("Disk flush failed for runtime archive: {e}"))?;
+        if let Err(e) = out_file.flush().await {
+            drop(out_file);
+            let _ = tokio::fs::remove_file(&zip_part).await;
+            return Err(format!("Disk flush failed for runtime archive: {e}"));
+        }
     }
 
     emit_core_progress(app, "verifying", 0.82, "Verifying archive integrity...");
@@ -4748,6 +4958,11 @@ const BLOCKED_BROWSER_EXTENSIONS: &[&str] = &[
     "exe", "dll", "bat", "cmd", "msi", "scr", "vbs", "ps1", "hta", "lnk",
 ];
 
+const DYNAMIC_BROWSER_ENDPOINT_EXTENSIONS: &[&str] = &[
+    "php", "aspx", "asp", "jsp", "cgi", "ashx", "axd", "do", "action", "pl", "cfm", "fcgi",
+    "shtml", "xhtml",
+];
+
 const BROWSER_IMAGE_EXTENSIONS: &[&str] = &[
     "png", "jpg", "jpeg", "jpe", "jfif", "webp", "gif", "bmp", "dib", "ico", "cur", "tif",
     "tiff", "avif", "heic", "heif", "hif", "jxl", "svg", "svgz", "apng", "tga", "psd", "raw",
@@ -4799,6 +5014,99 @@ fn is_blocked_executable_ext(ext: &str) -> bool {
         .trim_end_matches(['.', ' '])
         .to_ascii_lowercase();
     BLOCKED_BROWSER_EXTENSIONS.contains(&clean.as_str())
+}
+
+fn is_dynamic_endpoint_ext(ext: &str) -> bool {
+    let clean = ext
+        .trim()
+        .trim_start_matches('.')
+        .trim_end_matches(['.', ' '])
+        .to_ascii_lowercase();
+    DYNAMIC_BROWSER_ENDPOINT_EXTENSIONS.contains(&clean.as_str())
+}
+
+fn strip_extension_if_matches(name: &str, ext_to_strip: &str) -> String {
+    let trimmed = name.trim().trim_end_matches(['.', ' ']);
+    if let Some(dot) = trimmed.rfind('.') {
+        let candidate = &trimmed[dot + 1..];
+        if candidate.eq_ignore_ascii_case(ext_to_strip) {
+            let stem = trimmed[..dot].trim_end_matches(['.', ' ']);
+            if !stem.is_empty() {
+                return stem.to_string();
+            }
+        }
+    }
+    trimmed.to_string()
+}
+
+pub fn resolve_browser_download_filename(
+    disposition_name: Option<&str>,
+    url_name: Option<&str>,
+    url_ext: Option<&str>,
+    content_type: Option<&str>,
+    magic_head: &[u8],
+) -> Result<String, String> {
+    let cd_ext = disposition_name.and_then(extract_extension_from_name);
+    if cd_ext.as_deref().is_some_and(is_blocked_executable_ext)
+        || url_ext.is_some_and(is_blocked_executable_ext)
+    {
+        return Err(
+            "BLOCKED_FILE_TYPE: Executable files from browsers cannot be converted".to_string(),
+        );
+    }
+
+    let inferred_ext = if let Some(ext) = cd_ext.as_deref() {
+        ext.to_string()
+    } else if let Some(ext) = url_ext.filter(|e| {
+        !is_dynamic_endpoint_ext(e) && BROWSER_EXPLICIT_FILE_EXTENSIONS.contains(e)
+    }) {
+        ext.to_string()
+    } else {
+        content_type
+            .and_then(mime_to_extension)
+            .or_else(|| infer_extension_from_magic_bytes(magic_head))
+            .map(str::to_string)
+            .or_else(|| {
+                url_ext
+                    .filter(|e| !is_dynamic_endpoint_ext(e))
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| "bin".to_string())
+    };
+
+    if is_blocked_executable_ext(&inferred_ext) {
+        return Err(
+            "BLOCKED_FILE_TYPE: Executable files from browsers cannot be converted".to_string(),
+        );
+    }
+
+    let raw_name = if let Some(cd) = disposition_name {
+        cd.to_string()
+    } else if let Some(uname) = url_name {
+        if let Some(uext) = url_ext {
+            if !uext.eq_ignore_ascii_case(&inferred_ext) {
+                strip_extension_if_matches(uname, uext)
+            } else {
+                uname.to_string()
+            }
+        } else {
+            uname.to_string()
+        }
+    } else {
+        "browser_asset".to_string()
+    };
+
+    let final_filename = sanitize_download_filename(&raw_name, &inferred_ext);
+    if extract_extension_from_name(&final_filename)
+        .as_deref()
+        .is_some_and(is_blocked_executable_ext)
+    {
+        return Err(
+            "BLOCKED_FILE_TYPE: Executable files from browsers cannot be converted".to_string(),
+        );
+    }
+
+    Ok(final_filename)
 }
 
 fn is_windows_reserved_device_name(name: &str) -> bool {
@@ -5747,10 +6055,20 @@ pub fn parse_browser_drop_payload(
     if has_blocked_executable_in_url(&parsed) {
         return None;
     }
-    let (_, ext_opt) = extract_url_filename_and_ext(&parsed);
-    let fallback_ext = ext_opt.as_deref().unwrap_or("png");
+    let (raw_seg, ext_opt) = extract_url_filename_and_ext(&parsed);
+    let fallback_ext = ext_opt
+        .as_deref()
+        .filter(|e| !is_dynamic_endpoint_ext(e) && BROWSER_IMAGE_EXTENSIONS.contains(e))
+        .unwrap_or("png");
+    let clean_base = match (raw_seg.as_deref(), ext_opt.as_deref()) {
+        (Some(seg), Some(ext)) if !ext.eq_ignore_ascii_case(fallback_ext) => {
+            strip_extension_if_matches(seg, ext)
+        }
+        (Some(seg), _) => seg.to_string(),
+        (None, _) => "download".to_string(),
+    };
     Some(BrowserDragSource::RemoteImageUrl {
-        suggested_name: suggest_name_for_http_url(&parsed, fallback_ext),
+        suggested_name: sanitize_download_filename(&clean_base, fallback_ext),
         url: resolved_src,
     })
 }
@@ -5805,6 +6123,40 @@ fn unique_download_path(downloads_dir: &Path, filename: &str) -> PathBuf {
         };
         let p = downloads_dir.join(next_name);
         if !p.exists() {
+            return p;
+        }
+    }
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    if ext.is_empty() {
+        downloads_dir.join(format!("{stem}_{nanos}"))
+    } else {
+        downloads_dir.join(format!("{stem}_{nanos}.{ext}"))
+    }
+}
+
+async fn unique_download_path_async(downloads_dir: &Path, filename: &str) -> PathBuf {
+    let candidate = downloads_dir.join(filename);
+    if !tokio::fs::try_exists(&candidate).await.unwrap_or(false) {
+        return candidate;
+    }
+    let path_ref = Path::new(filename);
+    let stem = path_ref
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .filter(|s| !s.is_empty())
+        .unwrap_or("download");
+    let ext = path_ref.extension().and_then(|s| s.to_str()).unwrap_or("");
+    for idx in 1..=9999u32 {
+        let next_name = if ext.is_empty() {
+            format!("{stem}_{idx}")
+        } else {
+            format!("{stem}_{idx}.{ext}")
+        };
+        let p = downloads_dir.join(next_name);
+        if !tokio::fs::try_exists(&p).await.unwrap_or(false) {
             return p;
         }
     }
@@ -5888,7 +6240,8 @@ pub async fn converter_fetch_browser_asset(
     }
 
     let paths = resolve_converter_paths(&app)?;
-    std::fs::create_dir_all(&paths.downloads_dir)
+    tokio::fs::create_dir_all(&paths.downloads_dir)
+        .await
         .map_err(|e| format!("Failed to prepare converter downloads folder: {e}"))?;
 
     if trimmed.len() >= 5 && trimmed[..5].eq_ignore_ascii_case("data:") {
@@ -5901,19 +6254,16 @@ pub async fn converter_fetch_browser_asset(
             return Err("BLOCKED_FILE_TYPE: Blocked executable payload".to_string());
         }
         let filename = sanitize_download_filename("browser_image", final_ext);
-        let dest_path = unique_download_path(&paths.downloads_dir, &filename);
-        let dest_clone = dest_path.clone();
-        tokio::task::spawn_blocking(move || -> Result<(), String> {
-            let mut f = std::fs::File::create(&dest_clone)
-                .map_err(|e| format!("Disk write error creating {}: {e}", dest_clone.display()))?;
-            f.write_all(&bytes)
-                .map_err(|e| format!("Disk write error saving {}: {e}", dest_clone.display()))?;
-            f.flush()
-                .map_err(|e| format!("Disk flush error saving {}: {e}", dest_clone.display()))?;
-            Ok(())
-        })
-        .await
-        .map_err(|e| format!("Failed to save data URI image: {e}"))??;
+        let dest_path = unique_download_path_async(&paths.downloads_dir, &filename).await;
+        let mut f = tokio::fs::File::create(&dest_path)
+            .await
+            .map_err(|e| format!("Disk write error creating {}: {e}", dest_path.display()))?;
+        f.write_all(&bytes)
+            .await
+            .map_err(|e| format!("Disk write error saving {}: {e}", dest_path.display()))?;
+        f.flush()
+            .await
+            .map_err(|e| format!("Disk flush error saving {}: {e}", dest_path.display()))?;
         return Ok(dest_path.to_string_lossy().to_string());
     }
 
@@ -6030,7 +6380,8 @@ pub async fn converter_fetch_browser_asset(
     let mut total_bytes: u64 = 0;
 
     {
-        let mut out_file = std::fs::File::create(&part_path)
+        let mut out_file = tokio::fs::File::create(&part_path)
+            .await
             .map_err(|e| format!("Failed to create temporary download file: {e}"))?;
         let mut stream = resp.bytes_stream();
 
@@ -6039,14 +6390,14 @@ pub async fn converter_fetch_browser_asset(
                 Ok(c) => c,
                 Err(e) => {
                     drop(out_file);
-                    let _ = std::fs::remove_file(&part_path);
+                    let _ = tokio::fs::remove_file(&part_path).await;
                     return Err(format!("NETWORK_ERROR: Stream interrupted: {e}"));
                 }
             };
             total_bytes = total_bytes.saturating_add(chunk.len() as u64);
             if total_bytes > MAX_BROWSER_DOWNLOAD_BYTES {
                 drop(out_file);
-                let _ = std::fs::remove_file(&part_path);
+                let _ = tokio::fs::remove_file(&part_path).await;
                 return Err(
                     "FILE_TOO_LARGE: Remote browser asset exceeds the 256 MB limit".to_string(),
                 );
@@ -6057,71 +6408,53 @@ pub async fn converter_fetch_browser_asset(
             }
             if total_bytes == chunk.len() as u64 && is_executable_magic_bytes(&magic_head) {
                 drop(out_file);
-                let _ = std::fs::remove_file(&part_path);
+                let _ = tokio::fs::remove_file(&part_path).await;
                 return Err(
                     "BLOCKED_FILE_TYPE: Executable binary payload cannot be converted".to_string(),
                 );
             }
-            if let Err(e) = out_file.write_all(&chunk) {
+            if let Err(e) = out_file.write_all(&chunk).await {
                 drop(out_file);
-                let _ = std::fs::remove_file(&part_path);
+                let _ = tokio::fs::remove_file(&part_path).await;
                 return Err(format!("Disk write error saving browser asset: {e}"));
             }
         }
-        if let Err(e) = out_file.flush() {
+        if let Err(e) = out_file.flush().await {
             drop(out_file);
-            let _ = std::fs::remove_file(&part_path);
+            let _ = tokio::fs::remove_file(&part_path).await;
             return Err(format!("Disk flush error saving browser asset: {e}"));
         }
     }
 
     if total_bytes == 0 {
-        let _ = std::fs::remove_file(&part_path);
+        let _ = tokio::fs::remove_file(&part_path).await;
         return Err("DOWNLOAD_FAILED: Remote browser asset was empty".to_string());
     }
     if is_executable_magic_bytes(&magic_head) {
-        let _ = std::fs::remove_file(&part_path);
+        let _ = tokio::fs::remove_file(&part_path).await;
         return Err(
             "BLOCKED_FILE_TYPE: Executable binary payload cannot be converted".to_string(),
         );
     }
 
     let (url_name, url_ext) = extract_url_filename_and_ext(&parsed_url);
-    let cd_ext = disposition_name
-        .as_deref()
-        .and_then(extract_extension_from_name);
-    let inferred_ext = cd_ext
-        .clone()
-        .or(url_ext.clone())
-        .or_else(|| content_type.as_deref().and_then(mime_to_extension).map(str::to_string))
-        .or_else(|| infer_extension_from_magic_bytes(&magic_head).map(str::to_string))
-        .unwrap_or_else(|| "bin".to_string());
+    let final_filename = match resolve_browser_download_filename(
+        disposition_name.as_deref(),
+        url_name.as_deref(),
+        url_ext.as_deref(),
+        content_type.as_deref(),
+        &magic_head,
+    ) {
+        Ok(name) => name,
+        Err(err) => {
+            let _ = tokio::fs::remove_file(&part_path).await;
+            return Err(err);
+        }
+    };
 
-    if is_blocked_executable_ext(&inferred_ext) {
-        let _ = std::fs::remove_file(&part_path);
-        return Err(
-            "BLOCKED_FILE_TYPE: Executable files from browsers cannot be converted".to_string(),
-        );
-    }
-
-    let raw_name = disposition_name
-        .as_deref()
-        .or(url_name.as_deref())
-        .unwrap_or("browser_asset");
-    let final_filename = sanitize_download_filename(raw_name, &inferred_ext);
-    if extract_extension_from_name(&final_filename)
-        .as_deref()
-        .is_some_and(is_blocked_executable_ext)
-    {
-        let _ = std::fs::remove_file(&part_path);
-        return Err(
-            "BLOCKED_FILE_TYPE: Executable files from browsers cannot be converted".to_string(),
-        );
-    }
-
-    let dest_path = unique_download_path(&paths.downloads_dir, &final_filename);
-    if let Err(e) = std::fs::rename(&part_path, &dest_path) {
-        let _ = std::fs::remove_file(&part_path);
+    let dest_path = unique_download_path_async(&paths.downloads_dir, &final_filename).await;
+    if let Err(e) = tokio::fs::rename(&part_path, &dest_path).await {
+        let _ = tokio::fs::remove_file(&part_path).await;
         return Err(format!("Failed to finalize downloaded browser asset: {e}"));
     }
 
@@ -6797,11 +7130,8 @@ impl windows::Win32::System::Ole::IDropTarget_Impl for ConverterDropTarget_Impl 
         }
 
         let (x, y) = crate::services::screen_to_radial_css(pt.x, pt.y);
-        let display_paths = if !payload.paths.is_empty() {
-            payload.paths.clone()
-        } else {
-            payload.virtual_names.clone()
-        };
+        let real_paths = payload.paths.clone();
+        let virtual_names = payload.virtual_names.clone();
         let open_urls = payload.urls.clone();
         let is_browser_drag = payload.is_browser_drag;
 
@@ -6822,7 +7152,8 @@ impl windows::Win32::System::Ole::IDropTarget_Impl for ConverterDropTarget_Impl 
             serde_json::json!({
                 "x": x,
                 "y": y,
-                "paths": display_paths,
+                "paths": real_paths,
+                "virtualNames": virtual_names,
                 "urls": open_urls,
                 "isBrowserDrag": is_browser_drag,
             }),
@@ -8923,6 +9254,145 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  Filee-2.5.0-wi
                 "-o",
                 r"D:\Out",
                 "--json",
+            ]
+        );
+    }
+
+    #[test]
+    fn resolve_browser_download_filename_prefers_mime_and_magic_for_dynamic_endpoints() {
+        let png_magic = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR";
+        let jpg_magic = &[0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10];
+        let zip_magic = b"PK\x03\x04\x14\x00\x00\x00";
+
+        // Dynamic .php endpoint returning PNG MIME + magic bytes -> .png
+        assert_eq!(
+            resolve_browser_download_filename(
+                None,
+                Some("image.php"),
+                Some("php"),
+                Some("image/png"),
+                png_magic,
+            )
+            .unwrap(),
+            "image.png"
+        );
+
+        // Dynamic .aspx endpoint with generic octet-stream MIME + PNG magic bytes -> .png
+        assert_eq!(
+            resolve_browser_download_filename(
+                None,
+                Some("fetch.aspx"),
+                Some("aspx"),
+                Some("application/octet-stream"),
+                png_magic,
+            )
+            .unwrap(),
+            "fetch.png"
+        );
+
+        // Dynamic .cgi endpoint with no Content-Type + JPEG magic bytes -> .jpg
+        assert_eq!(
+            resolve_browser_download_filename(
+                None,
+                Some("thumb.cgi"),
+                Some("cgi"),
+                None,
+                jpg_magic,
+            )
+            .unwrap(),
+            "thumb.jpg"
+        );
+
+        // Unknown non-media URL extension -> MIME wins over .v2
+        assert_eq!(
+            resolve_browser_download_filename(
+                None,
+                Some("avatar.v2"),
+                Some("v2"),
+                Some("image/webp"),
+                &[],
+            )
+            .unwrap(),
+            "avatar.webp"
+        );
+
+        // Content-Disposition takes precedence when safe non-executable
+        assert_eq!(
+            resolve_browser_download_filename(
+                Some("hero-banner.webp"),
+                Some("image.php"),
+                Some("php"),
+                Some("image/png"),
+                png_magic,
+            )
+            .unwrap(),
+            "hero-banner.webp"
+        );
+
+        // Real document format (.docx) keeps .docx even though bytes start with PK zip header
+        assert_eq!(
+            resolve_browser_download_filename(
+                None,
+                Some("report.docx"),
+                Some("docx"),
+                Some("application/zip"),
+                zip_magic,
+            )
+            .unwrap(),
+            "report.docx"
+        );
+
+        // Blocked executable extensions remain blocked unconditionally
+        assert!(resolve_browser_download_filename(
+            Some("payload.ps1"),
+            Some("image.png"),
+            Some("png"),
+            Some("image/png"),
+            png_magic,
+        )
+        .is_err());
+        assert!(resolve_browser_download_filename(
+            None,
+            Some("setup.exe"),
+            Some("exe"),
+            Some("application/octet-stream"),
+            &[],
+        )
+        .is_err());
+
+        // Dynamic <img src=".../image.php?id=123"> drag suggestion falls back to .png instead of .php
+        assert_eq!(
+            parse_browser_drop_payload(
+                Some(r#"<img src="https://example.com/image.php?id=123">"#),
+                None,
+            ),
+            Some(BrowserDragSource::RemoteImageUrl {
+                url: "https://example.com/image.php?id=123".to_string(),
+                suggested_name: "image.png".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn merge_cli_batch_paths_coalesces_and_deduplicates_across_case_and_slashes() {
+        let mut acc = vec![r"C:\Photos\a.png".to_string()];
+        merge_cli_batch_paths(
+            &mut acc,
+            vec![
+                "c:/photos/a.png".to_string(),
+                r"  C:\Photos\b.jpg  ".to_string(),
+                "".to_string(),
+                r"D:\Folder\".to_string(),
+            ],
+        );
+        merge_cli_batch_paths(&mut acc, vec![r"d:\folder".to_string(), r"C:\Photos\c.webp".to_string()]);
+        assert_eq!(
+            acc,
+            vec![
+                r"C:\Photos\a.png".to_string(),
+                r"C:\Photos\b.jpg".to_string(),
+                r"D:\Folder\".to_string(),
+                r"C:\Photos\c.webp".to_string(),
             ]
         );
     }
