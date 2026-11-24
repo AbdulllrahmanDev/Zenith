@@ -60,6 +60,7 @@ pub static CURRENT_FOREGROUND_MAXIMIZED: AtomicBool = AtomicBool::new(false);
 
 pub static SINGLE_INSTANCE_MUTEX_HANDLE: OnceLock<isize> = OnceLock::new();
 pub static SINGLE_INSTANCE_EVENT_HANDLE: OnceLock<isize> = OnceLock::new();
+pub static CONVERTER_HANDOFF_EVENT_HANDLE: OnceLock<isize> = OnceLock::new();
 
 pub fn close_single_instance_handles() {
     use windows::Win32::Foundation::CloseHandle;
@@ -72,6 +73,13 @@ pub fn close_single_instance_handles() {
         }
     }
     if let Some(&h) = SINGLE_INSTANCE_EVENT_HANDLE.get() {
+        if h != 0 {
+            unsafe {
+                let _ = CloseHandle(HANDLE(h as *mut _));
+            }
+        }
+    }
+    if let Some(&h) = CONVERTER_HANDOFF_EVENT_HANDLE.get() {
         if h != 0 {
             unsafe {
                 let _ = CloseHandle(HANDLE(h as *mut _));

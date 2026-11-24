@@ -4,6 +4,7 @@ mod ai_chat;
 mod battery;
 mod bluetooth;
 mod commands;
+mod converter;
 mod diagnostics;
 mod dock_extras;
 mod services;
@@ -32,6 +33,7 @@ use crate::utils::*;
 
 unsafe extern "system" fn ctrl_handler(ctrl_type: u32) -> BOOL {
     if ctrl_type == CTRL_C_EVENT || ctrl_type == CTRL_BREAK_EVENT || ctrl_type == CTRL_CLOSE_EVENT {
+        crate::converter::shutdown_converter();
         set_taskbar_visibility(true, true);
         NATIVE_TASKBAR_HIDDEN.store(false, Ordering::Relaxed);
         set_native_osd_suppressed(false);
@@ -63,6 +65,9 @@ fn main() {
         }
         return;
     }
+    let cli_convert_paths = crate::converter::parse_convert_cli_args(
+        std::env::args_os().map(|s| s.to_string_lossy().into_owned()),
+    );
     unsafe {
         let _ = SetConsoleCtrlHandler(Some(ctrl_handler), true);
     }
@@ -82,13 +87,27 @@ fn main() {
             .encode_utf16()
             .chain(std::iter::once(0))
             .collect();
+        let handoff_event_name: Vec<u16> = "ZenithConverterHandoff"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
 
         let h_mutex = CreateMutexW(None, true, windows::core::PCWSTR(mutex_name.as_ptr())).ok();
         let err = GetLastError();
 
         if err.0 == 183 {
-            // Another instance is already running — signal it to open settings
-            if let Ok(h_event) = OpenEventW(
+            // Another instance is already running — forward --convert paths or open settings.
+            if !cli_convert_paths.is_empty() {
+                let _ = crate::converter::write_cli_handoff_paths(&cli_convert_paths);
+                if let Ok(h_handoff) = OpenEventW(
+                    SYNCHRONIZATION_ACCESS_RIGHTS(0x00100002),
+                    false,
+                    windows::core::PCWSTR(handoff_event_name.as_ptr()),
+                ) {
+                    let _ = SetEvent(h_handoff);
+                    let _ = CloseHandle(h_handoff);
+                }
+            } else if let Ok(h_event) = OpenEventW(
                 SYNCHRONIZATION_ACCESS_RIGHTS(0x00100002),
                 false,
                 windows::core::PCWSTR(event_name.as_ptr()),
@@ -109,6 +128,14 @@ fn main() {
             windows::core::PCWSTR(event_name.as_ptr()),
         ) {
             let _ = SINGLE_INSTANCE_EVENT_HANDLE.set(h_event.0 as isize);
+        }
+        if let Ok(h_handoff) = CreateEventW(
+            None,
+            false,
+            false,
+            windows::core::PCWSTR(handoff_event_name.as_ptr()),
+        ) {
+            let _ = CONVERTER_HANDOFF_EVENT_HANDLE.set(h_handoff.0 as isize);
         }
         if let Some(h) = h_mutex {
             let _ = SINGLE_INSTANCE_MUTEX_HANDLE.set(h.0 as isize);
@@ -278,14 +305,39 @@ fn main() {
             ai_chat_prepare_attachments,
             ai_chat_send_message,
             ai_chat_cancel,
-            ai_chat_open_settings
+            ai_chat_open_settings,
+            converter::converter_convert,
+            converter::converter_cancel,
+            converter::converter_status,
+            converter::converter_ensure_core,
+            converter::converter_list_engines,
+            converter::converter_install_engine,
+            converter::converter_remove_engine,
+            converter::converter_set_overlay_open,
+            converter::converter_set_progress_rect,
+            converter::converter_clear_progress_rect,
+            converter::converter_update_trigger_config,
+            converter::converter_get_state,
+            converter::converter_save_profiles,
+            converter::converter_save_presets,
+            converter::converter_save_watch_rules,
+            converter::converter_get_watch_statuses,
+            converter::converter_toggle_explorer_menu,
+            converter::converter_clear_history,
+            converter::converter_open_output,
+            converter::converter_load_image_preview,
+            converter::converter_fetch_browser_asset
         ])
-        .setup(|app| {
+        .setup(move |app| {
+            crate::converter::set_main_thread_id(std::thread::current().id());
             init_taskbar_marker(app.handle());
             // Populate the settings cache before anything else: a webview can
             // invoke save_setting as soon as it loads, which happens before the
             // rest of this hook runs.
             crate::utils::init_settings_cache(app.handle());
+            crate::converter::sync_trigger_config_from_settings(app.handle());
+            crate::converter::sync_explorer_menu_from_settings(app.handle());
+            crate::converter::start_enabled_watches(app.handle());
 
             // Register system tray icon immediately on startup with a persistent ID
             {
@@ -323,6 +375,7 @@ fn main() {
                                 diagnostics::record("shutdown", "source=tray");
                                 SHUTTING_DOWN.store(true, Ordering::Relaxed);
                                 cleanup_win32_tray_icon();
+                                crate::converter::shutdown_converter();
                                 crate::translator::shutdown();
                                 crate::commands::release_appbars(&ah);
                                 set_taskbar_visibility(true, true);
@@ -335,6 +388,7 @@ fn main() {
                                 diagnostics::record("restart", "source=tray");
                                 SHUTTING_DOWN.store(true, Ordering::Relaxed);
                                 cleanup_win32_tray_icon();
+                                crate::converter::shutdown_converter();
                                 crate::translator::shutdown();
                                 crate::commands::release_appbars(&ah);
                                 if let Some(w) = ah.get_webview_window("settings") {
@@ -612,6 +666,15 @@ fn main() {
                         restore_taskbar_and_exit(&overlay_handle);
                     }
                 });
+                crate::converter::setup_converter_drop(app.handle());
+                let converter_drop_app = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                    let ah = converter_drop_app.clone();
+                    let _ = converter_drop_app.run_on_main_thread(move || {
+                        crate::converter::setup_converter_drop(&ah);
+                    });
+                });
             }
 
             watch_webview_processes(app.handle());
@@ -651,12 +714,62 @@ fn main() {
                         let h_event = HANDLE(h_event as *mut _);
                         loop {
                             let result = unsafe { WaitForSingleObject(h_event, INFINITE) };
-                            if result == WAIT_OBJECT_0 {
-                                crate::commands::open_settings_window(app_handle.clone());
+                            if result != WAIT_OBJECT_0 || SHUTTING_DOWN.load(Ordering::Relaxed) {
+                                break;
+                            }
+                            crate::commands::open_settings_window(app_handle.clone());
+                        }
+                    });
+                }
+            }
+
+            // Listen for second-instance --convert CLI handoff signal
+            if let Some(&h_handoff) = CONVERTER_HANDOFF_EVENT_HANDLE.get() {
+                if h_handoff != 0 {
+                    let app_handle = app.handle().clone();
+                    std::thread::spawn(move || {
+                        use windows::Win32::Foundation::{HANDLE, WAIT_OBJECT_0};
+                        use windows::Win32::System::Threading::{WaitForSingleObject, INFINITE};
+                        let h_handoff = HANDLE(h_handoff as *mut _);
+                        loop {
+                            let result = unsafe { WaitForSingleObject(h_handoff, INFINITE) };
+                            if result != WAIT_OBJECT_0 || SHUTTING_DOWN.load(Ordering::Relaxed) {
+                                break;
+                            }
+                            let paths = crate::converter::take_cli_handoff_paths();
+                            if !paths.is_empty() {
+                                crate::converter::enqueue_cli_convert_paths(&app_handle, paths);
                             }
                         }
                     });
                 }
+            }
+
+            if !cli_convert_paths.is_empty() {
+                crate::converter::begin_cli_startup_batch(&cli_convert_paths);
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(750)).await;
+                    let mut ready = false;
+                    for _ in 0..120 {
+                        if SHUTTING_DOWN.load(Ordering::Relaxed) {
+                            crate::converter::cancel_cli_startup_batch();
+                            return;
+                        }
+                        if app_handle.get_webview_window("overlay").is_some()
+                            && !OVERLAY_IN_SPLASH.load(Ordering::Relaxed)
+                        {
+                            ready = true;
+                            break;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                    }
+                    if ready && !SHUTTING_DOWN.load(Ordering::Relaxed) {
+                        crate::converter::finish_cli_startup_batch(&app_handle);
+                    } else {
+                        crate::converter::cancel_cli_startup_batch();
+                    }
+                });
             }
 
             if let Some(settings_win) = app.get_webview_window("settings") {
@@ -678,6 +791,7 @@ fn main() {
         if let tauri::RunEvent::Exit = event {
             diagnostics::record("exit", "restoring native taskbar");
             cleanup_win32_tray_icon();
+            crate::converter::shutdown_converter();
             crate::translator::shutdown();
             set_taskbar_visibility(true, true);
             NATIVE_TASKBAR_HIDDEN.store(false, Ordering::Relaxed);

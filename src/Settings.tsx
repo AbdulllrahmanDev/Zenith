@@ -4,7 +4,7 @@ import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { X, Minus, Maximize2, Minimize2, Settings, Palette, PanelTop, Monitor, Layers, MousePointer, Languages, Info, Megaphone, CheckSquare } from "lucide-react";
+import { X, Minus, Maximize2, Minimize2, Settings, Palette, PanelTop, Monitor, Layers, MousePointer, Languages, Info, Megaphone, CheckSquare, Compass, ArrowRightLeft, ChevronDown } from "lucide-react";
 import { ZenithAiIcon } from "./icons/ZenithAiIcon";
 import {
 	useSettings,
@@ -16,6 +16,7 @@ import {
 	DockTab,
 	OverlaysTab,
 	MouseTab,
+	ConverterTab,
 	TranslatorTab,
 	AboutTab
 } from "./settings/index";
@@ -27,29 +28,45 @@ import "./Settings.css";
 
 const appWindow = getCurrentWebviewWindow();
 
-const TABS: {
-	id: SettingsTab;
-	labelKey: "general" | "appearance" | "notch" | "tasks" | "ai" | "dock" | "overlays" | "mouse" | "translator" | "about";
-	icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
-}[] = [
-	{ id: "general", labelKey: "general", icon: Settings },
-	{ id: "appearance", labelKey: "appearance", icon: Palette },
-	{ id: "notch", labelKey: "notch", icon: PanelTop },
-	{ id: "tasks", labelKey: "tasks", icon: CheckSquare },
-	{ id: "ai", labelKey: "ai", icon: ZenithAiIcon },
-	{ id: "dock", labelKey: "dock", icon: Monitor },
-	{ id: "overlays", labelKey: "overlays", icon: Layers },
-	{ id: "mouse", labelKey: "mouse", icon: MousePointer },
-	{ id: "translator", labelKey: "translator", icon: Languages },
-	{ id: "about", labelKey: "about", icon: Info }
+type SidebarEntry =
+	| {
+			kind: "tab";
+			id: Exclude<SettingsTab, "mouse-compass" | "mouse-converter">;
+			labelKey: "general" | "appearance" | "notch" | "tasks" | "ai" | "dock" | "overlays" | "translator" | "about";
+			icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+	  }
+	| {
+			kind: "mouse-group";
+			icon: React.ComponentType<{ size?: number; strokeWidth?: number }>;
+	  };
+
+const SIDEBAR_ENTRIES: SidebarEntry[] = [
+	{ kind: "tab", id: "general", labelKey: "general", icon: Settings },
+	{ kind: "tab", id: "appearance", labelKey: "appearance", icon: Palette },
+	{ kind: "tab", id: "notch", labelKey: "notch", icon: PanelTop },
+	{ kind: "tab", id: "tasks", labelKey: "tasks", icon: CheckSquare },
+	{ kind: "tab", id: "ai", labelKey: "ai", icon: ZenithAiIcon },
+	{ kind: "tab", id: "dock", labelKey: "dock", icon: Monitor },
+	{ kind: "tab", id: "overlays", labelKey: "overlays", icon: Layers },
+	{ kind: "mouse-group", icon: MousePointer },
+	{ kind: "tab", id: "translator", labelKey: "translator", icon: Languages },
+	{ kind: "tab", id: "about", labelKey: "about", icon: Info }
 ];
 
 function SettingsApp() {
 	const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+	const [mouseGroupOpen, setMouseGroupOpen] = useState(false);
 	const [isMaximized, setIsMaximized] = useState(false);
 	const settings = useSettings();
 	const { announcement, dismissed, dismiss } = useAnnouncement();
 	const { dir, t } = useI18n();
+	const isMouseTabActive = activeTab === "mouse-compass" || activeTab === "mouse-converter";
+
+	useEffect(() => {
+		if (isMouseTabActive) {
+			setMouseGroupOpen(true);
+		}
+	}, [isMouseTabActive]);
 
 	useEffect(() => {
 		document.documentElement.dir = dir;
@@ -63,8 +80,16 @@ function SettingsApp() {
 	useEffect(() => {
 		let unlisten: (() => void) | undefined;
 		listen<string>("open-settings-tab", (ev) => {
-			if (ev.payload === "translator" || ev.payload === "tasks" || ev.payload === "ai") {
+			if (
+				ev.payload === "translator" ||
+				ev.payload === "tasks" ||
+				ev.payload === "ai" ||
+				ev.payload === "mouse-compass" ||
+				ev.payload === "mouse-converter"
+			) {
 				setActiveTab(ev.payload);
+			} else if (ev.payload === "mouse") {
+				setActiveTab("mouse-compass");
 			}
 		})
 			.then((fn) => {
@@ -191,18 +216,71 @@ function SettingsApp() {
 
 			<div className="settings-body">
 				<div className="settings-sidebar">
-					{TABS.map(({ id, labelKey, icon: Icon }) => (
-						<button
-							key={id}
-							className={`sidebar-tab ${activeTab === id ? "active" : ""}`}
-							onClick={() => setActiveTab(id)}
-						>
-							<div className="sidebar-tab-icon">
-								<Icon size={14} strokeWidth={1.5} />
-							</div>
-							<span>{t.settingsWindow.tabs[labelKey]}</span>
-						</button>
-					))}
+					{SIDEBAR_ENTRIES.map((entry) => {
+						if (entry.kind === "mouse-group") {
+							const GroupIcon = entry.icon;
+							return (
+								<div key="mouse-group" className="sidebar-group">
+									<button
+										type="button"
+										className={`sidebar-tab sidebar-group-trigger ${isMouseTabActive ? "has-active" : ""} ${mouseGroupOpen ? "open" : ""}`}
+										aria-expanded={mouseGroupOpen}
+										onClick={() => setMouseGroupOpen((prev) => !prev)}
+									>
+										<div className="sidebar-tab-icon">
+											<GroupIcon size={14} strokeWidth={1.5} />
+										</div>
+										<span className="sidebar-group-label">{t.settingsWindow.tabs.mouse}</span>
+										<ChevronDown size={13} strokeWidth={1.75} className="sidebar-group-chevron" />
+									</button>
+									<div
+										className={`sidebar-subgroup ${mouseGroupOpen ? "open" : ""}`}
+										aria-hidden={!mouseGroupOpen}
+									>
+										<div className="sidebar-subgroup-inner">
+											<button
+												type="button"
+												tabIndex={mouseGroupOpen ? 0 : -1}
+												className={`sidebar-tab sidebar-subtab ${activeTab === "mouse-compass" ? "active" : ""}`}
+												onClick={() => setActiveTab("mouse-compass")}
+											>
+												<div className="sidebar-tab-icon">
+													<Compass size={13} strokeWidth={1.6} />
+												</div>
+												<span>{t.settingsWindow.tabs.mouseCompass}</span>
+											</button>
+											<button
+												type="button"
+												tabIndex={mouseGroupOpen ? 0 : -1}
+												className={`sidebar-tab sidebar-subtab ${activeTab === "mouse-converter" ? "active" : ""}`}
+												onClick={() => setActiveTab("mouse-converter")}
+											>
+												<div className="sidebar-tab-icon">
+													<ArrowRightLeft size={13} strokeWidth={1.6} />
+												</div>
+												<span>{t.settingsWindow.tabs.mouseConverter}</span>
+											</button>
+										</div>
+									</div>
+								</div>
+							);
+						}
+
+						const { id, labelKey, icon: Icon } = entry;
+						return (
+							<button
+								key={id}
+								type="button"
+								className={`sidebar-tab ${activeTab === id ? "active" : ""}`}
+								onClick={() => setActiveTab(id)}
+							>
+								<div className="sidebar-tab-icon">
+									<Icon size={14} strokeWidth={1.5} />
+								</div>
+								<span>{t.settingsWindow.tabs[labelKey]}</span>
+							</button>
+						);
+					})}
 				</div>
 
 				<div className="settings-content">
@@ -443,7 +521,7 @@ function SettingsApp() {
 							toggleBrightnessEdge={settings.toggleBrightnessEdge}
 						/>
 					)}
-					{activeTab === "mouse" && (
+					{activeTab === "mouse-compass" && (
 						<MouseTab
 							mouseRadialEnabled={settings.mouseRadialEnabled}
 							toggleMouseRadial={settings.toggleMouseRadial}
@@ -509,6 +587,21 @@ function SettingsApp() {
 							handleMouseOpenSoundChange={settings.handleMouseOpenSoundChange}
 							mouseHoverSound={settings.mouseHoverSound}
 							handleMouseHoverSoundChange={settings.handleMouseHoverSoundChange}
+						/>
+					)}
+					{activeTab === "mouse-converter" && (
+						<ConverterTab
+							converterEnabled={settings.converterEnabled}
+							toggleConverterEnabled={settings.toggleConverterEnabled}
+							converterTriggerKey={settings.converterTriggerKey}
+							handleConverterTriggerKeyChange={settings.handleConverterTriggerKeyChange}
+							converterBrowserDrag={settings.converterBrowserDrag}
+							toggleConverterBrowserDrag={settings.toggleConverterBrowserDrag}
+							converterOutputMode={settings.converterOutputMode}
+							handleConverterOutputModeChange={settings.handleConverterOutputModeChange}
+							converterOutputFolder={settings.converterOutputFolder}
+							handleConverterOutputFolderChange={settings.handleConverterOutputFolderChange}
+							converterExplorerMenu={settings.converterExplorerMenu}
 						/>
 					)}
 					{activeTab === "ai" && (

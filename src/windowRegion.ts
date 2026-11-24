@@ -114,14 +114,14 @@ export function createRegionSender(send: (rects: RegionRect[]) => void, holdMs =
 	let state: RegionState = { key: "", current: [], held: [] };
 	let latest: RegionRect[] = [];
 	let timer: ReturnType<typeof setTimeout> | null = null;
-	const update = (wanted: RegionRect[]) => {
+	const update = (wanted: RegionRect[], force = false) => {
 		latest = wanted;
 		const current = wanted
 			.map((r) => clipToWindow(r, window.innerWidth, window.innerHeight))
 			.filter((r): r is RegionRect => r !== null);
 		const next = nextRegion(state, current, performance.now(), holdMs, window.devicePixelRatio);
 		state = next.state;
-		if (next.changed) send(next.rects);
+		if (next.changed || force) send(next.rects);
 		if (timer) clearTimeout(timer);
 		timer =
 			next.nextExpiry === null

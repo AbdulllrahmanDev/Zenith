@@ -5,7 +5,18 @@ export interface WidgetConfig {
 	right: string[];
 }
 
-export type SettingsTab = "general" | "appearance" | "notch" | "tasks" | "ai" | "dock" | "overlays" | "mouse" | "translator" | "about";
+export type SettingsTab =
+	| "general"
+	| "appearance"
+	| "notch"
+	| "tasks"
+	| "ai"
+	| "dock"
+	| "overlays"
+	| "mouse-compass"
+	| "mouse-converter"
+	| "translator"
+	| "about";
 
 export interface SettingRowProps {
 	icon: ComponentType<SVGProps<SVGSVGElement> & { size?: number; strokeWidth?: number }>;

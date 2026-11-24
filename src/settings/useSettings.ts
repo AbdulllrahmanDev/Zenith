@@ -318,6 +318,29 @@ export function useSettings() {
 		() => localStorage.getItem("zenith-mouse-hover-sound") || "sub-tick"
 	);
 
+	// Converter State
+	const [converterEnabled, setConverterEnabled] = useState(
+		() => localStorage.getItem("zenith-converter-enabled") !== "false"
+	);
+	const [converterTriggerKey, setConverterTriggerKey] = useState<
+		"ctrl" | "alt" | "shift" | "right-drag"
+	>(() => {
+		const k = localStorage.getItem("zenith-converter-trigger-key");
+		return k === "alt" || k === "shift" || k === "right-drag" ? k : "ctrl";
+	});
+	const [converterBrowserDrag, setConverterBrowserDrag] = useState(
+		() => localStorage.getItem("zenith-converter-browser-drag") !== "false"
+	);
+	const [converterOutputMode, setConverterOutputMode] = useState<"next-to-source" | "folder">(
+		() => (localStorage.getItem("zenith-converter-output-mode") === "folder" ? "folder" : "next-to-source")
+	);
+	const [converterOutputFolder, setConverterOutputFolder] = useState(
+		() => localStorage.getItem("zenith-converter-output-folder") || ""
+	);
+	const [converterExplorerMenu, setConverterExplorerMenu] = useState(
+		() => localStorage.getItem("zenith-converter-explorer-menu") === "true"
+	);
+
 	const [lowBatteryThreshold, setLowBatteryThreshold] = useState(20);
 
 	// ── Translator state ──
@@ -625,6 +648,18 @@ export function useSettings() {
 			apply(getVal("zenith-mouse-show-workspace-pill"), setMouseShowWorkspacePill, (v) => v !== "false");
 			apply(getVal("zenith-mouse-open-sound"), setMouseOpenSound, (v) => v);
 			apply(getVal("zenith-mouse-hover-sound"), setMouseHoverSound, (v) => v);
+
+			// Converter Settings
+			apply(getVal("zenith-converter-enabled"), setConverterEnabled, (v) => v !== "false");
+			apply(getVal("zenith-converter-trigger-key"), setConverterTriggerKey, (v) =>
+				v === "alt" || v === "shift" || v === "right-drag" ? v : "ctrl"
+			);
+			apply(getVal("zenith-converter-browser-drag"), setConverterBrowserDrag, (v) => v !== "false");
+			apply(getVal("zenith-converter-output-mode"), setConverterOutputMode, (v) =>
+				v === "folder" ? "folder" : "next-to-source"
+			);
+			apply(getVal("zenith-converter-output-folder"), setConverterOutputFolder, (v) => v);
+			apply(getVal("zenith-converter-explorer-menu"), setConverterExplorerMenu, readBool);
 
 			const savedCity = getVal("zenith-weather-city");
 			if (savedCity) setCityName(savedCity);
@@ -1018,7 +1053,18 @@ export function useSettings() {
 		"zenith-tasks-notion-notes-db": (v: unknown) => setTasksNotionNotesDb(String(v ?? "")),
 		"zenith-tasks-google-client-id": (v: unknown) => setTasksGoogleClientId(String(v ?? "")),
 		"zenith-tasks-google-client-secret": (v: unknown) => setTasksGoogleClientSecret(String(v ?? "")),
-		"zenith-tasks-google-list-id": (v: unknown) => setTasksGoogleListId(String(v || "@default"))
+		"zenith-tasks-google-list-id": (v: unknown) => setTasksGoogleListId(String(v || "@default")),
+
+		// Converter Settings Sync
+		"zenith-converter-enabled": (v: unknown) => setConverterEnabled(v !== false && v !== "false"),
+		"zenith-converter-trigger-key": (v: unknown) =>
+			setConverterTriggerKey(v === "alt" || v === "shift" || v === "right-drag" ? v : "ctrl"),
+		"zenith-converter-browser-drag": (v: unknown) => setConverterBrowserDrag(v !== false && v !== "false"),
+		"zenith-converter-output-mode": (v: unknown) =>
+			setConverterOutputMode(v === "folder" ? "folder" : "next-to-source"),
+		"zenith-converter-output-folder": (v: unknown) => setConverterOutputFolder(String(v ?? "")),
+		"zenith-converter-explorer-menu": (v: unknown) =>
+			setConverterExplorerMenu(v === true || v === "true")
 	}, undefined, {
 		shouldApply: (key, value, source) => {
 			if (source !== "local-event") return true;
@@ -1895,6 +1941,30 @@ export function useSettings() {
 		saveSetting("zenith-tasks-google-list-id", v);
 	};
 
+	// ── Converter handlers ──
+	const toggleConverterEnabled = () => {
+		const next = !converterEnabled;
+		setConverterEnabled(next);
+		saveSetting("zenith-converter-enabled", String(next));
+	};
+	const handleConverterTriggerKeyChange = (v: "ctrl" | "alt" | "shift" | "right-drag") => {
+		setConverterTriggerKey(v);
+		saveSetting("zenith-converter-trigger-key", v);
+	};
+	const toggleConverterBrowserDrag = () => {
+		const next = !converterBrowserDrag;
+		setConverterBrowserDrag(next);
+		saveSetting("zenith-converter-browser-drag", String(next));
+	};
+	const handleConverterOutputModeChange = (v: "next-to-source" | "folder") => {
+		setConverterOutputMode(v);
+		saveSetting("zenith-converter-output-mode", v);
+	};
+	const handleConverterOutputFolderChange = (v: string) => {
+		setConverterOutputFolder(v);
+		saveSettingDebounced("zenith-converter-output-folder", v);
+	};
+
 	// ── Theme handlers ──
 	const handleThemeModeChange = async (mode: string) => {
 		setThemeMode(mode);
@@ -2255,6 +2325,19 @@ export function useSettings() {
 		handleMouseOpenSoundChange,
 		mouseHoverSound,
 		handleMouseHoverSoundChange,
+
+		// Converter
+		converterEnabled,
+		toggleConverterEnabled,
+		converterTriggerKey,
+		handleConverterTriggerKeyChange,
+		converterBrowserDrag,
+		toggleConverterBrowserDrag,
+		converterOutputMode,
+		handleConverterOutputModeChange,
+		converterOutputFolder,
+		handleConverterOutputFolderChange,
+		converterExplorerMenu,
 
 		// Notifications
 		notificationsEnabled,

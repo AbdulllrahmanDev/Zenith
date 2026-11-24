@@ -2563,10 +2563,7 @@ pub fn stop_mouse_recording() {
     crate::services::set_mouse_recording(false);
 }
 
-#[tauri::command]
-pub fn close_radial_menu(app: AppHandle) {
-    crate::services::set_radial_menu_open(false);
-    let _ = app.emit("radial-close", ());
+pub fn restore_overlay_click_through(app: &AppHandle) {
     if let Some(win) = app.get_webview_window("overlay") {
         let _ = win.set_ignore_cursor_events(true);
         if let Ok(hwnd) = win.hwnd() {
@@ -2574,6 +2571,15 @@ pub fn close_radial_menu(app: AppHandle) {
             crate::services::MH_LAST_OV_IGNORE.store(1, Ordering::Relaxed);
             clear_window_region(hwnd);
         }
+    }
+}
+
+#[tauri::command]
+pub fn close_radial_menu(app: AppHandle) {
+    crate::services::set_radial_menu_open(false);
+    let _ = app.emit("radial-close", ());
+    if !crate::converter::CONVERTER_OVERLAY_OPEN.load(Ordering::Relaxed) {
+        restore_overlay_click_through(&app);
     }
 }
 
@@ -2653,147 +2659,229 @@ pub async fn launch_radial_item(
     Ok(())
 }
 
-pub fn show_overlay_for_radial(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
-    crate::services::set_radial_menu_open(true);
-    if let Some(ov_win) = app.get_webview_window("overlay") {
-        let monitor_choice = crate::utils::get_setting_str(app, "zenith-mouse-monitor").unwrap_or_else(|| "cursor".into());
-        let mut target_monitor = None;
-        if monitor_choice == "cursor" {
-            if let Ok(monitors) = app.available_monitors() {
-                for m in monitors {
-                    let pos = m.position();
-                    let size = m.size();
-                    if cursor_x >= pos.x
-                        && cursor_x < pos.x + size.width as i32
-                        && cursor_y >= pos.y
-                        && cursor_y < pos.y + size.height as i32
-                    {
-                        if let Ok(curr_pos) = ov_win.outer_position() {
-                            if curr_pos.x != pos.x || curr_pos.y != pos.y {
-                                let _ = ov_win.set_position(tauri::PhysicalPosition::new(pos.x, pos.y));
-                            }
-                        }
-                        if let Ok(curr_size) = ov_win.outer_size() {
-                            if curr_size.width != size.width || curr_size.height != size.height {
-                                let _ = ov_win.set_size(tauri::PhysicalSize::new(size.width, size.height));
-                            }
-                        }
-                        target_monitor = Some(m);
-                        break;
-                    }
-                }
-            }
+pub struct OverlayActivationMetrics {
+    pub rel_x: i32,
+    pub rel_y: i32,
+    pub css_w: i32,
+    pub css_h: i32,
+}
+
+fn move_overlay_to_monitor(ov_win: &tauri::WebviewWindow, m: &tauri::Monitor) {
+    let pos = m.position();
+    let size = m.size();
+    if let Ok(curr_pos) = ov_win.outer_position() {
+        if curr_pos.x != pos.x || curr_pos.y != pos.y {
+            let _ = ov_win.set_position(tauri::PhysicalPosition::new(pos.x, pos.y));
         }
-        if target_monitor.is_none() {
-            if let Ok(Some(m)) = ov_win.primary_monitor() {
+    }
+    if let Ok(curr_size) = ov_win.outer_size() {
+        if curr_size.width != size.width || curr_size.height != size.height {
+            let _ = ov_win.set_size(tauri::PhysicalSize::new(size.width, size.height));
+        }
+    }
+}
+
+pub fn position_and_activate_overlay(
+    app: &AppHandle,
+    cursor_x: i32,
+    cursor_y: i32,
+    monitor_choice: &str,
+) -> Option<OverlayActivationMetrics> {
+    let ov_win = app.get_webview_window("overlay")?;
+    let mut target_monitor = None;
+    if monitor_choice == "cursor" {
+        if let Ok(monitors) = app.available_monitors() {
+            for m in monitors {
                 let pos = m.position();
                 let size = m.size();
-                if let Ok(curr_pos) = ov_win.outer_position() {
-                    if curr_pos.x != pos.x || curr_pos.y != pos.y {
-                        let _ = ov_win.set_position(tauri::PhysicalPosition::new(pos.x, pos.y));
-                    }
+                if cursor_x >= pos.x
+                    && cursor_x < pos.x + size.width as i32
+                    && cursor_y >= pos.y
+                    && cursor_y < pos.y + size.height as i32
+                {
+                    move_overlay_to_monitor(&ov_win, &m);
+                    target_monitor = Some(m);
+                    break;
                 }
-                if let Ok(curr_size) = ov_win.outer_size() {
-                    if curr_size.width != size.width || curr_size.height != size.height {
-                        let _ = ov_win.set_size(tauri::PhysicalSize::new(size.width, size.height));
-                    }
-                }
-                target_monitor = Some(m);
             }
         }
+    }
+    if target_monitor.is_none() {
+        if let Ok(Some(m)) = ov_win.primary_monitor() {
+            move_overlay_to_monitor(&ov_win, &m);
+            target_monitor = Some(m);
+        }
+    }
 
-        let (rel_x, rel_y, css_w, css_h) = if let Some(m) = target_monitor {
-            let pos = m.position();
-            let size = m.size();
-            let scale = m.scale_factor();
-            crate::services::set_radial_monitor_metrics(pos.x, pos.y, scale);
-            (
-                ((cursor_x - pos.x) as f64 / scale).round() as i32,
-                ((cursor_y - pos.y) as f64 / scale).round() as i32,
-                (size.width as f64 / scale).round() as i32,
-                (size.height as f64 / scale).round() as i32,
-            )
-        } else {
-            crate::services::set_radial_monitor_metrics(0, 0, 1.0);
-            (cursor_x, cursor_y, 1920, 1080)
+    let (rel_x, rel_y, css_w, css_h) = if let Some(m) = target_monitor {
+        let pos = m.position();
+        let size = m.size();
+        let scale = m.scale_factor();
+        crate::services::set_radial_monitor_metrics(pos.x, pos.y, scale);
+        (
+            ((cursor_x - pos.x) as f64 / scale).round() as i32,
+            ((cursor_y - pos.y) as f64 / scale).round() as i32,
+            (size.width as f64 / scale).round() as i32,
+            (size.height as f64 / scale).round() as i32,
+        )
+    } else {
+        crate::services::set_radial_monitor_metrics(0, 0, 1.0);
+        (cursor_x, cursor_y, 1920, 1080)
+    };
+
+    // Immediately make interactive and frame-less without losing transparency or flashing a titlebar
+    if let Ok(hwnd) = ov_win.hwnd() {
+        unsafe {
+            use windows::Win32::Graphics::Dwm::{
+                DwmSetWindowAttribute, DWMNCRP_DISABLED, DWMWA_NCRENDERING_POLICY,
+            };
+            use windows::Win32::Graphics::Gdi::SetWindowRgn;
+            use windows::Win32::UI::WindowsAndMessaging::{
+                GetWindowLongPtrW, GetWindowLongW, SetWindowLongPtrW, SetWindowLongW,
+                SetWindowPos, ShowWindow, GWL_EXSTYLE, GWL_STYLE, HWND_TOPMOST,
+                SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SW_SHOWNA,
+                WS_BORDER, WS_CAPTION, WS_DLGFRAME, WS_EX_APPWINDOW, WS_EX_LAYERED,
+                WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_MAXIMIZEBOX,
+                WS_MINIMIZEBOX, WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
+            };
+
+            // Permanently disable non-client rendering (titlebars / borders) via DWM
+            let policy = DWMNCRP_DISABLED;
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_NCRENDERING_POLICY,
+                &policy as *const _ as *const _,
+                std::mem::size_of_val(&policy) as u32,
+            );
+
+            // Strip any caption or frame styles from GWL_STYLE so Windows never draws a titlebar
+            let current_style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
+            let clean_style = (current_style | WS_POPUP.0)
+                & !(WS_CAPTION.0
+                    | WS_THICKFRAME.0
+                    | WS_MINIMIZEBOX.0
+                    | WS_MAXIMIZEBOX.0
+                    | WS_SYSMENU.0
+                    | WS_BORDER.0
+                    | WS_DLGFRAME.0);
+            if clean_style != current_style {
+                SetWindowLongW(hwnd, GWL_STYLE, clean_style as i32);
+            }
+
+            // Keep WS_EX_TOOLWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE.
+            // Clear WS_EX_TRANSPARENT so the window receives mouse/OLE events, but KEEP WS_EX_LAYERED!
+            let current_ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
+            let new_ex = ((current_ex & !WS_EX_TRANSPARENT.0) & !WS_EX_APPWINDOW.0)
+                | WS_EX_TOOLWINDOW.0
+                | WS_EX_NOACTIVATE.0
+                | WS_EX_LAYERED.0;
+            SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_ex as isize);
+
+            // Remove clipping region with bRedraw = false to prevent non-client redraw flash
+            let _ = SetWindowRgn(hwnd, None, false);
+
+            let _ = SetWindowPos(
+                hwnd,
+                Some(HWND_TOPMOST),
+                0,
+                0,
+                0,
+                0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+            );
+            // Show without activating so Windows doesn't flash the top notch/taskbar
+            let _ = ShowWindow(hwnd, SW_SHOWNA);
+        }
+        crate::services::MH_LAST_OV_IGNORE.store(0, Ordering::Relaxed);
+    }
+
+    Some(OverlayActivationMetrics {
+        rel_x,
+        rel_y,
+        css_w,
+        css_h,
+    })
+}
+
+/// Keeps every visible Notch window above the fullscreen overlay in TOPMOST Z-order
+/// so Notch Shelf drops are never intercepted by `"overlay"`.
+pub fn keep_notch_above_overlay() {
+    let Ok(notch_hwnds) = crate::state::NOTCH_HWNDS.lock().map(|g| g.clone()) else {
+        return;
+    };
+    for (_label, hwnd_val) in notch_hwnds {
+        let hwnd = HWND(hwnd_val as *mut _);
+        let visible = unsafe {
+            windows::Win32::UI::WindowsAndMessaging::IsWindowVisible(hwnd).as_bool()
         };
-
-        // Immediately make interactive and frame-less without losing transparency or flashing a titlebar
-        if let Ok(hwnd) = ov_win.hwnd() {
-            unsafe {
-                use windows::Win32::Graphics::Dwm::{
-                    DwmSetWindowAttribute, DWMNCRP_DISABLED, DWMWA_NCRENDERING_POLICY,
-                };
-                use windows::Win32::Graphics::Gdi::SetWindowRgn;
-                use windows::Win32::UI::WindowsAndMessaging::{
-                    GetWindowLongPtrW, GetWindowLongW, SetWindowLongPtrW, SetWindowLongW,
-                    SetWindowPos, ShowWindow, GWL_EXSTYLE, GWL_STYLE, HWND_TOPMOST,
-                    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SW_SHOWNA,
-                    WS_BORDER, WS_CAPTION, WS_DLGFRAME, WS_EX_APPWINDOW, WS_EX_LAYERED,
-                    WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TRANSPARENT, WS_MAXIMIZEBOX,
-                    WS_MINIMIZEBOX, WS_POPUP, WS_SYSMENU, WS_THICKFRAME,
-                };
-
-                // Permanently disable non-client rendering (titlebars / borders) via DWM
-                let policy = DWMNCRP_DISABLED;
-                let _ = DwmSetWindowAttribute(
-                    hwnd,
-                    DWMWA_NCRENDERING_POLICY,
-                    &policy as *const _ as *const _,
-                    std::mem::size_of_val(&policy) as u32,
-                );
-
-                // Strip any caption or frame styles from GWL_STYLE so Windows never draws a titlebar
-                let current_style = GetWindowLongW(hwnd, GWL_STYLE) as u32;
-                let clean_style = (current_style | WS_POPUP.0)
-                    & !(WS_CAPTION.0
-                        | WS_THICKFRAME.0
-                        | WS_MINIMIZEBOX.0
-                        | WS_MAXIMIZEBOX.0
-                        | WS_SYSMENU.0
-                        | WS_BORDER.0
-                        | WS_DLGFRAME.0);
-                if clean_style != current_style {
-                    SetWindowLongW(hwnd, GWL_STYLE, clean_style as i32);
-                }
-
-                // Keep WS_EX_TOOLWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE.
-                // Clear WS_EX_TRANSPARENT so the window receives mouse events, but KEEP WS_EX_LAYERED!
-                let current_ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32;
-                let new_ex = ((current_ex & !WS_EX_TRANSPARENT.0) & !WS_EX_APPWINDOW.0)
-                    | WS_EX_TOOLWINDOW.0
-                    | WS_EX_NOACTIVATE.0
-                    | WS_EX_LAYERED.0;
-                SetWindowLongPtrW(hwnd, GWL_EXSTYLE, new_ex as isize);
-
-                // Remove clipping region with bRedraw = false to prevent non-client redraw flash
-                let _ = SetWindowRgn(hwnd, None, false);
-
-                let _ = SetWindowPos(
-                    hwnd,
-                    Some(HWND_TOPMOST),
-                    0,
-                    0,
-                    0,
-                    0,
-                    SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED,
-                );
-                // Show without activating so Windows doesn't flash the top notch/taskbar
-                let _ = ShowWindow(hwnd, SW_SHOWNA);
-            }
-            crate::services::MH_LAST_OV_IGNORE.store(0, Ordering::Relaxed);
+        if visible {
+            crate::utils::re_assert_topmost(hwnd);
         }
+    }
+}
 
+pub fn show_overlay_for_radial(app: &AppHandle, cursor_x: i32, cursor_y: i32) {
+    crate::converter::reset_converter_state_for_radial(app);
+    crate::services::set_radial_menu_open(true);
+    let monitor_choice =
+        crate::utils::get_setting_str(app, "zenith-mouse-monitor").unwrap_or_else(|| "cursor".into());
+    if let Some(metrics) = position_and_activate_overlay(app, cursor_x, cursor_y, &monitor_choice) {
         let _ = app.emit(
             "radial-open",
             serde_json::json!({
-                "x": rel_x,
-                "y": rel_y,
-                "width": css_w,
-                "height": css_h
+                "x": metrics.rel_x,
+                "y": metrics.rel_y,
+                "width": metrics.css_w,
+                "height": metrics.css_h
             }),
         );
     }
+}
+
+pub fn show_overlay_for_converter(app: &AppHandle, cursor_x: i32, cursor_y: i32, session_id: u64) {
+    if crate::converter::check_converter_show_session(
+        session_id,
+        crate::services::MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed),
+        crate::state::OVERLAY_IN_SPLASH.load(Ordering::Relaxed),
+    ) != crate::converter::ConverterShowAction::Proceed
+    {
+        return;
+    }
+
+    crate::converter::ensure_converter_drop_synced(app);
+
+    if crate::converter::check_converter_show_session(
+        session_id,
+        crate::services::MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed),
+        crate::state::OVERLAY_IN_SPLASH.load(Ordering::Relaxed),
+    ) != crate::converter::ConverterShowAction::Proceed
+    {
+        return;
+    }
+
+    if position_and_activate_overlay(app, cursor_x, cursor_y, "cursor").is_none() {
+        crate::converter::close_converter_overlay_for_session(app, session_id);
+        return;
+    }
+
+    // Final post-activation check: if Esc/release cancelled this session concurrently
+    // while position_and_activate_overlay was running, ensure overlay does not remain clickable.
+    if crate::converter::check_converter_show_session(
+        session_id,
+        crate::services::MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed),
+        crate::state::OVERLAY_IN_SPLASH.load(Ordering::Relaxed),
+    ) != crate::converter::ConverterShowAction::Proceed
+    {
+        if crate::converter::is_converter_session_current(session_id)
+            && !crate::services::MOUSE_RADIAL_MENU_OPEN.load(Ordering::Relaxed)
+            && !crate::state::OVERLAY_IN_SPLASH.load(Ordering::Relaxed)
+        {
+            restore_overlay_click_through(app);
+        }
+        return;
+    }
+
+    keep_notch_above_overlay();
 }
 
 #[tauri::command]
@@ -3629,6 +3717,7 @@ pub fn release_appbars(handle: &AppHandle) {
 pub fn restore_taskbar_and_exit(handle: &AppHandle) {
     crate::diagnostics::record("shutdown", "restoring taskbar and releasing AppBars");
     SHUTTING_DOWN.store(true, Ordering::Relaxed);
+    crate::converter::shutdown_converter();
     crate::translator::shutdown();
     release_appbars(handle);
     set_taskbar_visibility(true, true);
@@ -3651,6 +3740,7 @@ pub async fn quit_zenith(handle: AppHandle) {
 pub async fn restart_zenith(handle: AppHandle) {
     crate::diagnostics::record("restart", "restoring taskbar and releasing AppBars");
     SHUTTING_DOWN.store(true, Ordering::Relaxed);
+    crate::converter::shutdown_converter();
     crate::translator::shutdown();
     release_appbars(&handle);
     if let Some(w) = handle.get_webview_window("settings") {
@@ -3699,8 +3789,11 @@ fn re_register_appbars(app: &AppHandle, settings: &HashMap<String, serde_json::V
     });
 }
 
-#[tauri::command]
-pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Result<(), String> {
+pub fn persist_setting_and_emit(
+    app: &AppHandle,
+    key: String,
+    value: serde_json::Value,
+) -> Result<HashMap<String, serde_json::Value>, String> {
     let path = app
         .path()
         .app_config_dir()
@@ -3736,6 +3829,13 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
         );
     }
 
+    Ok(settings)
+}
+
+#[tauri::command]
+pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Result<(), String> {
+    let settings = persist_setting_and_emit(&app, key.clone(), value.clone())?;
+
     if key == "zenith-language" || key == "bloom-language" {
         apply_language(&app, value.as_str());
     } else if key == "zenith-scale" || key == "bloom-scale" || key == "zenith-notch-floating" {
@@ -3765,6 +3865,10 @@ pub fn save_setting(app: AppHandle, key: String, value: serde_json::Value) -> Re
         re_register_appbars(&app, &settings);
     } else if key == "zenith-translator-enabled" || key.starts_with("zenith-translator-hotkey-") {
         crate::translator::sync_hotkeys_from_settings(&app);
+    } else if key == "zenith-converter-explorer-menu" {
+        crate::converter::sync_explorer_menu_from_settings(&app);
+    } else if key.starts_with("zenith-converter-") {
+        crate::converter::sync_trigger_config_from_settings(&app);
     }
     Ok(())
 }
@@ -4447,6 +4551,8 @@ fn apply_imported_settings(app: &AppHandle, settings: &str) -> Result<(), String
         re_register_appbars(app, &imported);
     }
     sync_language_from_cache(app);
+    crate::converter::sync_trigger_config_from_settings(app);
+    crate::converter::sync_explorer_menu_from_settings(app);
 
     Ok(())
 }
@@ -4484,6 +4590,8 @@ pub fn reset_settings(app: AppHandle) -> Result<(), String> {
 
 
     apply_language(&app, None);
+    crate::converter::sync_trigger_config_from_settings(&app);
+    crate::converter::sync_explorer_menu_from_settings(&app);
     // Mirror the external-edit watcher so every open window drops the removed
     // keys from localStorage. The caller restarts Zenith right after, but this
     // keeps the reset correct even if a window lingers.
@@ -4608,9 +4716,16 @@ pub fn setup_settings_watcher(app: AppHandle) {
                 };
                 if let Some((changed, removed)) = changes {
                     // Both file and cache locks are released before emitting.
+                    let mut converter_changed = false;
+                    let mut explorer_menu_changed = false;
                     for (key, value) in &changed {
                         if key == "zenith-language" || key == "bloom-language" {
                             apply_language(&app, value.as_str());
+                        }
+                        if key == "zenith-converter-explorer-menu" {
+                            explorer_menu_changed = true;
+                        } else if key.starts_with("zenith-converter-") {
+                            converter_changed = true;
                         }
                         let _ = app.emit(
                             "settings-external-changed",
@@ -4621,10 +4736,21 @@ pub fn setup_settings_watcher(app: AppHandle) {
                         if key == "zenith-language" || key == "bloom-language" {
                             apply_language(&app, None);
                         }
+                        if key == "zenith-converter-explorer-menu" {
+                            explorer_menu_changed = true;
+                        } else if key.starts_with("zenith-converter-") {
+                            converter_changed = true;
+                        }
                         let _ = app.emit(
                             "settings-external-changed",
                             serde_json::json!({ "key": key, "value": null }),
                         );
+                    }
+                    if converter_changed {
+                        crate::converter::sync_trigger_config_from_settings(&app);
+                    }
+                    if explorer_menu_changed {
+                        crate::converter::sync_explorer_menu_from_settings(&app);
                     }
                 }
             }
