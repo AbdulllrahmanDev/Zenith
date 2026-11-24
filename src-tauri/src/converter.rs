@@ -586,10 +586,48 @@ pub fn map_cli_exit_code(
     }
 }
 
+fn strip_trailing_sep_preserving_root(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    if trimmed == "\\" || trimmed == "/" {
+        return trimmed.to_string();
+    }
+    let bytes = trimmed.as_bytes();
+    if bytes.len() == 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/')
+    {
+        return trimmed.to_string();
+    }
+    let stripped = trimmed.trim_end_matches(['\\', '/']);
+    if stripped.len() == 2
+        && stripped.as_bytes()[0].is_ascii_alphabetic()
+        && stripped.as_bytes()[1] == b':'
+    {
+        format!("{stripped}\\")
+    } else if stripped.is_empty() {
+        trimmed
+            .chars()
+            .next()
+            .map(|c| c.to_string())
+            .unwrap_or_default()
+    } else {
+        stripped.to_string()
+    }
+}
+
 pub fn build_convert_args(req: &ConvertRequest, _paths: &ConverterPaths) -> Vec<String> {
     let mut args = Vec::with_capacity(req.inputs.len() + 14);
     args.push("convert".to_string());
-    args.extend(req.inputs.iter().cloned());
+    for input in &req.inputs {
+        let normalized = strip_trailing_sep_preserving_root(input);
+        if !normalized.is_empty() {
+            args.push(normalized);
+        }
+    }
 
     // `filee convert` rejects specifying both `--to` and `--preset`.
     if let Some(preset) = req.preset.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
@@ -603,11 +641,11 @@ pub fn build_convert_args(req: &ConvertRequest, _paths: &ConverterPaths) -> Vec<
     if let Some(out_dir) = req
         .output_dir
         .as_deref()
-        .map(str::trim)
+        .map(strip_trailing_sep_preserving_root)
         .filter(|s| !s.is_empty())
     {
         args.push("-o".to_string());
-        args.push(out_dir.to_string());
+        args.push(out_dir);
     }
 
     if let Some(quality) = req.quality {
@@ -2999,17 +3037,30 @@ pub fn take_cli_handoff_paths() -> Vec<String> {
         .collect()
 }
 
+pub fn normalize_directory_hints_for_ui(paths: Vec<String>) -> Vec<String> {
+    paths
+        .into_iter()
+        .filter_map(|raw| {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                return None;
+            }
+            if Path::new(trimmed).is_dir() && !trimmed.ends_with(['\\', '/']) {
+                Some(format!("{trimmed}\\"))
+            } else {
+                Some(trimmed.to_string())
+            }
+        })
+        .collect()
+}
+
 pub fn open_converter_donut_from_cli(app: &AppHandle, paths: Vec<String>) {
     if crate::state::SHUTTING_DOWN.load(Ordering::Acquire)
         || CONVERTER_SHUTTING_DOWN.load(Ordering::Acquire)
     {
         return;
     }
-    let clean_paths: Vec<String> = paths
-        .into_iter()
-        .map(|p| p.trim().to_string())
-        .filter(|p| !p.is_empty())
-        .collect();
+    let clean_paths = normalize_directory_hints_for_ui(paths);
     if clean_paths.is_empty() {
         return;
     }
@@ -6211,7 +6262,7 @@ impl ConverterDropTarget {
             }
         }
         ReleaseStgMedium(&mut medium);
-        paths
+        normalize_directory_hints_for_ui(paths)
     }
 
     unsafe fn read_hglobal_bytes(
@@ -8792,6 +8843,87 @@ cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc  Filee-2.5.0-wi
                 r"D:\Docs".to_string(),
             ]),
             vec![r"C:\photo.png".to_string(), r"D:\Docs".to_string()]
+        );
+    }
+
+    #[test]
+    fn normalize_directory_hints_and_build_convert_args_preserve_folders_and_roots() {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let base = std::env::temp_dir().join(format!(
+            "zenith_dir_hints_test_{}_{}",
+            std::process::id(),
+            nanos
+        ));
+        let dotted_dir = base.join("v1.0");
+        let image_named_dir = base.join("backup.png");
+        let regular_file = base.join("photo.png");
+
+        std::fs::create_dir_all(&dotted_dir).unwrap();
+        std::fs::create_dir_all(&image_named_dir).unwrap();
+        std::fs::write(&regular_file, b"not-a-dir").unwrap();
+
+        let dotted_raw = dotted_dir.to_string_lossy().to_string();
+        let dotted_with_slash = format!("{dotted_raw}\\");
+        let image_dir_raw = image_named_dir.to_string_lossy().to_string();
+        let file_raw = regular_file.to_string_lossy().to_string();
+
+        let normalized = normalize_directory_hints_for_ui(vec![
+            dotted_raw.clone(),
+            dotted_with_slash.clone(),
+            image_dir_raw.clone(),
+            file_raw.clone(),
+        ]);
+        assert_eq!(
+            normalized,
+            vec![
+                dotted_with_slash.clone(),
+                dotted_with_slash,
+                format!("{image_dir_raw}\\"),
+                file_raw.clone(),
+            ]
+        );
+
+        let _ = std::fs::remove_dir_all(&base);
+
+        let paths = test_paths();
+        let req = ConvertRequest {
+            job_id: "job-dir-trim".to_string(),
+            inputs: vec![
+                r"C:\Users\Dev\v1.0\".to_string(),
+                r"C:\Users\Dev\backup.png\".to_string(),
+                r"C:\".to_string(),
+            ],
+            to: "iso".to_string(),
+            preset: Some("to-iso".to_string()),
+            output_dir: Some(r"D:\Out\".to_string()),
+            quality: None,
+            pages: None,
+            split_every: None,
+            split_parts: None,
+            conflict: None,
+            overwrite: None,
+            keep_dates: None,
+            zip: None,
+            iso_filesystem: None,
+            iso_label: None,
+            crop: None,
+        };
+        assert_eq!(
+            build_convert_args(&req, &paths),
+            vec![
+                "convert",
+                r"C:\Users\Dev\v1.0",
+                r"C:\Users\Dev\backup.png",
+                r"C:\",
+                "--preset",
+                "to-iso",
+                "-o",
+                r"D:\Out",
+                "--json",
+            ]
         );
     }
 }

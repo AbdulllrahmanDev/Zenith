@@ -323,15 +323,24 @@ function extractBaseName(path: string): string {
 		}
 	}
 	const withoutQuery = trimmed.split(/[?#]/)[0];
-	const idx = Math.max(withoutQuery.lastIndexOf("/"), withoutQuery.lastIndexOf("\\"));
-	const base = idx >= 0 ? withoutQuery.slice(idx + 1) : withoutQuery;
-	return base || trimmed;
+	const clean =
+		/^[A-Za-z]:[\\/]$/.test(withoutQuery) || withoutQuery === "/" || withoutQuery === "\\"
+			? withoutQuery
+			: withoutQuery.replace(/[\\/]+$/, "") || withoutQuery;
+	const idx = Math.max(clean.lastIndexOf("/"), clean.lastIndexOf("\\"));
+	const base = idx >= 0 ? clean.slice(idx + 1) : clean;
+	return base || clean;
 }
 
 function parentDirectory(path: string): string {
-	const idx = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-	if (idx <= 0) return path;
-	return path.slice(0, idx);
+	const clean =
+		/^[A-Za-z]:[\\/]$/.test(path) || path === "/" || path === "\\"
+			? path
+			: path.replace(/[\\/]+$/, "") || path;
+	const idx = Math.max(clean.lastIndexOf("/"), clean.lastIndexOf("\\"));
+	if (idx <= 0) return clean;
+	if (idx === 2 && /^[A-Za-z]:/.test(clean)) return clean.slice(0, 3);
+	return clean.slice(0, idx);
 }
 
 function resolveMatchInputs(paths: string[], urls: string[], isBrowserDrag = false): string[] {

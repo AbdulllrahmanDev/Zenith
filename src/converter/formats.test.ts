@@ -152,6 +152,13 @@ describe("matchFormatsForPaths", () => {
 		expect(folderResult.detectedCategory).toBe("folder");
 		expect(folderResult.primary.map((o) => o.format)).toContain("zip");
 		expect(folderResult.primary.map((o) => o.format)).toContain("iso");
+
+		const dottedFolderResult = matchFormatsForPaths([
+			"C:\\Users\\Dev\\v1.0\\",
+			"C:\\Users\\Dev\\backup.png\\",
+		]);
+		expect(dottedFolderResult.detectedCategory).toBe("folder");
+		expect(dottedFolderResult.primary.map((o) => o.presetId)).toContain("to-iso");
 	});
 });
 

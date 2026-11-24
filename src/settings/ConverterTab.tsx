@@ -197,8 +197,12 @@ function cleanErrorMessage(err: unknown): string {
 
 function extractBaseName(path: string): string {
 	const trimmed = path.trim();
-	const idx = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
-	return idx >= 0 ? trimmed.slice(idx + 1) || trimmed : trimmed;
+	const clean =
+		/^[A-Za-z]:[\\/]$/.test(trimmed) || trimmed === "/" || trimmed === "\\"
+			? trimmed
+			: trimmed.replace(/[\\/]+$/, "") || trimmed;
+	const idx = Math.max(clean.lastIndexOf("/"), clean.lastIndexOf("\\"));
+	return idx >= 0 ? clean.slice(idx + 1) || clean : clean;
 }
 
 function arraysEqual(a: string[], b: string[]): boolean {
