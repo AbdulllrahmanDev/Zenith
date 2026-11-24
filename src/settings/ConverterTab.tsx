@@ -1545,15 +1545,15 @@ export function ConverterTab({
 		);
 
 		return (
-			<div className="zn-slice-face-card">
-				<div className="zn-slice-face-header">
-					<span className="zn-slice-face-title">{faceTitle}</span>
-					<span className="zn-slice-count-pill">{ids.length}</span>
+			<div className="zn-conv-slice-face-card">
+				<div className="zn-conv-slice-face-header">
+					<span className="zn-conv-slice-face-title">{faceTitle}</span>
+					<span className="zn-conv-slice-count-pill">{ids.length}</span>
 				</div>
 
-				<div className="zn-slice-list">
+				<div className="zn-conv-slice-list">
 					{ids.length === 0 ? (
-						<div className="zn-slice-empty">{c.donutEditor.emptyFace}</div>
+						<div className="zn-conv-slice-empty">{c.donutEditor.emptyFace}</div>
 					) : (
 						ids.map((sliceId, index) => {
 							const opt = resolveCatalogEntry(sliceId);
@@ -1567,7 +1567,7 @@ export function ConverterTab({
 							return (
 								<div
 									key={`${face}-${sliceId}-${index}`}
-									className={`zn-slice-row ${isDragTarget ? "is-drag-target" : ""}`}
+									className={`zn-conv-slice-row ${isDragTarget ? "is-drag-target" : ""}`}
 									draggable
 									onDragStart={(e) => {
 										e.dataTransfer.effectAllowed = "move";
@@ -1595,17 +1595,17 @@ export function ConverterTab({
 										setDragOverSlice(null);
 									}}
 								>
-									<span className="zn-slice-drag-grip" aria-hidden>
+									<span className="zn-conv-slice-drag-grip" aria-hidden>
 										<GripVertical size={12} />
 									</span>
-									<div className="zn-slice-info">
-										<span className="zn-slice-label">{opt?.label ?? sliceId}</span>
-										<span className="zn-slice-fmt">{fmtBadge}</span>
+									<div className="zn-conv-slice-info">
+										<span className="zn-conv-slice-label">{opt?.label ?? sliceId}</span>
+										<span className="zn-conv-slice-fmt">{fmtBadge}</span>
 										{opt?.requiredEngine && (
-											<span className="zn-slice-engine">+{opt.requiredEngine}</span>
+											<span className="zn-conv-slice-engine">+{opt.requiredEngine}</span>
 										)}
 									</div>
-									<div className="zn-slice-row-actions">
+									<div className="zn-conv-slice-row-actions">
 										<button
 											type="button"
 											className="zn-icon-action-btn"
@@ -1651,9 +1651,9 @@ export function ConverterTab({
 					)}
 				</div>
 
-				<div className="zn-slice-add-row">
+				<div className="zn-conv-slice-add-row">
 					<ZenithSelect
-						className="settings-select zn-slice-add-select"
+						className="settings-select zn-conv-slice-add-select"
 						value={addSliceSelection[face]}
 						onChange={(e) => {
 							const val = e.target.value;
@@ -1730,7 +1730,7 @@ export function ConverterTab({
 							<div className="zn-converter-section-title">
 								<span>{c.donutEditor.profilesLabel}</span>
 								{profileSaveStatus === "saving" && (
-									<span className="zn-slice-count-pill">{c.donutEditor.saving}</span>
+									<span className="zn-conv-slice-count-pill">{c.donutEditor.saving}</span>
 								)}
 								{profileSaveStatus === "saved" && (
 									<span className="zn-converter-save-pill">{c.donutEditor.saved}</span>
@@ -1786,7 +1786,7 @@ export function ConverterTab({
 					</div>
 
 					{activeProfile && (
-						<div className="zn-slice-faces-grid">
+						<div className="zn-conv-slice-faces-grid">
 							{renderFaceColumn("primary", activeProfile.primary_ids)}
 							{renderFaceColumn("secondary", activeProfile.secondary_ids)}
 						</div>
@@ -2341,7 +2341,7 @@ export function ConverterTab({
 					{queuedFiles.length > 0 && dropZoneDonutSides && (
 						<div className="zn-dropzone-queued">
 							<div className="zn-dropzone-files-bar">
-								<span className="zn-slice-count-pill">
+								<span className="zn-conv-slice-count-pill">
 									{c.dropZone.queuedFiles(queuedFiles.length)} ·{" "}
 									{c.donut.categories[dropZoneDonutSides.detectedCategory] ??
 										dropZoneDonutSides.detectedCategory}
@@ -2561,7 +2561,7 @@ export function ConverterTab({
 						<div className="zn-converter-section-title-col">
 							<div className="zn-converter-section-title">
 								<span>{c.history.recentGroupLabel}</span>
-								<span className="zn-slice-count-pill">{converterState.recent.length}</span>
+								<span className="zn-conv-slice-count-pill">{converterState.recent.length}</span>
 							</div>
 						</div>
 						<div className="zn-converter-section-actions">

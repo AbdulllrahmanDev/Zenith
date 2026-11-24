@@ -1383,6 +1383,8 @@ export function buildCustomMatcherInputs(state: ConverterState | null | undefine
 				};
 				if (presetCfg.quality !== null && presetCfg.quality !== undefined) {
 					opt.quality = presetCfg.quality;
+				} else {
+					delete opt.quality;
 				}
 				extraPresets[presetCfg.id] = opt;
 			} else if (cleanFmt) {
@@ -1449,7 +1451,7 @@ export function buildConvertRequestFromOption(params: {
 		to: normalizedFormat,
 		preset: useBuiltInPreset ? (builtIn?.presetId ?? option.presetId ?? null) : null,
 		output_dir: outputDir,
-		quality: presetCfg?.quality ?? option.quality ?? null,
+		quality: presetCfg ? (presetCfg.quality ?? null) : (option.quality ?? null),
 		pages: presetCfg?.pages?.trim() || null,
 		split_every: splitEvery,
 		split_parts: splitParts,

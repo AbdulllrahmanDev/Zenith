@@ -279,4 +279,50 @@ describe("ConverterState helpers & ConvertRequest builder", () => {
 		expect(imageCompat).toContain("tool-crop");
 		expect(imageCompat).not.toContain("to-mp3");
 	});
+
+	test("clearing quality on built-in preset override sends quality: null instead of catalog default", () => {
+		const state: ConverterState = {
+			profiles: [
+				{
+					id: "images",
+					category: "image",
+					label: "Images",
+					primary_ids: ["to-jpg"],
+					secondary_ids: [],
+				},
+			],
+			presets: [
+				{
+					id: "to-jpg",
+					name: "JPG Default",
+					target_format: "jpg",
+					quality: null,
+					pages: null,
+					split_every: null,
+					split_parts: null,
+					conflict: "rename",
+					keep_dates: false,
+					zip: false,
+					iso_filesystem: null,
+					iso_label: null,
+				},
+			],
+			recent: [],
+			watch_rules: [],
+		};
+
+		const { profiles, extraPresets, presetsById } = buildCustomMatcherInputs(state);
+		const sides = matchFormatsForPaths(["photo.png"], profiles, extraPresets);
+		expect(sides.primary[0]?.quality).toBeUndefined();
+
+		const req = buildConvertRequestFromOption({
+			jobId: "job-null-q",
+			inputs: ["C:\\Temp\\photo.png"],
+			option: sides.primary[0],
+			outputDir: null,
+			presetsById,
+		});
+		expect(req.preset).toBe("to-jpg");
+		expect(req.quality).toBeNull();
+	});
 });
