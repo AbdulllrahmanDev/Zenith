@@ -761,6 +761,7 @@ pub fn setup_audio_visualization(app_handle: AppHandle) {
                     let fft = planner.plan_fft_forward(FFT_SIZE);
 
                     let mut last_device_check = std::time::Instant::now();
+                    let mut last_emit_time = std::time::Instant::now() - std::time::Duration::from_millis(100);
                     loop {
                         std::thread::sleep(std::time::Duration::from_millis(32));
 
@@ -781,16 +782,17 @@ pub fn setup_audio_visualization(app_handle: AppHandle) {
                             }
                         }
 
-                        // Skip all heavy processing if nothing is playing
-                        if !ANY_MEDIA_PLAYING.load(Ordering::Relaxed) {
-                            // Still gotta clear the buffer to avoid lag when it starts
-                            loop {
-                                let len = match capture_client.GetNextPacketSize() {
-                                    Ok(l) => l,
-                                    Err(_) => {
-                                        return Err("Device invalidated".into());
-                                    }
-                                };
+                        // Skip all heavy processing if visualizer is disabled, nothing is playing, or notch is not visible
+                        let viz_enabled = crate::utils::get_setting_str(&app_handle, "zenith-media-visualizer-enabled")
+                            .or_else(|| crate::utils::get_setting_str(&app_handle, "zenith-visualizer-enabled"))
+                            .map(|s| s != "false")
+                            .unwrap_or(true);
+                        let notch_visible = NOTCH_IS_VISIBLE.load(Ordering::Relaxed);
+                        let is_playing = ANY_MEDIA_PLAYING.load(Ordering::Relaxed);
+                        if !viz_enabled || !notch_visible || !is_playing {
+                            std::thread::sleep(std::time::Duration::from_millis(250));
+                            // Still clear any packets
+                            while let Ok(len) = capture_client.GetNextPacketSize() {
                                 if len == 0 {
                                     break;
                                 }
@@ -919,12 +921,17 @@ pub fn setup_audio_visualization(app_handle: AppHandle) {
                                             output[band_idx] = output[band_idx].clamp(0.18, 1.0);
                                             prev_values[band_idx] = output[band_idx];
                                         }
-                                        let _ = app_handle.emit(
-                                            "audio-visualization",
-                                            AudioVisualizationData {
-                                                frequencies: output.to_vec(),
-                                            },
-                                        );
+                                        let now = std::time::Instant::now();
+                                        if now.duration_since(last_emit_time) >= std::time::Duration::from_millis(45) {
+                                            last_emit_time = now;
+                                            let _ = app_handle.emit_to(
+                                                "main",
+                                                "audio-visualization",
+                                                AudioVisualizationData {
+                                                    frequencies: output.to_vec(),
+                                                },
+                                            );
+                                        }
                                         buffer_pos = 0;
                                     }
                                 }
@@ -3504,14 +3511,6 @@ fn update_main_interaction(
     }
 }
 
-fn any_cached_hover(cache: &Mutex<Option<std::collections::HashMap<String, bool>>>) -> bool {
-    cache
-        .lock()
-        .ok()
-        .and_then(|g| g.as_ref().map(|m| m.values().any(|&v| v)))
-        .unwrap_or(false)
-}
-
 /// Keeps notch hit-testing fresh while the cursor is stationary: completes a
 /// pending top-edge dwell, forces interactivity during a held-button drag, and
 /// catches boundary crossings the movement-only hook misses (so the click-
@@ -3536,8 +3535,7 @@ fn setup_top_edge_watchdog(app_handle: AppHandle) {
             let ctrl_changed = last_ctrl != is_ctrl;
             let dwell_pending = MH_TOP_EDGE_ENTER_MS.load(Ordering::Relaxed) != 0
                 && !MH_TOP_EDGE_ARMED.load(Ordering::Relaxed);
-            let hover_active = any_cached_hover(&NOTCH_HOVER_CACHE);
-            if !moved && !ctrl_changed && fg_fs == last_fg_fs && !dwell_pending && !hover_active {
+            if !moved && !ctrl_changed && fg_fs == last_fg_fs && !dwell_pending {
                 continue;
             }
             last_pt = Some((pt.x, pt.y));
@@ -3742,8 +3740,7 @@ fn setup_dock_edge_watchdog(app_handle: AppHandle) {
             let moved = last_pt != Some((pt.x, pt.y));
             let dwell_pending = MH_DOCK_EDGE_ENTER_MS.load(Ordering::Relaxed) != 0
                 && !MH_DOCK_EDGE_ARMED.load(Ordering::Relaxed);
-            let hover_active = any_cached_hover(&DOCK_HOVER_CACHE);
-            if !moved && fg_fs == last_fg_fs && !dwell_pending && !hover_active {
+            if !moved && fg_fs == last_fg_fs && !dwell_pending {
                 continue;
             }
             last_pt = Some((pt.x, pt.y));

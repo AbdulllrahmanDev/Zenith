@@ -327,21 +327,30 @@ export const Visualizer = memo(function Visualizer({
 	bars?: number;
 	height?: number;
 }) {
-	const [audioData, setAudioData] = useState<number[]>(new Array(bars).fill(0.18));
+	const barRefs = useRef<(HTMLDivElement | null)[]>([]);
 
 	useEffect(() => {
 		if (!isPlaying) {
-			setAudioData(new Array(bars).fill(0.18));
+			for (let i = 0; i < bars; i++) {
+				const el = barRefs.current[i];
+				if (el) {
+					el.style.transform = "scaleY(0.1)";
+					el.style.opacity = "0.5";
+				}
+			}
 			return;
 		}
 
 		const unlisten = listen<{ frequencies: number[] }>("audio-visualization", (event) => {
-			// If we receive fewer frequencies than bars, repeat or interpolate
-			// If more, slice
-			let data = event.payload.frequencies;
-			if (data.length > bars) data = data.slice(0, bars);
-			while (data.length < bars) data.push(0.18);
-			setAudioData(data);
+			const data = event.payload.frequencies;
+			for (let i = 0; i < bars; i++) {
+				const el = barRefs.current[i];
+				if (el) {
+					const val = data[i] ?? 0.18;
+					el.style.transform = `scaleY(${Math.max(0.2, val)})`;
+					el.style.opacity = "0.95";
+				}
+			}
 		});
 
 		return () => {
@@ -354,19 +363,18 @@ export const Visualizer = memo(function Visualizer({
 			className="visualizer-horizontal"
 			style={{ height: `${height}px`, width: `${bars * 6}px` }}
 		>
-			{audioData.map((value, i) => (
-				<motion.div
+			{Array.from({ length: bars }).map((_, i) => (
+				<div
 					key={i}
-					className="bar-horizontal"
-					animate={{
-						scaleY: isPlaying ? Math.max(0.2, value) : 0.1,
-						opacity: isPlaying ? 0.95 : 0.5
+					ref={(el) => {
+						barRefs.current[i] = el;
 					}}
-					transition={{
-						type: "spring",
-						stiffness: 600,
-						damping: 30,
-						mass: 0.5
+					className="bar-horizontal"
+					style={{
+						transform: isPlaying ? "scaleY(0.2)" : "scaleY(0.1)",
+						transformOrigin: "center",
+						opacity: isPlaying ? 0.95 : 0.5,
+						transition: "transform 0.08s ease-out, opacity 0.2s ease"
 					}}
 				/>
 			))}
@@ -1009,9 +1017,15 @@ function App() {
 				return false;
 			};
 
+			let attempts = 0;
 			const interval = setInterval(async () => {
-				if (await checkVisibility()) clearInterval(interval);
-			}, 100);
+				attempts++;
+				if (await checkVisibility()) {
+					clearInterval(interval);
+				} else if (attempts > 20) {
+					clearInterval(interval);
+				}
+			}, 200);
 
 			checkVisibility();
 			return interval;

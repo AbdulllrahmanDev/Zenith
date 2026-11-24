@@ -334,26 +334,40 @@ const Dock = memo(function Dock() {
 			return false;
 		};
 
-		// Keep polling until visible — no time cap, since the dock can be
-		// enabled at runtime from settings after any delay.
+		// Keep polling until visible. Back off after initial startup to avoid
+		// burning CPU with IPC calls when the dock is disabled or on inactive monitors.
+		let attempts = 0;
+		let slowInterval: ReturnType<typeof setInterval> | null = null;
 		const interval = setInterval(async () => {
 			if (cleared) return;
+			attempts++;
 			if (await checkVisibility()) {
 				clearInterval(interval);
 				cleared = true;
+			} else if (attempts > 20) {
+				clearInterval(interval);
+				slowInterval = setInterval(async () => {
+					if (cleared) return;
+					if (await checkVisibility()) {
+						if (slowInterval) clearInterval(slowInterval);
+						cleared = true;
+					}
+				}, 3000);
 			}
-		}, 200);
+		}, 300);
 
 		// Also attempt immediately
 		checkVisibility().then((ok) => {
 			if (ok) {
 				clearInterval(interval);
+				if (slowInterval) clearInterval(slowInterval);
 				cleared = true;
 			}
 		});
 
 		return () => {
 			clearInterval(interval);
+			if (slowInterval) clearInterval(slowInterval);
 			cleared = true;
 		};
 	}, []);
